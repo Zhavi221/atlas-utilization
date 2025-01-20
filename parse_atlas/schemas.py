@@ -1,4 +1,4 @@
-BASIC_SCHEMA = {
+TOPQ_SCHEMA = {
     "Electrons": [
         "pt", "eta", "phi",
     ],
