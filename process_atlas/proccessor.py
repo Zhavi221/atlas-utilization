@@ -9,11 +9,9 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-class ATLAS_Parser():
-    def __init__(self, server=consts.CERN_OPENDATA_URI):
-        self.server = server
-        self.file_indexes = []
-        self.events = []
+class ATLAS_Proccessor():
+    def __init__(self):
+        pass
 
     def get_data_index(self, recids=[]):
         file_indices = self._retrieve_file_indices(recids)
@@ -47,44 +45,40 @@ class ATLAS_Parser():
         return indices
 
     def parse_all_files(self, schema, limit=0):
-        events = []
         for file_index in self.file_indexes[:limit]:
             logging.info(f"Processing file - {file_index}")
             
             cur_file_data = self._parse_file(schema, file_index)
-            events.append(cur_file_data)
+            self.events.append(cur_file_data)
 
             logging.info("Finished")
         
-        self.events = ak.concatenate(events, axis=0)
+        self.events = ak.concatenate(self.events, axis=0)
 
     def _parse_file(self, schema, file_index):
         with uproot.open({file_index: "CollectionTree"}) as tree:
             events = {}
+            for objname, fields in schema.items():
+                cur_objname, zip_function = ATLAS_Parser._adapt_field_name(objname)
 
-            for container_name, fields in schema.items():
-                cur_container_name, zip_function = ATLAS_Parser._prepare_container_name(container_name)
-                
-                tree_as_rows = tree.arrays(
+                arrays = tree.arrays(
                     fields,
-                    aliases={var: f"{cur_container_name}AuxDyn.{var}" for var in fields}
+                    aliases={field: f"{cur_objname}AuxDyn.{field}" for field in fields}
                 )
-                sep_to_arrays = ak.unzip(tree_as_rows)
-                field_names = tree_as_rows.fields
 
-                tree_as_rows = zip_function(dict(zip(field_names, sep_to_arrays)))
-
-                events[cur_container_name] = tree_as_rows
+                arrays = zip_function(dict(zip(arrays.fields, ak.unzip(arrays))))
+                events[objname] = arrays
 
             return ak.zip(events, depth_limit=1)
     
     @staticmethod
-    def _prepare_container_name(container_name):
-        final_name = container_name
-        if final_name in ["Electrons", "Muons", "Jets"]:
-            final_name = "Analysis" + final_name
+    def _adapt_field_name(objname):
+        final_objname = objname
+        if final_objname in ["Electrons", "Muons", "Jets"]:
+            final_objname = "Analysis" + final_objname
             zip_function = vector.zip
         else:
             zip_function = ak.zip
         
-        return final_name, zip_function
+        return final_objname, zip_function
+    
