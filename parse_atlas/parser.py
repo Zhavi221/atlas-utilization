@@ -6,6 +6,7 @@ import uproot
 import awkward as ak
 import vector
 import logging
+import pickle
 
 logging.basicConfig(level=logging.INFO)
 
@@ -14,6 +15,7 @@ class ATLAS_Parser():
         self.server = server
         self.file_indexes = []
         self.events = []
+        self.file_parsed_count = 0
 
     def get_data_index(self, recids=[]):
         file_indices = self._retrieve_file_indices(recids)
@@ -48,6 +50,8 @@ class ATLAS_Parser():
 
     def parse_all_files(self, schema, limit=0):
         events = None
+        self.file_parsed_count = 0
+
         for file_index in self.file_indexes[:limit]:
             logging.info(f"Processing file - {file_index}")
             
@@ -57,9 +61,10 @@ class ATLAS_Parser():
             else:
                 events = ak.concatenate([events, cur_file_data], axis=0)
             # events.append(cur_file_data)
+            
+            self.file_parsed_count += 1
+            logging.info(f"Finished, file number {self.file_parsed_count}")
 
-            logging.info("Finished")
-        
         # self.events = ak.concatenate(events, axis=0)
         self.events = events
 
@@ -69,7 +74,7 @@ class ATLAS_Parser():
 
             for container_name, fields in schema.items():
                 cur_container_name, zip_function = ATLAS_Parser._prepare_container_name(container_name)
-                
+
                 tree_as_rows = tree.arrays(
                     fields,
                     aliases={var: f"{cur_container_name}AuxDyn.{var}" for var in fields}
@@ -79,10 +84,25 @@ class ATLAS_Parser():
 
                 tree_as_rows = zip_function(dict(zip(field_names, sep_to_arrays)))
 
-                events[cur_container_name] = tree_as_rows
+                events[container_name] = tree_as_rows
 
             return ak.zip(events, depth_limit=1)
     
+    def save_events(self, file_path):
+        file_path = consts.LOCAL_DATA_PATH + file_path
+
+        with open(file_path, 'wb') as file:
+            pickle.dump(self.events, file)
+        print(f"List saved successfully to {file_path}")
+
+    def load_events_from_file(self, file_path):
+        file_path = consts.LOCAL_DATA_PATH + file_path
+
+        with open(file_path, 'rb') as file:
+            ak_zip_list = pickle.load(file)
+        print(f"List loaded successfully from {file_path}")
+        self.events = ak_zip_list
+
     @staticmethod
     def _prepare_container_name(container_name):
         final_name = container_name
