@@ -47,16 +47,21 @@ class ATLAS_Parser():
         return indices
 
     def parse_all_files(self, schema, limit=0):
-        events = []
+        events = None
         for file_index in self.file_indexes[:limit]:
             logging.info(f"Processing file - {file_index}")
             
             cur_file_data = self._parse_file(schema, file_index)
-            events.append(cur_file_data)
+            if events is None:
+                events = cur_file_data
+            else:
+                events = ak.concatenate([events, cur_file_data], axis=0)
+            # events.append(cur_file_data)
 
             logging.info("Finished")
         
-        self.events = ak.concatenate(events, axis=0)
+        # self.events = ak.concatenate(events, axis=0)
+        self.events = events
 
     def _parse_file(self, schema, file_index):
         with uproot.open({file_index: "CollectionTree"}) as tree:
