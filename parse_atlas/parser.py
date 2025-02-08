@@ -16,6 +16,7 @@ class ATLAS_Parser():
         self.file_indexes = []
         self.events = []
         self.file_parsed_count = 0
+        self.file_parsed_count = 0
 
     def get_data_index(self, recids=[]):
         file_indices = self._retrieve_file_indices(recids)
@@ -65,6 +66,10 @@ class ATLAS_Parser():
             self.file_parsed_count += 1
             logging.info(f"Finished, file number {self.file_parsed_count}")
 
+            
+            self.file_parsed_count += 1
+            logging.info(f"Finished, file number {self.file_parsed_count}")
+
         # self.events = ak.concatenate(events, axis=0)
         self.events = events
 
@@ -84,6 +89,7 @@ class ATLAS_Parser():
 
                 tree_as_rows = zip_function(dict(zip(field_names, sep_to_arrays)))
 
+                events[container_name] = tree_as_rows
                 events[container_name] = tree_as_rows
 
             return ak.zip(events, depth_limit=1)
