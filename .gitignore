@@ -3,3 +3,4 @@ xrootd-5.5.4-py311h28ae080_0.conda
 ניהול משימות.docx
 *.cpython-312.pyc
 *.root.1
+*.pkl 
