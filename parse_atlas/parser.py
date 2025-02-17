@@ -23,7 +23,7 @@ class ATLAS_Parser():
         all_files_uris = []
 
         for file_indice in file_indices:
-            files = file_indice["files"]
+            files = file_indice["files"] # Consider using a specific naming convention: either index-indices / indice-indices / index-indexes [IB]
             total_files += len(files)
             
             for file in files:
@@ -46,7 +46,7 @@ class ATLAS_Parser():
         
         return indices
 
-    def parse_all_files(self, schema, limit=0):
+    def parse_all_files(self, schema, limit=0): # Maybe the default limit should be len(self.fine_indexes), to prevent parsing nothing by default [IB]
         events = None
         for file_index in self.file_indexes[:limit]:
             logging.info(f"Processing file - {file_index}")
@@ -58,7 +58,7 @@ class ATLAS_Parser():
                 events = ak.concatenate([events, cur_file_data], axis=0)
             # events.append(cur_file_data)
 
-            logging.info("Finished")
+            logging.info("Finished") # Should this be outside of the for loop? Also, consider using tqdm if the for loops get too long [IB]
         
         # self.events = ak.concatenate(events, axis=0)
         self.events = events
