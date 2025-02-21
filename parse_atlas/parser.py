@@ -15,6 +15,7 @@ class ATLAS_Parser():
     def __init__(self, server=consts.CERN_OPENDATA_URI):
         self.server = server
         self.files_indexes = []
+        self.files_indexes = []
         self.events = []
         self.file_parsed_count = 0
 
@@ -23,6 +24,7 @@ class ATLAS_Parser():
         print("Successfuly retrieved all indexes.")
 
         total_files = 0
+        all_files_indexes = []
         all_files_indexes = []
 
         for file_index in file_indexes:
@@ -38,8 +40,16 @@ class ATLAS_Parser():
                     total_files += 1
 
 
+                parent_file = file["key"]
+                
+                if not file_idx or any([file in parent_file for file in file_idx]):
+                    all_files_indexes.append(uri)
+                    total_files += 1
+
+
 
         print("Total amount of files found - ", total_files)
+        self.files_indexes = all_files_indexes
         self.files_indexes = all_files_indexes
 
     #MAKE THIS A FUNCTION TO RETRIEVE FROM A SINGLE RECORD
@@ -83,6 +93,7 @@ class ATLAS_Parser():
             for container_name, fields in schema.items():
                 cur_container_name, zip_function = ATLAS_Parser._prepare_container_name(container_name)
 
+
                 tree_as_rows = tree.arrays(
                     fields,
                     aliases={var: f"{cur_container_name}AuxDyn.{var}" for var in fields}
@@ -95,6 +106,22 @@ class ATLAS_Parser():
                 events[container_name] = tree_as_rows
 
             return ak.zip(events, depth_limit=1)
+    
+    def save_events(self, file_path):
+        file_path = consts.LOCAL_DATA_PATH + file_path
+
+        with open(file_path, 'wb') as file:
+            pickle.dump(self.events, file)
+        print(f"List saved successfully to {file_path}")
+
+    def load_events_from_file(self, file_path):
+        file_path = consts.LOCAL_DATA_PATH + file_path
+
+        with open(file_path, 'rb') as file:
+            ak_zip_list = pickle.load(file)
+        print(f"List loaded successfully from {file_path}")
+        self.events = ak_zip_list
+
     
     def save_events(self, file_path):
         file_path = consts.LOCAL_DATA_PATH + file_path
