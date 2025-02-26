@@ -4,6 +4,9 @@ import vector
 import logging
 import copy
 import matplotlib.pyplot as plt
+import json
+
+from .consts import PARAMETERS_JSON
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,9 +32,13 @@ class ATLASProcessor:
             config (Optional[Dict[str, Any]]): Configuration dictionary for cuts and thresholds.
         """
         self.events = events
-        self.config = config or {}
+        self.config = config or self.load_config()
         self._validate_events()
-
+    
+    def load_config(self):
+        config = open(PARAMETERS_JSON)
+        return json.loads(config)
+    
     def _validate_events(self) -> None:
         """
         Validate the event data to ensure it contains required fields.
@@ -150,5 +157,6 @@ class ATLASProcessor:
 #     "electron_pt_cut": 10,
 #     "electron_eta_cut": 2.47,
 # }
+
 # processor = ATLASProcessor(events, config)
 # processor.process()

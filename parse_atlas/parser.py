@@ -63,7 +63,7 @@ class ATLAS_Parser():
         
         return indexes
 
-    def parse_indexed_files(self, schema, limit=None):
+    def parse_indexed_files(self, schema: dict, limit=None) -> None:
         events = None
         
         if limit == None:
@@ -82,53 +82,44 @@ class ATLAS_Parser():
 
         self.events = events
 
-    def _parse_file(self, schema: dict, file_index: str):
+    def _parse_file(self, schema: dict, file_index: str) -> ak.Array:
         with uproot.open({file_index: "CollectionTree"}) as tree:
             events = {}
 
-            for container_name, fields in schema.items():
-                cur_container_name, zip_function = ATLAS_Parser._prepare_container_name(container_name)
-
-                tree_as_rows = tree.arrays(
-                    fields,
-                    aliases={var: f"{cur_container_name}AuxDyn.{var}" for var in fields}
-                )
-                sep_to_arrays = ak.unzip(tree_as_rows)
-                field_names = tree_as_rows.fields
-
-                tree_as_rows = zip_function(dict(zip(field_names, sep_to_arrays)))
-
-                events[container_name] = tree_as_rows
+            for obj_name, fields in schema.items():
+                tree_as_rows = self._extract_obj(tree, obj_name, fields)
+                events[obj_name] = tree_as_rows
 
             return ak.zip(events, depth_limit=1)
 
-    #NEW FUNCTION INSIDE OF FOR LOOP
-    def _parse_container(self, tree, container_name, fields):
-        modified_container, zip_function = ATLAS_Parser._adjust_container_name(container_name)
+    def _extract_obj(self, tree: uproot.ReadOnlyDirectory, obj_name: str, fields: list):
+        adjusted_obj_name: str = ATLAS_Parser._adjust_obj_name(obj_name)
 
-        tree_as_rows = tree.arrays(
+        obj_tree_data = self._extract_obj_fields(tree, fields, adjusted_obj_name)
+        return obj_tree_data
+
+    def _extract_obj_fields(self, tree: uproot.ReadOnlyDirectory, fields: list, obj_name: str):
+        obj_fields_arrays = tree.arrays(
             fields,
-            aliases=self._format_field_names(fields, modified_container)
+            aliases=ATLAS_Parser._format_field_names(fields, obj_name)
         )
-        sep_to_arrays = ak.unzip(tree_as_rows)
-        field_names = tree_as_rows.fields
+        sep_to_arrays = ak.unzip(obj_fields_arrays)
+        field_names = obj_fields_arrays.fields
 
-        tree_as_rows = zip_function(dict(zip(field_names, sep_to_arrays)))
+        tree_as_rows: ak.zip = ak.zip(dict(zip(field_names, sep_to_arrays))) 
+        return tree_as_rows
 
+    @staticmethod
     def _format_field_names(self, fields, modified_container):
         return {var: f"{modified_container}AuxDyn.{var}" for var in fields}
 
     @staticmethod
-    def _adjust_container_name(container_name):
+    def _adjust_obj_name(container_name):
         final_name = container_name
         if final_name in ["Electrons", "Muons", "Jets"]:
             #ADJUSTS THE CONTAINER NAME TO SUIT THE TREE 
             final_name = "Analysis" + final_name
-            zip_function = vector.zip
-        else:
-            zip_function = ak.zip
-        
-        return final_name, zip_function
+        return final_name
 
     def save_events(self, file_path):
         file_path = consts.LOCAL_DATA_PATH + file_path
