@@ -13,12 +13,36 @@ import random
 logging.basicConfig(level=logging.INFO)
 
 class ATLAS_Parser():
-    def __init__(self, domain=consts.CERN_OPENDATA_URI):
+    def __init__(self, release_year='', domain=consts.CERN_OPENDATA_URI, rand_release=False):
         self.domain = domain
-        self.files_indexes = []
+        self.files_uris = []
         self.events = []
         self.file_parsed_count = 0
 
+        if rand_release:
+            release = random.choice(consts.AVILABLE_RELEASES)
+        else:
+            release = consts.AVILABLE_RELEASES.get(release_year)
+        
+        atom.set_release(release)
+        
+        logging.info("Initialize atom with release: %s", release)
+
+    def get_real_record_uris(self, recids=[], file_idx=[]):
+        real_datasets_ids = atom.available_data()
+        all_files_uris = []
+
+        for id in real_datasets_ids:
+            all_files_uris.extend(atom.get_urls_data(id))
+
+        logging.info("Total amount of files found: %d", len(all_files_uris))
+        self.files_uris = all_files_uris
+
+    def get_mc_files_uris(self, random=False):
+        #TODO: implement get_mc_uris
+        pass
+    #DEPRECATED
+    '''
     def get_records_file_index(self, recids=[], file_idx=[]):
         file_indices = self._retrieve_file_indices(recids, file_idx)
         print("Successfuly retrieved all indexes.")
@@ -37,11 +61,10 @@ class ATLAS_Parser():
                     all_files_indexes.append(uri)
                     total_files += 1
 
-
-
         print("Total amount of files found - ", total_files)
         self.files_indexes = all_files_indexes
-
+    
+    
     #MAKE THIS A FUNCTION TO RETRIEVE FROM A SINGLE RECORD
     def _retrieve_file_indices(self, recids: list=[], specific_file_index: list=[]) -> list:
         indices = []
@@ -54,7 +77,8 @@ class ATLAS_Parser():
 
             indices.extend(file_indices)
         
-        return indices
+        return indices        
+    '''
 
     def parse_all_files(self, schema: dict, limit: int=0, files_ids: list=[]) -> None:
         events = None
