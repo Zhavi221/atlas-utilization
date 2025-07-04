@@ -4,3 +4,5 @@ xrootd-5.5.4-py311h28ae080_0.conda
 *.cpython-312.pyc
 *.root.1
 *.pkl 
+*.pyc
+.idea

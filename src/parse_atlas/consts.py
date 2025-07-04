@@ -14,6 +14,12 @@ ATLAS_13TEV_RECIDS = [ATLAS_13TEV_2015_RECORD, ATLAS_13TEV_2016_RECORD]
 #SPECIFIC FILE LISTS
 ZMUMU = "mc20_13TeV_MC_Sh_2211_Zmumu_maxHTpTV2_m10_40_pT5_CFilterBVeto_file_index.json"
 
+AVILABLE_RELEASES = [
+    '2016e-8tev',
+    '2020e-13tev',
+    '2024r-pp',
+    '2025e-13tev-beta'
+]
 
 
 CERN_OPENDATA_URI = 'http://opendata.cern.ch'
