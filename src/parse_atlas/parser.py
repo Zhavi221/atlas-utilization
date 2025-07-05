@@ -1,6 +1,5 @@
 from . import consts
 
-from cernopendata_client import searcher as cern_client
 import atlasopenmagic as atom
 
 import uproot
@@ -9,6 +8,8 @@ import vector
 import logging
 import pickle
 import random
+import requests
+import csv
 
 logging.basicConfig(level=logging.INFO)
 
@@ -25,7 +26,9 @@ class ATLAS_Parser():
             release = consts.AVILABLE_RELEASES.get(release_year)
         
         atom.set_release(release)
-        
+        self.release = release
+        self.metadata_url = consts.LIBRARY_RELEASES_METADATA[release]
+
         logging.info("Initialize atom with release: %s", release)
 
     def get_real_record_uris(self, recids=[], file_idx=[]):
@@ -38,9 +41,31 @@ class ATLAS_Parser():
         logging.info("Total amount of files found: %d", len(all_files_uris))
         self.files_uris = all_files_uris
 
-    def get_mc_files_uris(self, random=False):
-        #TODO: implement get_mc_uris
-        pass
+    def get_mc_files_ids(self, is_random=False, all=False):  
+        #TODO: IMPLEMENT ALL VARIABLE
+        _metadata = {}
+        
+        response = requests.get(self.metadata_url)
+
+        response.raise_for_status()
+        lines = response.text.splitlines()
+
+        reader = csv.DictReader(lines)
+        for row in reader:
+            dataset_number = row['dataset_number'].strip()
+            _metadata[dataset_number] = row
+
+            # We can use the physics short name to get the metadata as well
+            # physics_short = row['physics_short'].strip()
+            # _metadata[physics_short] = row
+        
+        all_mc_ids =  list(_metadata.keys())
+        
+        if is_random:
+            return random.choice(all_mc_ids)
+        
+        return all_mc_ids
+
     #DEPRECATED
     '''
     def get_records_file_index(self, recids=[], file_idx=[]):
