@@ -11,41 +11,47 @@ import random
 import requests
 import csv
 
+from . import combinatorics
+
 logging.basicConfig(level=logging.INFO)
 
 class ATLAS_Parser():
-    def __init__(self, release_year='', domain=consts.CERN_OPENDATA_URI, rand_release=False):
+    def __init__(self, domain=consts.CERN_OPENDATA_URI, release_year=''):
         self.domain = domain
         self.files_uris = []
         self.events = []
         self.file_parsed_count = 0
 
-        if rand_release:
-            release = random.choice(consts.AVILABLE_RELEASES)
-        else:
-            release = consts.AVILABLE_RELEASES.get(release_year)
+        if release_year:
+            self.release = consts.RELEASES_YEARS.get(release_year)
+
+        self.categories = combinatorics.make_objects_categories(consts.PARTICLE_LIST, min_n=2, max_n=4)
         
-        atom.set_release(release)
-        self.release = release
-        self.metadata_url = consts.LIBRARY_RELEASES_METADATA[release]
+    def fetch_real_records_ids(self):
+        datasets_ids = []
+        if self.release:
+            atom.set_release(self.release)
+        else:
+            for release in consts.RELEASES_YEARS.values():
+                atom.set_release(self.release)  
+                datasets_ids.append(atom.available_data())
+            
+        release_files_uris = []
 
-        logging.info("Initialize atom with release: %s", release)
+        for id in datasets_ids:
+            release_files_uris.extend(atom.get_urls_data(id))
 
-    def get_real_record_uris(self, recids=[], file_idx=[]):
-        real_datasets_ids = atom.available_data()
-        all_files_uris = []
+        logging.info("Total amount of files found: %d", len(release_files_uris))
+        self.files_uris = release_files_uris
 
-        for id in real_datasets_ids:
-            all_files_uris.extend(atom.get_urls_data(id))
+    def fetch_mc_files_ids(self, release_year, is_random=False, all=False):
+        release = consts.RELEASES_YEARS[release_year]   
+        metadata_url = consts.LIBRARY_RELEASES_METADATA[release]
 
-        logging.info("Total amount of files found: %d", len(all_files_uris))
-        self.files_uris = all_files_uris
-
-    def get_mc_files_ids(self, is_random=False, all=False):  
         #TODO: IMPLEMENT ALL VARIABLE
         _metadata = {}
         
-        response = requests.get(self.metadata_url)
+        response = requests.get(metadata_url)
 
         response.raise_for_status()
         lines = response.text.splitlines()
@@ -62,7 +68,10 @@ class ATLAS_Parser():
         all_mc_ids =  list(_metadata.keys())
         
         if is_random:
-            return random.choice(all_mc_ids)
+            random_mc_id = random.choice(all_mc_ids)
+            all_metadata = atom.get_metadata(random_mc_id)
+            print(all_metadata['process'], all_metadata['short_name'])
+            return random_mc_id
         
         return all_mc_ids
 
@@ -106,12 +115,16 @@ class ATLAS_Parser():
     '''
 
     def parse_all_files(self, schema: dict, limit: int=0, files_ids: list=[]) -> None:
+        '''
+            parses all files that were fetched
+        '''
         events = None
         self.file_parsed_count = 0
 
         if not files_ids:
-            files_ids = self.files_indexes[:limit]
-
+            files_ids = self.files_indexes[:limit] #slicing by zero is negligble
+        
+        logging.info(f"Processing {len(files_ids)} files")
         for file_index in files_ids:
             logging.info(f"Processing file - {file_index}")
             
@@ -125,34 +138,66 @@ class ATLAS_Parser():
             self.file_parsed_count += 1
             logging.info(f"Finished, file number {self.file_parsed_count}")
 
-            
-            self.file_parsed_count += 1
-            logging.info(f"Finished, file number {self.file_parsed_count}")
-
         # self.events = ak.concatenate(events, axis=0)
         self.events = events
 
-    def _parse_file(self, schema, file_index):
+    def load_single_file(self, schema, file_index):
+        with uproot.open({file_index: "CollectionTree"}) as tree:
+            return tree
+
+    def _parse_file(self, schema, file_index):   
+        '''
+            parses a single file by a generic schema
+        '''
+        #TODO: change this function so it parses a file with a generic schema 
+        #                   (a schema that will fit all use cases) 
         with uproot.open({file_index: "CollectionTree"}) as tree:
             events = {}
-
-            for container_name, fields in schema.items():
-                cur_container_name, zip_function = ATLAS_Parser._prepare_container_name(container_name)
+            
+            for obj_name, fields in schema.items():
+                cur_obj_name, zip_function = ATLAS_Parser._prepare_obj_name(obj_name)
+                
+                filtered_fields = list(filter(
+                    lambda field: f"{cur_obj_name}AuxDyn.{field}" in tree.keys(),
+                    fields))
+                
+                if not any(filtered_fields):
+                    continue
+                
+                logging.info(f"Parsing {cur_obj_name} with fields: {filtered_fields}")
 
                 tree_as_rows = tree.arrays(
-                    fields,
-                    aliases={var: f"{cur_container_name}AuxDyn.{var}" for var in fields}
+                    filtered_fields,
+                    aliases={field: f"{cur_obj_name}AuxDyn.{field}" for field in filtered_fields}
                 )
+
                 sep_to_arrays = ak.unzip(tree_as_rows)
                 field_names = tree_as_rows.fields
 
                 tree_as_rows = zip_function(dict(zip(field_names, sep_to_arrays)))
 
-                events[container_name] = tree_as_rows
-                events[container_name] = tree_as_rows
+                events[obj_name] = tree_as_rows
 
             return ak.zip(events, depth_limit=1)
     
+    def filter_events_by_categories(self):
+        #TODO: implement filter_events_by_category
+
+        '''LEARN FROM THIS CODE'''
+        # events = copy.copy(events) # shallow copy
+        # events["Jets", "btag_prob"] = events.BTagging_AntiKt4EMPFlow.DL1dv01_pb
+        # events["Electrons"] = selected_electrons(events.Electrons)
+        # events["Muons"] = selected_muons(events.Muons)
+        # events["Jets"] = selected_jets(events.Jets)
+        # events["Jets"] = events.Jets[no_overlap(events.Jets, events.Electrons)]
+        # events["Jets", "is_bjet"] = events.Jets.btag_prob > 0.85
+        # events = events[
+        #     (ak.num(events.Jets) >= 4) # at least 4 jets
+        #     & ((ak.num(events.Electrons) + ak.num(events.Muons)) == 1) # exactly one lepton
+        #     & (ak.num(events.Jets[events.Jets.is_bjet]) >= 2) # at least two btagged jets with prob > 0.85
+        # ]
+        # return ak.to_packed(events)
+
     def save_events(self, file_path):
         file_path = consts.LOCAL_DATA_PATH + file_path
 
@@ -169,12 +214,13 @@ class ATLAS_Parser():
         self.events = ak_zip_list
 
     @staticmethod
-    def _prepare_container_name(container_name):
-        final_name = container_name
-        if final_name in ["Electrons", "Muons", "Jets"]:
-            final_name = "Analysis" + final_name
+    def _prepare_obj_name(obj_name):
+        final_name = None
+        if obj_name in ["Electrons", "Muons", "Jets"]:
+            final_name = "Analysis" + obj_name
             zip_function = vector.zip
         else:
             zip_function = ak.zip
+        
         
         return final_name, zip_function
