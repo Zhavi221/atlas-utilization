@@ -32,20 +32,28 @@ def make_objects_combinations_for_category(
     if max_k < min_k:
         return
     
+    min_k = min_k - 1
     for k in range(min_k, max_k+1):
-        type_combos = itertools.combinations(available_types, k)
+        type_combos = itertools.combinations(category, k)
+        type_combos = [list(combo_tuple) for combo_tuple in type_combos]
+        
+        category['Jets'] = k
         for type_combo in type_combos:
+            if 'Jets' not in type_combo:
+                type_combo.append('Jets')
+                
             # For each type, get labels
             label_pools = []
             for obj in type_combo:
                 label_pools.append([f"{obj}{i+1}" for i in range(category[obj])])
             # Product across labels
             for obj_selection in itertools.product(*label_pools):
-                yield (list(type_combo), obj_selection)
+                yield obj_selection
+                # yield (list(type_combo), obj_selection)
 
 # --- Example usage ---
 if __name__ == "__main__":
-    object_types = ["Electrons", "Muons", "Jets", "Photons"]
+    object_types = ["Electrons", "Muons", "Photons"]
     cats = make_objects_categories(object_types, min_n=2, max_n=4)
     print(f"Generated {len(cats)} categories.\n")
 
@@ -53,7 +61,7 @@ if __name__ == "__main__":
     example_cat = cats[0]
     print("Example category:", example_cat)
     combos = list(make_objects_combinations_for_category(example_cat, min_k=2, max_k=4))
-    # print(json.dumps(combos[:3], indent=1))
+    # print(json.dumps(combos[:3]))
     # print(f"Number of combinations: {len(combos)}")
     # for tcombo, labels in combos[:5]:
     #     print(f"  Types={tcombo}, Labels={labels}")
