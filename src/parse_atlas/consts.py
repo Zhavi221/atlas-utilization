@@ -1,6 +1,6 @@
 #MATH CONSTS
 GeV = 1000.
-PARTICLE_LIST = ['Electrons', 'Jets', 'Muons', 'Leptons']
+PARTICLE_LIST = ['Electrons', 'Muons', 'Leptons']
 
 #LOCAL FILES
 LOCAL_DATA_PATH = 'data/'
