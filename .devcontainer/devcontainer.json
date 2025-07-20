@@ -1,6 +1,6 @@
 {
 	"name": "ROOT Data Analysis",
-	"image": "rootproject/root:latest",
+	"image": "rootproject/root:custom_config_v3",
 	"customizations": {
 	  "vscode": {
 		"extensions": [
@@ -8,10 +8,6 @@
 		  "ms-toolsai.jupyter"
 		]
 	  }
-	},
-	// "postCreateCommand": "bash setup.sh"
-	// "postCreateCommand": "apt-get update && apt-get install -y python3 python3-pip python3-venv && python3 -m venv /workspace/venv && /workspace/venv/bin/pip install ipykernel uproot awkward vector matplotlib tqdm pandas numpy && /workspace/venv/bin/python -m ipykernel install --user --name=workspace_venv"
-	// "postCreateCommand": "apt-get update && apt-get install -y python3 python3-pip python3-venv && /usr/bin/python -m venv /workspace/venv && /workspace/venv/bin/pip install ipykernel uproot awkward vector matplotlib tqdm pandas numpy cernopendata_client && /workspace/venv/bin/python -m ipykernel install --user --name=workspace_venv"
-	"postCreateCommand": "apt-get update && apt-get install -y python3 python3-pip python3-venv && pip install ipykernel uproot awkward vector matplotlib tqdm pandas numpy setuptools xrootd fsspec-xrootd --break-system-packages && pip install cernopendata_client --break-system-packages"
+	}
 }
   
