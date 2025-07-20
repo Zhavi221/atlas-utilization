@@ -4,7 +4,6 @@ import logging
 import pickle
 import random
 from tqdm import tqdm
-# from tqdm.notebook import tqdm  # notebook-friendly tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import uproot
@@ -15,35 +14,34 @@ import atlasopenmagic as atom
 
 from . import combinatorics, schemas, consts
 
-logging.basicConfig(level=logging.INFO)
-
-
 class ATLAS_Parser():
-    def __init__(self, domain=consts.CERN_OPENDATA_URI):
-        self.domain = domain
-        self.files_uris = []
-        self.events = []
-        self.file_parsed_count = 0
-
+    def __init__(self):
         self.categories = combinatorics.make_objects_categories(
             consts.PARTICLE_LIST, min_n=2, max_n=4)
 
-    def fetch_real_records_ids(self, release_year):
-        #TODO: RETAIN STATE FOR JOBS SUMBITION
+    def fetch_records_ids(self, release_year):
+        '''
+            Fetches the real records IDs for a given release year.
+            Returns a list of file URIs.
+        '''
         atom.set_release(consts.RELEASES_YEARS.get(release_year))
 
         datasets_ids = atom.available_data()
         release_files_uris = []
 
-        for id in datasets_ids:
-            release_files_uris.extend(atom.get_urls_data(id))
+        for file_id in datasets_ids:
+            release_files_uris.extend(atom.get_urls_data(file_id))
 
-        logging.info("Total amount of files found: %d",
+        tqdm.write("Total amount of files found: %d",
                      len(release_files_uris))
-        # self.files_uris = release_files_uris
+
         return release_files_uris
 
     def fetch_mc_files_ids(self, release_year, is_random=False, all=False):
+        '''
+            Fetches the Monte Carlo records IDs for a given release year.
+            Returns a list of file URIs.
+        '''
         release = consts.RELEASES_YEARS[release_year]
         metadata_url = consts.LIBRARY_RELEASES_METADATA[release]
 
@@ -60,10 +58,6 @@ class ATLAS_Parser():
             dataset_number = row['dataset_number'].strip()
             _metadata[dataset_number] = row
 
-            # We can use the physics short name to get the metadata as well
-            # physics_short = row['physics_short'].strip()
-            # _metadata[physics_short] = row
-
         all_mc_ids = list(_metadata.keys())
 
         if is_random:
@@ -73,11 +67,15 @@ class ATLAS_Parser():
             return random_mc_id
 
         return all_mc_ids
-    
+
     def parse_files(self, files_ids: list = None, limit: int = 0, max_workers: int = 3):
+        '''
+            Parses the files with the given IDs and yields chunks of events.
+            If limit is specified, only that many files will be parsed.
+        '''
         if files_ids is None:
             return
-        
+
         if limit:
             files_ids = files_ids[:limit]
 
@@ -85,8 +83,9 @@ class ATLAS_Parser():
         total_size_mb = 0
         events = None
 
-        tqdm.write(f"Starting to parse {len(files_ids)} files with {max_workers} threads.")
-        
+        tqdm.write(
+            f"Starting to parse {len(files_ids)} files with {max_workers} threads.")
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(self._parse_file, file_index): file_index
@@ -97,40 +96,44 @@ class ATLAS_Parser():
                 for future in as_completed(futures):
                     file_index = futures[future]
                     cur_file_data = future.result()
-                    cur_file_data = ATLAS_Parser.normalize_fields(cur_file_data)
+                    cur_file_data = ATLAS_Parser.normalize_fields(
+                        cur_file_data)
 
                     if events is None:
                         events = cur_file_data
                     else:
-                        events = ak.concatenate([events, cur_file_data], axis=0)
+                        events = ak.concatenate(
+                            [events, cur_file_data], axis=0)
 
                     file_parsed_count += 1
                     # chunk_size_mb = sys.getsizeof(cur_file_data) / (1024 * 1024)
                     chunk_size_mb = sys.getsizeof(cur_file_data)
                     total_size_mb += chunk_size_mb
 
-                    pbar.set_postfix_str(f"{total_size_mb:.2f} KB | {file_index}")
+                    pbar.set_postfix_str(
+                        f"{total_size_mb:.2f} KB | {file_index}")
                     pbar.update(1)
 
                     tqdm.write(
                         f"Parsed file with objects: {list(cur_file_data.fields)}")
-                    
-                    #TODO: WHY EVENTS DOESNT GROW IN SIZE?
+
+                    # TODO: WHY EVENTS DOESNT GROW IN SIZE?
                     # if sys.getsizeof(events) >= 50:
                     # if any(ak.num(events[field]) > 0 for field in events.fields):
-                    if True:    
-                        tqdm.write(f"Yielding chunk with {len(events)} events after {file_parsed_count} files.")
+                    if True:
+                        tqdm.write(
+                            f"Yielding chunk with {len(events)} events after {file_parsed_count} files.")
                         yield events
                         events = None
 
         if events:
-            tqdm.write(f"Yielding final chunk with total {self.file_parsed_count} files.")
+            tqdm.write(
+                f"Yielding final chunk with total {file_parsed_count} files.")
             yield events
-
 
     def _parse_file(self, file_index):
         '''
-            parses a single file by a generic schema
+            Parses a single file by a generic schema.
         '''
         with uproot.open({file_index: "CollectionTree"}, vector_read=False) as tree:
             events = {}
@@ -162,6 +165,7 @@ class ATLAS_Parser():
 
             return ak.zip(events, depth_limit=1)
 
+    #NOT YET IMPLEMENTED
     def generate_histograms(self):
         categories = combinatorics.make_objects_categories(
             consts.PARTICLE_LIST, min_n=2, max_n=4)
@@ -170,17 +174,22 @@ class ATLAS_Parser():
                 category, min_k=2, max_k=4)
             # events = self.filter_events_by_combination(combination)
 
+    #NOT YET IMPLEMENTED
     def calculate_mass_for_combination(self, events_file, combination_dict):
-        #TODO: IMPLEMENT MASS CALCUATION
+        # TODO: IMPLEMENT MASS CALCUATION
         for obj, count in combination_dict.items():
             events_file = events_file[
                 ak.num(events_file[obj]) == count]
-                
+
         # return ak.to_packed(events_file)
         return events_file.mass
-    
+
     def filter_events_by_combination(self, events_file, combination_dict):
+        '''
+            Filters the events by the given combination dictionary.
+        '''
         # TODO: implement filter_events_by_combination
+
         '''LEARN FROM THIS CODE'''
         # events["Electrons"] = selected_electrons(events.Electrons)
         # events["Muons"] = selected_muons(events.Muons)
@@ -212,7 +221,7 @@ class ATLAS_Parser():
         with open(file_path, 'rb') as file:
             ak_zip_list = pickle.load(file)
         print(f"List loaded successfully from {file_path}")
-        self.events = ak_zip_list
+        self.loaded_events = ak_zip_list
 
     def testing_load_file_as_object(self, file_index):
         with uproot.open({file_index: "CollectionTree"}) as tree:

@@ -15,8 +15,7 @@ logging.basicConfig(
 
 def run():
     atlasparser = parser.ATLAS_Parser()
-    release_files_uris = atlasparser.fetch_real_records_ids(release_year='2024')
-    # atlasparser.parsing_pipeline(file_uris=release_files_uris)
+    release_files_uris = atlasparser.fetch_records_ids(release_year='2024')
 
     categories = combinatorics.make_objects_categories(consts.PARTICLE_LIST, min_n=2, max_n=4)
 
