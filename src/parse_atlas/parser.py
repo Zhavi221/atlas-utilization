@@ -29,6 +29,7 @@ class ATLAS_Parser():
             consts.PARTICLE_LIST, min_n=2, max_n=4)
 
     def fetch_real_records_ids(self, release_year):
+        #TODO: RETAIN STATE FOR JOBS SUMBITION
         atom.set_release(consts.RELEASES_YEARS.get(release_year))
 
         datasets_ids = atom.available_data()
@@ -95,34 +96,32 @@ class ATLAS_Parser():
             with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True) as pbar:
                 for future in as_completed(futures):
                     file_index = futures[future]
-                    try:
-                        cur_file_data = future.result()
-                        cur_file_data = ATLAS_Parser.normalize_fields(cur_file_data)
+                    cur_file_data = future.result()
+                    cur_file_data = ATLAS_Parser.normalize_fields(cur_file_data)
 
-                        if events is None:
-                            events = cur_file_data
-                        else:
-                            events = ak.concatenate([events, cur_file_data], axis=0)
+                    if events is None:
+                        events = cur_file_data
+                    else:
+                        events = ak.concatenate([events, cur_file_data], axis=0)
 
-                        file_parsed_count += 1
-                        # chunk_size_mb = sys.getsizeof(cur_file_data) / (1024 * 1024)
-                        chunk_size_mb = sys.getsizeof(cur_file_data)
-                        total_size_mb += chunk_size_mb
+                    file_parsed_count += 1
+                    # chunk_size_mb = sys.getsizeof(cur_file_data) / (1024 * 1024)
+                    chunk_size_mb = sys.getsizeof(cur_file_data)
+                    total_size_mb += chunk_size_mb
 
-                        pbar.set_postfix_str(f"{total_size_mb:.2f} KB | {file_index}")
-                        pbar.update(1)
+                    pbar.set_postfix_str(f"{total_size_mb:.2f} KB | {file_index}")
+                    pbar.update(1)
 
-                        tqdm.write(
-                            f"Parsed file with objects: {list(cur_file_data.fields)}")
-                        
-                        #TODO: WHY EVENTS DOESNT GROW IN SIZE?
-                        if sys.getsizeof(events) >= 50:
-                            tqdm.write(f"Yielding chunk after {self.file_parsed_count} files.")
-                            yield events
-                            events = None
-
-                    except Exception as e:
-                        pbar.update(1)
+                    tqdm.write(
+                        f"Parsed file with objects: {list(cur_file_data.fields)}")
+                    
+                    #TODO: WHY EVENTS DOESNT GROW IN SIZE?
+                    # if sys.getsizeof(events) >= 50:
+                    # if any(ak.num(events[field]) > 0 for field in events.fields):
+                    if True:    
+                        tqdm.write(f"Yielding chunk with {len(events)} events after {file_parsed_count} files.")
+                        yield events
+                        events = None
 
         if events:
             tqdm.write(f"Yielding final chunk with total {self.file_parsed_count} files.")
@@ -169,8 +168,17 @@ class ATLAS_Parser():
         for category in categories:
             combination = combinatorics.make_objects_combinations_for_category(
                 category, min_k=2, max_k=4)
-            events = self.filter_events_by_combination(combination)
+            # events = self.filter_events_by_combination(combination)
 
+    def calculate_mass_for_combination(self, events_file, combination_dict):
+        #TODO: IMPLEMENT MASS CALCUATION
+        for obj, count in combination_dict.items():
+            events_file = events_file[
+                ak.num(events_file[obj]) == count]
+                
+        # return ak.to_packed(events_file)
+        return events_file.mass
+    
     def filter_events_by_combination(self, events_file, combination_dict):
         # TODO: implement filter_events_by_combination
         '''LEARN FROM THIS CODE'''

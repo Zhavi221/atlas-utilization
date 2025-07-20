@@ -11,6 +11,7 @@ def make_objects_categories(
     Enumerate all event categories where each object type 
                     has between min_n and max_n entries.
     """
+
     limits = [range(min_n, max_n+1) for _ in object_types]
     categories = []
     for counts in itertools.product(*limits):
@@ -42,15 +43,17 @@ def make_objects_combinations_for_category(
             if 'Jets' not in type_combo:
                 type_combo.append('Jets')
                 
-            # For each type, get labels
             label_pools = []
             for obj in type_combo:
                 label_pools.append([f"{obj}{i+1}" for i in range(category[obj])])
+            
             # Product across labels
             for obj_selection in itertools.product(*label_pools):
+                obj_selection = {
+                    obj[:-1]: int(obj[-1]) for obj in obj_selection}
+                
                 yield obj_selection
-                # yield (list(type_combo), obj_selection)
-
+            
 # --- Example usage ---
 if __name__ == "__main__":
     object_types = ["Electrons", "Muons", "Photons"]
@@ -60,6 +63,7 @@ if __name__ == "__main__":
     # Show first example category
     example_cat = cats[0]
     print("Example category:", example_cat)
+    print(cats)
     combos = list(make_objects_combinations_for_category(example_cat, min_k=2, max_k=4))
     # print(json.dumps(combos[:3]))
     # print(f"Number of combinations: {len(combos)}")
