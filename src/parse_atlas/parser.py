@@ -7,6 +7,7 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import uproot
+import numpy as np
 import awkward as ak
 import vector
 import requests
@@ -17,7 +18,7 @@ from . import combinatorics, schemas, consts
 class ATLAS_Parser():
     def __init__(self):
         self.categories = combinatorics.make_objects_categories(
-            consts.PARTICLE_LIST, min_n=2, max_n=4)
+            schemas.PARTICLE_LIST, min_n=2, max_n=4)
 
     def fetch_records_ids(self, release_year):
         '''
@@ -31,9 +32,9 @@ class ATLAS_Parser():
 
         for file_id in datasets_ids:
             release_files_uris.extend(atom.get_urls_data(file_id))
-
-        tqdm.write("Total amount of files found: %d",
-                     len(release_files_uris))
+        
+        # tqdm.write("Total amount of files found: %d",
+        #              len(release_files_uris))
 
         return release_files_uris
 
@@ -117,16 +118,16 @@ class ATLAS_Parser():
                     tqdm.write(
                         f"Parsed file with objects: {list(cur_file_data.fields)}")
 
-                    # TODO: WHY EVENTS DOESNT GROW IN SIZE?
-                    # if sys.getsizeof(events) >= 50:
+                    # TODO: WHY EVENTS DONT GROW IN SIZE?
+                    if sys.getsizeof(events) >= 50:
                     # if any(ak.num(events[field]) > 0 for field in events.fields):
-                    if True:
+                    # if True:
                         tqdm.write(
                             f"Yielding chunk with {len(events)} events after {file_parsed_count} files.")
                         yield events
                         events = None
 
-        if events:
+        if len(events):
             tqdm.write(
                 f"Yielding final chunk with total {file_parsed_count} files.")
             yield events
@@ -139,14 +140,18 @@ class ATLAS_Parser():
             events = {}
             objs_filtered = []
 
-            for obj_name, fields in schemas.GENERIC_SCHEMA.items():
+            for obj_name, fields in schemas.INVARIANT_MASS_SCHEMA.items():
                 cur_obj_name, zip_function = ATLAS_Parser._prepare_obj_name(
                     obj_name)
+                
                 filtered_fields = list(filter(
                     lambda field: f"{cur_obj_name}AuxDyn.{field}" in tree.keys(),
                     fields))
+                # print(cur_obj_name)
+                # print(tree.keys(filter_name= f"{cur_obj_name}AuxDyn.*"))
+                # print(filtered_fields, fields)
 
-                if not any(filtered_fields):
+                if len(filtered_fields) < len(fields):
                     continue
 
                 objs_filtered.append(cur_obj_name)
@@ -168,21 +173,56 @@ class ATLAS_Parser():
     #NOT YET IMPLEMENTED
     def generate_histograms(self):
         categories = combinatorics.make_objects_categories(
-            consts.PARTICLE_LIST, min_n=2, max_n=4)
+            schemas.PARTICLE_LIST, min_n=2, max_n=4)
         for category in categories:
             combination = combinatorics.make_objects_combinations_for_category(
                 category, min_k=2, max_k=4)
             # events = self.filter_events_by_combination(combination)
 
     #NOT YET IMPLEMENTED
-    def calculate_mass_for_combination(self, events_file, combination_dict):
-        # TODO: IMPLEMENT MASS CALCUATION
-        for obj, count in combination_dict.items():
-            events_file = events_file[
-                ak.num(events_file[obj]) == count]
+    def calculate_mass_for_combination(self, events: ak.Array) -> ak.Array:
+        """
+        Compute invariant mass per event from the combined objects.
+        Compatible with jagged structure (variable number of particles per event).
+        """
+        if len(events) == 0:
+            return ak.Array([])
 
-        # return ak.to_packed(events_file)
-        return events_file.mass
+        vectors_per_event = []
+
+        for obj in events.fields:
+            arr = events[obj]
+            if len(arr) == 0:
+                continue
+
+            # Assign mass
+            if "m" in arr.fields:
+                mass = arr.m
+            elif obj in consts.KNOWN_MASSES:
+                mass = ak.ones_like(arr.pt) * consts.KNOWN_MASSES[obj]
+            else:
+                raise ValueError(f"Cannot compute mass for '{obj}': missing 'm' and no known constant.")
+
+            vec = ak.zip({
+                "pt": arr.pt,
+                "eta": arr.eta,
+                "phi": arr.phi,
+                "mass": mass
+            }, with_name="Momentum4D")
+
+            vectors_per_event.append(vec)
+
+        if not vectors_per_event:
+            return ak.Array([])
+
+        # Concatenate all objects into one jagged array per event
+        all_vectors = ak.concatenate(vectors_per_event, axis=1)  # concat along the per-event axis
+
+        # Sum per event
+        total_vec = ak.sum(all_vectors, axis=1)
+
+        return total_vec.mass
+
 
     def filter_events_by_combination(self, events_file, combination_dict):
         '''
@@ -196,10 +236,15 @@ class ATLAS_Parser():
         # events["Jets"] = selected_jets(events.Jets)
         # events["Jets"] = events.Jets[no_overlap(events.Jets, events.Electrons)]
         # events["Jets", "is_bjet"] = events.Jets.btag_prob > 0.85
-
+        
         for obj, count in combination_dict.items():
+            obj_array = events_file[obj]
+            if ak.all(ak.is_none(obj_array)):
+                continue
+
+            obj_count = ak.num(obj_array)
             events_file = events_file[
-                ak.num(events_file[obj]) == count]
+                obj_count == count]
         # events_file = events_file[
         #     (ak.num(events_file.Jets) == combination_dict.get("Jets", 0)) # at least N jets
         #     (ak.num(events_file.Jets) >= 4) # at least 4 jets
@@ -230,7 +275,7 @@ class ATLAS_Parser():
     @staticmethod
     def _prepare_obj_name(obj_name):
         final_name = None
-        if obj_name in ["Electrons", "Muons", "Jets"]:
+        if obj_name in schemas.PARTICLE_LIST:
             final_name = "Analysis" + obj_name
             zip_function = vector.zip
         else:
@@ -240,7 +285,12 @@ class ATLAS_Parser():
 
     @staticmethod
     def normalize_fields(ak_array):
-        for field in schemas.GENERIC_SCHEMA.keys():
+        for field in schemas.INVARIANT_MASS_SCHEMA.keys():
             if field not in ak_array.fields:
-                ak_array = ak.with_field(ak_array, None, field)
+                # Set to empty list per event (not None)
+                ak_array = ak.with_field(
+                    ak_array,
+                    ak.Array([[]] * len(ak_array)),
+                    field
+                )
         return ak_array
