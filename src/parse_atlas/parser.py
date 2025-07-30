@@ -16,6 +16,18 @@ import atlasopenmagic as atom
 from . import combinatorics, schemas, consts
 
 class ATLAS_Parser():
+    '''
+        ATLAS_Parser class is responsible for parsing ATLAS Open Data files.
+        Available methods:
+        - fetch_records_ids: Fetches the real records IDs for a given release year.
+        - fetch_mc_files_ids: Fetches the MC records IDs for a given release year.
+        - parse_files: Parses the files with the given IDs and yields chunks of events.
+        - _parse_file: Parses a single file by a generic schema.
+        - calculate_mass_for_combination: Computes invariant mass per event from the combined objects.
+        - filter_events_by_combination: Filters the events by the given combination dictionary.
+        - save_events: Saves the events to a file.
+        - load_events_from_file: Loads the events from a file.
+    '''
     def __init__(self):
         self.categories = combinatorics.make_objects_categories(
             schemas.PARTICLE_LIST, min_n=2, max_n=4)
@@ -33,9 +45,10 @@ class ATLAS_Parser():
         for file_id in datasets_ids:
             release_files_uris.extend(atom.get_urls_data(file_id))
         
-        # tqdm.write("Total amount of files found: %d",
-        #              len(release_files_uris))
+        tqdm.write("Total amount of files found: %d",
+                     len(release_files_uris))
 
+        self.files_ids = release_files_uris
         return release_files_uris
 
     def fetch_mc_files_ids(self, release_year, is_random=False, all=False):
@@ -74,8 +87,11 @@ class ATLAS_Parser():
             Parses the files with the given IDs and yields chunks of events.
             If limit is specified, only that many files will be parsed.
         '''
+
         if files_ids is None:
-            return
+            if self.files_ids is None:
+                raise ValueError("No files_ids provided and self.files_ids is None.")
+            files_ids = self.files_ids
 
         if limit:
             files_ids = files_ids[:limit]
@@ -223,20 +239,12 @@ class ATLAS_Parser():
 
         return total_vec.mass
 
-
     def filter_events_by_combination(self, events_file, combination_dict):
         '''
             Filters the events by the given combination dictionary.
         '''
-        # TODO: implement filter_events_by_combination
+        # TODO: CODE REVIEW
 
-        '''LEARN FROM THIS CODE'''
-        # events["Electrons"] = selected_electrons(events.Electrons)
-        # events["Muons"] = selected_muons(events.Muons)
-        # events["Jets"] = selected_jets(events.Jets)
-        # events["Jets"] = events.Jets[no_overlap(events.Jets, events.Electrons)]
-        # events["Jets", "is_bjet"] = events.Jets.btag_prob > 0.85
-        
         for obj, count in combination_dict.items():
             obj_array = events_file[obj]
             if ak.all(ak.is_none(obj_array)):
@@ -245,12 +253,7 @@ class ATLAS_Parser():
             obj_count = ak.num(obj_array)
             events_file = events_file[
                 obj_count == count]
-        # events_file = events_file[
-        #     (ak.num(events_file.Jets) == combination_dict.get("Jets", 0)) # at least N jets
-        #     (ak.num(events_file.Jets) >= 4) # at least 4 jets
-        #     & ((ak.num(events_file.Electrons) + ak.num(events_file.Muons)) == 1) # exactly one lepton
-        #     & (ak.num(events_file.Jets[events_file.Jets.is_bjet]) >= 2) # at least two btagged jets with prob > 0.85
-        # ]
+
         return ak.to_packed(events_file)
 
     def save_events(self, dumped_object, file_path):
@@ -267,10 +270,6 @@ class ATLAS_Parser():
             ak_zip_list = pickle.load(file)
         print(f"List loaded successfully from {file_path}")
         self.loaded_events = ak_zip_list
-
-    def testing_load_file_as_object(self, file_index):
-        with uproot.open({file_index: "CollectionTree"}) as tree:
-            return tree
 
     @staticmethod
     def _prepare_obj_name(obj_name):
