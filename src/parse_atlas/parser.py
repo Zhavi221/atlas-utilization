@@ -31,6 +31,12 @@ class ATLAS_Parser():
     def __init__(self):
         self.categories = combinatorics.make_objects_categories(
             schemas.PARTICLE_LIST, min_n=2, max_n=4)
+        #TODO: implement usage of files_ids and events attributes
+        #      in order to avoid passing states between methods
+        self.files_ids = None
+        self.events = None
+        self.file_parsed_count = 0
+        self.total_size_mb = 0
 
     def fetch_records_ids(self, release_year):
         '''
@@ -45,9 +51,6 @@ class ATLAS_Parser():
         for file_id in datasets_ids:
             release_files_uris.extend(atom.get_urls_data(file_id))
         
-        tqdm.write("Total amount of files found: %d",
-                     len(release_files_uris))
-
         self.files_ids = release_files_uris
         return release_files_uris
 
@@ -59,7 +62,6 @@ class ATLAS_Parser():
         release = consts.RELEASES_YEARS[release_year]
         metadata_url = consts.LIBRARY_RELEASES_METADATA[release]
 
-        # TODO: IMPLEMENT ALL VARIABLE
         _metadata = {}
 
         response = requests.get(metadata_url)
@@ -82,12 +84,11 @@ class ATLAS_Parser():
 
         return all_mc_ids
 
-    def parse_files(self, files_ids: list = None, limit: int = 0, max_workers: int = 3):
-        '''
-            Parses the files with the given IDs and yields chunks of events.
-            If limit is specified, only that many files will be parsed.
-        '''
-
+    def parse_files_v2(self,
+                       files_ids: list = None,
+                       limit: int = 0,
+                       max_workers: int = 3,
+                       max_chunk_events: int = 1000000):
         if files_ids is None:
             if self.files_ids is None:
                 raise ValueError("No files_ids provided and self.files_ids is None.")
@@ -96,7 +97,80 @@ class ATLAS_Parser():
         if limit:
             files_ids = files_ids[:limit]
 
-        file_parsed_count = 0
+        # futures = self._load_and_parse_in_parallel(files_ids, max_workers)
+        tqdm.write(
+            f"Starting to parse {len(files_ids)} files with {max_workers} threads.")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self._parse_file, file_index): file_index
+                for file_index in files_ids
+            }
+            with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True) as pbar:
+                for future in as_completed(futures):
+                    file_index = futures[future]
+                    cur_file_data = future.result()
+                    cur_file_data = ATLAS_Parser.normalize_fields(
+                                cur_file_data)
+                    self._concatenate_events(cur_file_data)
+
+                    if self._should_yield_chunk(max_chunk_events):
+                        yield self.events
+                        self.events = None
+                        
+                    pbar.set_postfix_str(
+                        f"{self.total_size_mb:.2f} KB | {file_index}")
+                    pbar.update(1)
+
+                    tqdm.write(
+                        f"Parsed file with objects: {list(cur_file_data.fields)}")
+            
+        if self.events is not None:
+            logging.info(f"Yielding final chunk with {len(self.events)} events after a total of {self.file_parsed_count} files at {sys.getsizeof(self.events)} bytes.")
+            yield self.events
+            self.events = None
+
+    def _load_and_parse_in_parallel(self, files_ids, max_workers):            
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self._parse_file, file_index): file_index
+                for file_index in files_ids
+            }
+
+            return futures
+    
+    def _concatenate_events(self, cur_file_data):
+        if self.events is None:
+            self.events = cur_file_data
+        else:
+            self.events = ak.concatenate(
+                [self.events, cur_file_data], axis=0)
+        
+        self.file_parsed_count += 1
+        # chunk_size_mb = sys.getsizeof(cur_file_data) / (1024 * 1024)
+        chunk_size_mb = sys.getsizeof(cur_file_data)
+        self.total_size_mb += chunk_size_mb
+    
+    def _should_yield_chunk(self, max_chunk_events):
+        return len(self.events) >= max_chunk_events
+
+    def parse_files(self, 
+                    files_ids: list = None, 
+                    limit: int = 0, 
+                    max_workers: int = 3, 
+                    max_chunk_events=1000000):
+        '''
+            Parses the files with the given IDs and yields chunks of events.
+            If limit is specified, only that many files will be parsed.
+        '''
+        
+        if files_ids is None:
+            if self.files_ids is None:
+                raise ValueError("No files_ids provided and self.files_ids is None.")
+            files_ids = self.files_ids
+
+        if limit:
+            files_ids = files_ids[:limit]
+
         total_size_mb = 0
         events = None
 
@@ -122,32 +196,35 @@ class ATLAS_Parser():
                         events = ak.concatenate(
                             [events, cur_file_data], axis=0)
 
-                    file_parsed_count += 1
+                    self.file_parsed_count += 1
                     # chunk_size_mb = sys.getsizeof(cur_file_data) / (1024 * 1024)
                     chunk_size_mb = sys.getsizeof(cur_file_data)
-                    total_size_mb += chunk_size_mb
+                    self.total_size_mb += chunk_size_mb
 
                     pbar.set_postfix_str(
-                        f"{total_size_mb:.2f} KB | {file_index}")
+                        f"{self.total_size_mb:.2f} KB | {file_index}")
                     pbar.update(1)
 
                     tqdm.write(
                         f"Parsed file with objects: {list(cur_file_data.fields)}")
 
                     # TODO: WHY EVENTS DONT GROW IN SIZE?
-                    if sys.getsizeof(events) >= 50:
-                    # if any(ak.num(events[field]) > 0 for field in events.fields):
-                    # if True:
+                    # if sys.getsizeof(events) >= 50:
+                    #     tqdm.write(
+                    #         f"Yielding chunk with {len(events)} events after {file_parsed_count} files.")
+                    #     yield events
+                    #     events = None
+                    if len(events) >= max_chunk_events:
                         tqdm.write(
-                            f"Yielding chunk with {len(events)} events after {file_parsed_count} files.")
+                            f"Yielding chunk with {len(events)} events after {self.file_parsed_count} files at {sys.getsizeof(events)} bytes.")
                         yield events
                         events = None
 
-        if len(events):
+        if events is not None:
             tqdm.write(
-                f"Yielding final chunk with total {file_parsed_count} files.")
+                f"Yielding final chunk with {len(events)} events after a total of {self.file_parsed_count} files at {sys.getsizeof(events)} bytes.")
             yield events
-
+    
     def _parse_file(self, file_index):
         '''
             Parses a single file by a generic schema.
@@ -185,7 +262,7 @@ class ATLAS_Parser():
                 events[obj_name] = tree_as_rows
 
             return ak.zip(events, depth_limit=1)
-
+    
     #NOT YET IMPLEMENTED
     def generate_histograms(self):
         categories = combinatorics.make_objects_categories(
@@ -210,7 +287,7 @@ class ATLAS_Parser():
             arr = events[obj]
             if len(arr) == 0:
                 continue
-
+ 
             # Assign mass
             if "m" in arr.fields:
                 mass = arr.m
@@ -243,7 +320,6 @@ class ATLAS_Parser():
         '''
             Filters the events by the given combination dictionary.
         '''
-        # TODO: CODE REVIEW
 
         for obj, count in combination_dict.items():
             obj_array = events_file[obj]

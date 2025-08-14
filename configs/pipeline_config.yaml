@@ -1,0 +1,251 @@
+parsing:
+  release_year: '2024'
+  max_workers: 3
+  max_chunk_events: 1000000
+  file_limit: 10
+  
+
+
+# THE REST IS NOT USED AND IS NOT NEEDED FOR THE PIPELINE
+tasks:
+  do_smooth: false
+  do_function: false
+  do_split: false
+  do_stretch: false
+  do_systematics: false
+  do_generate: false
+  do_train: false
+  do_predict: false
+  do_plot: false
+
+smooth:
+  name: MC_bkg_smoothed
+  input_path: input-dir/rebinned.root
+  output_dir: temp/data
+  smooth_method: ''
+  cuts:
+    min_bins: 25
+    min_entries: 100
+    min_bkg: 0.35
+  seed: 42
+  verbose: false
+  n_examples: 10
+
+function:
+  name: function_bkg
+  output_dir: baseline
+  background_functions:
+  - exponential
+  - linear
+  - one_over_x
+  - one_over_x_squared
+  - one_over_x_cubed
+  - one_over_x_to_4th
+  - one_over_x_to_nth
+  - parabola_half
+  - ln_negative
+  - cos_quarter
+  - cosh_half
+  seed: 42
+  dynamic_range:
+    nbins:
+    - 30
+    - 100
+    min_x: 1
+    max_x: 4000
+    min_ymin: 0.1
+    max_ymin: 1
+    min_ymax: 3
+    max_ymax: 1725000
+  rescale_minimum: 1
+  number_of_samples: 1000
+
+split:
+  name: bkg_split
+  output_base_dir: baseline
+  train_frac: 0.8
+  val_frac: 0.1
+  test_frac: 0.1
+  seed: 42
+  backgrounds:
+    DM_bkg:
+      hist: baseline/DM_bkg_smoothed/smoothed_background.csv
+      name: baseline/DM_bkg_smoothed/names.csv
+      binning: baseline/DM_bkg_smoothed/bin_edges.csv
+    function_bkg:
+      hist: baseline/function_bkg/function_background.csv
+      name: baseline/function_bkg/names.csv
+      binning: baseline/function_bkg/bin_edges.csv
+
+stretch:
+  name: DM_bkg_smoothed_stretched
+  output_dir: temp/baseline
+  stretch_direction: both
+  verbose: false
+  seed: 42
+  backgrounds:
+    DM_bkg_smoothed:
+      hist: baseline/DM_bkg_smoothed/DM_bkg_smoothed_func.csv
+      name: baseline/DM_bkg_smoothed/DM_bkg_smoothed_name.csv
+      binning: baseline/DM_bkg_smoothed/DM_bkg_smoothed_bins.csv
+
+systematics:
+  name: DM_bkg_smoothed_systematics
+  output_dir: temp/basline
+  verbose: true
+  backgrounds:
+    DM_bkg_smoothed:
+      hist: baseline/DM_bkg_smoothed/DM_bkg_smoothed_func.csv
+      name: baseline/DM_bkg_smoothed/DM_bkg_smoothed_name.csv
+      binning: baseline/DM_bkg_smoothed/DM_bkg_smoothed_bins.csv
+
+generate:
+  name: DM_and_func_bkg_with_gaussian_signal_train
+  output_dir: baseline
+  backgrounds:
+    function:
+      hist: baseline/bkg_split/train/function_bkg/function_background.csv
+      name: baseline/bkg_split/train/function_bkg/names.csv
+      binning: baseline/bkg_split/train/function_bkg/bin_edges.csv
+    dark_machines:
+      hist: baseline/bkg_split/train/DM_bkg/smoothed_background.csv
+      name: baseline/bkg_split/train/DM_bkg/names.csv
+      binning: baseline/bkg_split/train/DM_bkg/bin_edges.csv
+  signal_functions:
+  - gaussian
+  seed:
+  - 1
+  pool: 40
+  signal_width: 1.0
+  percent_with_signal:
+  - 1.0
+  - 0.0
+  edge:
+  - 10
+  - 0
+  z_range:
+  - 1
+  - 10
+  number_of_samples: 1000000.0
+  optimization_tolerance: 0.0001
+
+train:
+  name: Znet3_DMfunc
+  cuda_visible_devices: '0'
+  output_dir: baseline/model_DMfunc
+  train_dir: baseline/DM_and_func_bkg_with_gaussian_signal_train_seed_1_percent_with_signal_1.0
+  val_dir: baseline/DM_and_func_bkg_with_gaussian_signal_val_seed_2_percent_with_signal_1.0
+  resume_from_checkpoint: null
+  batch_size: 5000
+  num_epochs: 300
+  min_delta: 1.0e-06
+  rel_mse: false
+  z_loss_wt: 1
+  b_loss_wt: 1
+  b_loss_type: mse
+  learning_rate: 0.001
+  lr_scheduler:
+    CosineAnnealingLR:
+      T_max: -1
+      eta_min: 1.0e-06
+      last_epoch: -1
+      verbose: true
+  num_workers: 4
+  comet:
+    project_name: DDP
+
+predict:
+  checkpoint_path: baseline/model_DMfunc/Znet3_DMfunc/best_model.ckpt
+  batch_size: 5000
+  num_workers: 4
+  pred_file_configs:
+  - input_file_dir: baseline/DM_and_func_bkg_with_gaussian_signal_test_seed_3_percent_with_signal_1.0
+    prediction_dir: baseline/prediction_DMfunc_to_DMfunc_sig
+    flag: ''
+  - input_file_dir: baseline/DM_and_func_bkg_with_gaussian_signal_test_seed_3_percent_with_signal_0.0
+    prediction_dir: baseline/prediction_DMfunc_to_DMfunc_bkg
+    flag: ''
+  - input_file_dir: baseline/DM_bkg_with_gaussian_signal_test_seed_3_percent_with_signal_1.0
+    prediction_dir: baseline/prediction_DMfunc_to_DM_sig
+    flag: ''
+  - input_file_dir: baseline/DM_bkg_with_gaussian_signal_test_seed_3_percent_with_signal_0.0
+    prediction_dir: baseline/prediction_DMfunc_to_DM_bkg
+    flag: ''
+  - input_file_dir: baseline/function_bkg_with_gaussian_signal_test_seed_3_percent_with_signal_1.0
+    prediction_dir: baseline/prediction_DMfunc_to_func_sig
+    flag: ''
+  - input_file_dir: baseline/function_bkg_with_gaussian_signal_test_seed_3_percent_with_signal_0.0
+    prediction_dir: baseline/prediction_DMfunc_to_func_bkg
+    flag: ''
+  - input_file_dir: baseline/dir-with-root-file
+    prediction_dir: baseline/prediction_raw
+    flag: ''
+
+plot:
+  datasets:
+  - output_dir: baseline/plots_DMfunc_to_DMfunc
+    sig_input_dir: baseline/DM_and_func_bkg_with_gaussian_signal_test_seed_3_percent_with_signal_1.0
+    sig_prediction_dir: baseline/prediction_DMfunc_to_DMfunc_sig
+    bkg_input_dir: baseline/DM_and_func_bkg_with_gaussian_signal_seed_3_percent_with_signal_0.0
+    bkg_prediction_dir: baseline/prediction_DMfunc_to_DMfunc_bkg
+  - output_dir: baseline/plots_DMfunc_to_DM
+    sig_input_dir: baseline/DM_bkg_with_gaussian_signal_test_seed_3_percent_with_signal_1.0
+    sig_prediction_dir: baseline/prediction_DMfunc_to_DM_sig
+    bkg_input_dir: baseline/DM_bkg_with_gaussian_signal_seed_3_percent_with_signal_0.0
+    bkg_prediction_dir: baseline/prediction_DMfunc_to_DM_bkg
+  - output_dir: baseline/plots_DMfunc_to_func
+    sig_input_dir: baseline/function_bkg_with_gaussian_signal_test_seed_3_percent_with_signal_1.0
+    sig_prediction_dir: baseline/prediction_DMfunc_to_func_sig
+    bkg_input_dir: baseline/function_bkg_with_gaussian_signal_seed_3_percent_with_signal_0.0
+    bkg_prediction_dir: baseline/prediction_DMfunc_to_func_bkg
+  what_to_plot:
+  - roc_curve
+  - z_distributions
+  - deltaz_distributions
+  - deltaz_vs_zLR
+  - deltaz_vs_zLR_bin_ratio
+  - z_extremum
+  - zmax_distributions
+  - deltazmax_distributions
+  - deltazmax_vs_zLRmax
+  - deltazmax_vs_zLRmax_bin_ratio
+  - deltazmax_vs_zLRmax_bin_number
+  - deltazmax_vs_entries_first_bin
+  - deltazmax_vs_entries_last_bin
+  - deltazmax_vs_B_entries_sig_bin
+  - deltazmax_vs_bins
+  - false_discovery_rate_plot
+  - false_discovery_rate_table
+  - outlier_rate_plot
+  - outlier_rate_table
+  - zmax_bin_distributions
+  - deltazmax_bin_distributions
+  - deltazmax_bin_vs_zLRmax_bin_number
+  - deltazmax_bin_vs_zLRmax_bin_ratio
+  - deltazmax_bin_vs_zLRmax_ratio
+  - deltazmax_bin_vs_zLRmax_number
+  - deltaBpred_distributions
+  - bgd_shapes
+  - examples
+  conditions:
+    n_examples: 10
+    signal_examples_condition: perf_sig.z_pred_max[i] >= 5
+    background_examples_condition: perf_bkg.z_pred_max[i] >= 5
+    deltaz_lim:
+    - -5
+    - 5
+    deltazmax_lim:
+    - -5
+    - 5
+    interpolate: false
+    outliers_zmax_threshold: 5
+    outliers_in_std_units: false
+  format: pdf
+  seed: 10
+  max_rows: 10000
+  verbose: true
+  shuffle: true
+  edge:
+  - 0.1
+  - 1
+  show: false

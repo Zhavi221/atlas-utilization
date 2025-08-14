@@ -6,3 +6,5 @@ xrootd-5.5.4-py311h28ae080_0.conda
 *.pkl 
 *.pyc
 .idea
+
+BumpNet-main/*
