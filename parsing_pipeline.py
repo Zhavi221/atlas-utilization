@@ -8,6 +8,7 @@ import argparse
 import yaml
 import uproot
 import awkward as ak
+import os
 
 release_years = ["2016", "2020", "2024", "2025"]
 
@@ -45,7 +46,9 @@ def flatten_for_root(awk_arr):
 
 
 def run():
-    atlasparser = parser.ATLAS_Parser()
+    atlasparser = parser.ATLAS_Parser(
+        max_chunk_size_bytes=parsing_config["max_chunk_size_bytes"])
+
     release_files_uris = atlasparser.fetch_records_ids(
         release_year=parsing_config["release_year"]
     )
@@ -55,21 +58,24 @@ def run():
     )
     main_category = categories[0]
     
-    for events_chunk in atlasparser.parse_files_v2(
+    for events_chunk in atlasparser.parse_files(
         files_ids=release_files_uris, 
         limit=parsing_config["file_limit"],
-        max_workers=parsing_config["max_workers"],
-        max_chunk_events=parsing_config["max_chunk_events"]
+        max_workers=parsing_config["max_workers"]
     ):
         combo_events = atlasparser.filter_events_by_combination(
             events_chunk, main_category
         )   
 
         root_ready = flatten_for_root(combo_events)
-
-        with uproot.recreate("test/filtered.root") as f:
+        
+        output_dir = parsing_config["file_limit"]
+        os.makedirs(output_dir, exist_ok=True)
+        nbytes = combo_events.layout.nbytes / 1024*1024
+        output_path = os.path.join(output_dir, f"filtered_{nbytes}GB.root")
+        with uproot.recreate(output_path) as f:
             f["tree"] = root_ready
-
-        # TODO: IMPLEMENT SAVING TO NETWORK DRIVE
+        
+        
 
 run()
