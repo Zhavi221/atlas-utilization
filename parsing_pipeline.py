@@ -27,22 +27,6 @@ with open(args.config) as f:
 
 parsing_config = config["parsing"]
 
-def flatten_for_root(awk_arr):
-    """Flatten a top-level awkward Array into ROOT-friendly dict."""
-    root_ready = {}
-
-    for obj_name in awk_arr.fields:
-        obj = awk_arr[obj_name]
-
-        try:
-            # If this succeeds, obj is a record array (possibly jagged)
-            for field in obj.fields:
-                root_ready[f"{obj_name}_{field}"] = obj[field]
-        except AttributeError:
-            # Not a record, already primitive or jagged primitive
-            root_ready[obj_name] = obj
-
-    return root_ready
 
 
 def run():
@@ -67,15 +51,10 @@ def run():
             events_chunk, main_category
         )   
 
-        root_ready = flatten_for_root(combo_events)
         
-        output_dir = parsing_config["file_limit"]
-        os.makedirs(output_dir, exist_ok=True)
-        nbytes = combo_events.layout.nbytes / 1024*1024
-        output_path = os.path.join(output_dir, f"filtered_{nbytes}GB.root")
-        with uproot.recreate(output_path) as f:
-            f["tree"] = root_ready
+        root_ready = atlasparser.flatten_for_root(combo_events)
         
+        atlasparser.save_events(root_ready, parsing_config["output_path"])        
         
 
 run()

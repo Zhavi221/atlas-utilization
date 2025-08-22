@@ -12,6 +12,7 @@ import awkward as ak
 import vector
 import requests
 import atlasopenmagic as atom
+import os
 
 from . import combinatorics, schemas, consts
 
@@ -33,6 +34,7 @@ class ATLAS_Parser():
             schemas.PARTICLE_LIST, min_n=2, max_n=4)
         self.files_ids = None
         self.file_parsed_count = 0
+        self.cur_chunk = 0
         
         self.events = None
         self.total_size_kb = 0
@@ -118,6 +120,8 @@ class ATLAS_Parser():
                     self._concatenate_events(cur_file_data)
 
                     if self._should_yield_chunk():
+                        self.log_cur_size()
+                        self.cur_chunk += 1
                         yield self.events
                         self.events = None
                         
@@ -129,33 +133,9 @@ class ATLAS_Parser():
             
         if self.events is not None:
             self.log_cur_size()
+            self.cur_chunk += 1
             yield self.events
             self.events = None
-
-    def _load_and_parse_in_parallel(self, files_ids, max_workers):            
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(self._parse_file, file_index): file_index
-                for file_index in files_ids
-            }
-
-            return futures
-    
-    def _concatenate_events(self, cur_file_data):
-        if self.events is None:
-            self.events = cur_file_data
-        else:
-            self.events = ak.concatenate(
-                [self.events, cur_file_data], axis=0)
-        
-        self.file_parsed_count += 1
-        # chunk_size_mb = sys.getsizeof(cur_file_data) / (1024 * 1024)
-        # chunk_size_mb = ak.nbytes(cur_file_data)
-        chunk_size_kb = cur_file_data.layout.nbytes
-        self.total_size_kb += chunk_size_kb
-    
-    def _should_yield_chunk(self):
-        return self.events.layout.nbytes >= self.max_chunk_size_bytes
 
     def _parse_file(self, file_index):
         '''
@@ -195,6 +175,33 @@ class ATLAS_Parser():
 
             return ak.zip(events, depth_limit=1)
     
+    def _load_and_parse_in_parallel(self, files_ids, max_workers):            
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self._parse_file, file_index): file_index
+                for file_index in files_ids
+            }
+
+            return futures
+    
+    def _concatenate_events(self, cur_file_data):
+        if self.events is None:
+            self.events = cur_file_data
+        else:
+            self.events = ak.concatenate(
+                [self.events, cur_file_data], axis=0)
+        
+        self.file_parsed_count += 1
+        # chunk_size_mb = sys.getsizeof(cur_file_data) / (1024 * 1024)
+        # chunk_size_mb = ak.nbytes(cur_file_data)
+        chunk_size_kb = cur_file_data.layout.nbytes
+        self.total_size_kb += chunk_size_kb
+    
+    def _should_yield_chunk(self):
+        print(self.events.layout.nbytes, self.max_chunk_size_bytes)
+        print(self.events.layout.nbytes >= self.max_chunk_size_bytes)
+        return self.events.layout.nbytes >= self.max_chunk_size_bytes
+
     def log_cur_size(self):
         tqdm.write(
                 f"Yielding final chunk with {len(self.events)} events "
@@ -271,20 +278,30 @@ class ATLAS_Parser():
 
         return ak.to_packed(events_file)
 
-    def save_events(self, dumped_object, file_path):
-        file_path = consts.LOCAL_DATA_PATH + file_path
+    
+    def save_events(self, events, output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        
+        output_path = os.path.join(output_dir, f"filtered_{self.cur_chunk}.root")
+        with uproot.recreate(output_path) as f:
+            f["tree"] = events
 
-        with open(file_path, 'wb') as file:
-            pickle.dump(dumped_object, file)
-        print(f"List saved successfully to {file_path}")
+    def flatten_for_root(self, awk_arr):
+        """Flatten a top-level awkward Array into ROOT-friendly dict."""
+        root_ready = {}
 
-    def load_events_from_file(self, file_path):
-        file_path = consts.LOCAL_DATA_PATH + file_path
+        for obj_name in awk_arr.fields:
+            obj = awk_arr[obj_name]
 
-        with open(file_path, 'rb') as file:
-            ak_zip_list = pickle.load(file)
-        print(f"List loaded successfully from {file_path}")
-        self.loaded_events = ak_zip_list
+            try:
+                # If this succeeds, obj is a record array (possibly jagged)
+                for field in obj.fields:
+                    root_ready[f"{obj_name}_{field}"] = obj[field]
+            except AttributeError:
+                # Not a record, already primitive or jagged primitive
+                root_ready[obj_name] = obj
+
+        return root_ready
 
     @staticmethod
     def _prepare_obj_name(obj_name):

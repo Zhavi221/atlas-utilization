@@ -8,3 +8,4 @@ xrootd-5.5.4-py311h28ae080_0.conda
 .idea
 
 BumpNet-main/*
+output_dir/*
