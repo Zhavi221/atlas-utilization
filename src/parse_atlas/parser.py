@@ -1,7 +1,4 @@
 import csv
-import sys
-import logging
-import pickle
 import random
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -117,8 +114,11 @@ class ATLAS_Parser():
                     cur_file_data = future.result()
                     cur_file_data = ATLAS_Parser.normalize_fields(
                                 cur_file_data)
+                    
                     self._concatenate_events(cur_file_data)
-
+                    
+                    tqdm.write(
+                        f"Current file size:{cur_file_data.layout.nbytes / (1024 * 1024):.2f} MB.")
                     if self._should_yield_chunk():
                         self.log_cur_size()
                         self.cur_chunk += 1
@@ -145,16 +145,18 @@ class ATLAS_Parser():
             events = {}
             objs_filtered = []
 
-            for obj_name, fields in schemas.INVARIANT_MASS_SCHEMA.items():
+            # Wrap the schema iteration with tqdm
+            for obj_name, fields in tqdm(
+                schemas.INVARIANT_MASS_SCHEMA.items(),
+                desc=f"Parsing file",
+                unit="obj"
+            ):
                 cur_obj_name, zip_function = ATLAS_Parser._prepare_obj_name(
                     obj_name)
-                
+
                 filtered_fields = list(filter(
                     lambda field: f"{cur_obj_name}AuxDyn.{field}" in tree.keys(),
                     fields))
-                # print(cur_obj_name)
-                # print(tree.keys(filter_name= f"{cur_obj_name}AuxDyn.*"))
-                # print(filtered_fields, fields)
 
                 if len(filtered_fields) < len(fields):
                     continue
@@ -162,14 +164,15 @@ class ATLAS_Parser():
                 objs_filtered.append(cur_obj_name)
                 tree_as_rows = tree.arrays(
                     filtered_fields,
-                    aliases={
-                        field: f"{cur_obj_name}AuxDyn.{field}" for field in filtered_fields}
+                    aliases={field: f"{cur_obj_name}AuxDyn.{field}" for field in filtered_fields}
                 )
+
                 sep_to_arrays = ak.unzip(tree_as_rows)
                 field_names = tree_as_rows.fields
 
                 tree_as_rows = zip_function(
-                    dict(zip(field_names, sep_to_arrays)))
+                    dict(zip(field_names, sep_to_arrays))
+                )
 
                 events[obj_name] = tree_as_rows
 
@@ -198,8 +201,6 @@ class ATLAS_Parser():
         self.total_size_kb += chunk_size_kb
     
     def _should_yield_chunk(self):
-        print(self.events.layout.nbytes, self.max_chunk_size_bytes)
-        print(self.events.layout.nbytes >= self.max_chunk_size_bytes)
         return self.events.layout.nbytes >= self.max_chunk_size_bytes
 
     def log_cur_size(self):
@@ -262,21 +263,61 @@ class ATLAS_Parser():
 
         return total_vec.mass
 
-    def filter_events_by_combination(self, events_file, combination_dict):
+    def filter_events_by_kinematics(self, events, kinematic_cuts):
+        filtered_events = {}
+
+        for obj in events.fields:
+            particles = events[obj]
+
+            # Skip empty arrays
+            if len(particles) == 0:
+                continue
+
+            # Start with all True mask
+            mask = ak.ones_like(particles, dtype=bool)
+
+            # rho cut
+            if "rho" in kinematic_cuts and hasattr(particles, "rho"):
+                rho_vals = ak.values_astype(particles.rho, float)
+                mask = ak.mask(mask, rho_vals >= kinematic_cuts["rho"]["min"])
+
+            # eta cut
+            if "eta" in kinematic_cuts and hasattr(particles, "eta"):
+                eta_vals = ak.values_astype(particles.eta, float)
+                mask = ak.mask(mask, (eta_vals >= kinematic_cuts["eta"]["min"]) &
+                                        (eta_vals <= kinematic_cuts["eta"]["max"]))
+
+            # phi cut
+            if "phi" in kinematic_cuts and hasattr(particles, "phi"):
+                phi_vals = ak.values_astype(particles.phi, float)
+                mask = ak.mask(mask, (phi_vals >= kinematic_cuts["phi"]["min"]) &
+                                        (phi_vals <= kinematic_cuts["phi"]["max"]))
+
+            # tau cut
+            if "tau" in kinematic_cuts and hasattr(particles, "tau"):
+                tau_vals = ak.values_astype(particles.tau, float)
+                mask = ak.mask(mask, tau_vals >= kinematic_cuts["tau"]["min"])
+
+            # Apply mask to particles
+            filtered_events[obj] = ak.mask(particles, mask)
+
+        return ak.Array(filtered_events)
+
+    def filter_events_by_counts(self, events, particle_counts):
         '''
             Filters the events by the given combination dictionary.
         '''
-
-        for obj, count in combination_dict.items():
-            obj_array = events_file[obj]
+        for obj, range_dict in particle_counts.items():
+            obj_array = events[obj]
             if ak.all(ak.is_none(obj_array)):
                 continue
 
             obj_count = ak.num(obj_array)
-            events_file = events_file[
-                obj_count == count]
+            # Use bitwise & instead of logical and for array operations
+            mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
+            events = events[mask]
 
-        return ak.to_packed(events_file)
+        return ak.to_packed(events)
 
     
     def save_events(self, events, output_dir):
@@ -303,6 +344,10 @@ class ATLAS_Parser():
 
         return root_ready
 
+    def _load_events_from_file(self, file_path):
+        with uproot.open(file_path) as f:
+            return f["tree"]
+        
     @staticmethod
     def _prepare_obj_name(obj_name):
         final_name = None

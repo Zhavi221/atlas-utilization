@@ -1,6 +1,6 @@
 import logging
 import sys
-from src.parse_atlas import parser, combinatorics, consts, schemas
+from src.parse_atlas import parser, combinatorics, consts, schemas, parser_claude
 import matplotlib.pyplot as plt # plotting
 import awkward as ak
 import tqdm
@@ -47,13 +47,17 @@ def run():
         limit=parsing_config["file_limit"],
         max_workers=parsing_config["max_workers"]
     ):
-        combo_events = atlasparser.filter_events_by_combination(
-            events_chunk, main_category
-        )   
+        
+        cut_events = atlasparser.filter_events_by_kinematics(
+            events_chunk, parsing_config["kinematic_cuts"]
+        )
+        
+        filtered_events = atlasparser.filter_events_by_counts(
+            cut_events, parsing_config["particle_counts"]
+        )    
 
-        
-        root_ready = atlasparser.flatten_for_root(combo_events)
-        
+        root_ready = atlasparser.flatten_for_root(filtered_events)
+
         atlasparser.save_events(root_ready, parsing_config["output_path"])        
         
 
