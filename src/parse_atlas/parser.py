@@ -38,6 +38,91 @@ class ATLAS_Parser():
 
         self.max_chunk_size_bytes = max_chunk_size_bytes
 
+    #NOT YET IMPLEMENTED
+    def generate_histograms(self):
+        categories = combinatorics.make_objects_categories(
+            schemas.PARTICLE_LIST, min_n=2, max_n=4)
+        for category in categories:
+            combination = combinatorics.make_objects_combinations_for_category(
+                category, min_k=2, max_k=4)
+            # events = self.filter_events_by_combination(combination)
+
+    #NOT YET IMPLEMENTED
+    def calculate_mass_for_combination(self, events: ak.Array) -> ak.Array:
+        """
+        Compute invariant mass per event from the combined objects.
+        Compatible with jagged structure (variable number of particles per event).
+        """
+        if len(events) == 0:
+            return ak.Array([])
+
+        vectors_per_event = []
+
+        for obj in events.fields:
+            arr = events[obj]
+            if len(arr) == 0:
+                continue
+ 
+            # Assign mass
+            if "m" in arr.fields:
+                mass = arr.m
+            elif obj in consts.KNOWN_MASSES:
+                mass = ak.ones_like(arr.pt) * consts.KNOWN_MASSES[obj]
+            else:
+                raise ValueError(f"Cannot compute mass for '{obj}': missing 'm' and no known constant.")
+
+            vec = ak.zip({
+                "pt": arr.pt,
+                "eta": arr.eta,
+                "phi": arr.phi,
+                "mass": mass
+            }, with_name="Momentum4D")
+
+            vectors_per_event.append(vec)
+
+        if not vectors_per_event:
+            return ak.Array([])
+
+        # Concatenate all objects into one jagged array per event
+        all_vectors = ak.concatenate(vectors_per_event, axis=1)  # concat along the per-event axis
+
+        # Sum per event
+        total_vec = ak.sum(all_vectors, axis=1)
+
+        return total_vec.mass
+    
+    def load_events_from_file(self, file_path):
+        with uproot.open(file_path) as f:
+            self.events = f["tree"]
+    
+    #SAVING FILES
+    def save_events(self, events, output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        
+        output_path = os.path.join(output_dir, f"filtered_{self.cur_chunk}.root")
+        with uproot.recreate(output_path) as f:
+            f["tree"] = events
+
+    def flatten_for_root(self, awk_arr):
+        """Flatten a top-level awkward Array into ROOT-friendly dict."""
+        root_ready = {}
+
+        for obj_name in awk_arr.fields:
+            obj = awk_arr[obj_name]
+
+            try:
+                # If this succeeds, obj is a record array (possibly jagged)
+                for field in obj.fields:
+                    branch = obj[field]
+                    filled_branch = ak.fill_none(branch, 0.0)
+                    root_ready[f"{obj_name}_{field}"] = filled_branch
+            except AttributeError:
+                # Not a record, already primitive or jagged primitive
+                root_ready[obj_name] = obj
+
+        return root_ready
+    
+    #PARSING METHODS
     def fetch_records_ids(self, release_year):
         '''
             Fetches the real records IDs for a given release year.
@@ -53,36 +138,6 @@ class ATLAS_Parser():
         
         self.files_ids = release_files_uris
         return release_files_uris
-
-    def fetch_mc_files_ids(self, release_year, is_random=False, all=False):
-        '''
-            Fetches the Monte Carlo records IDs for a given release year.
-            Returns a list of file URIs.
-        '''
-        release = consts.RELEASES_YEARS[release_year]
-        metadata_url = consts.LIBRARY_RELEASES_METADATA[release]
-
-        _metadata = {}
-
-        response = requests.get(metadata_url)
-
-        response.raise_for_status()
-        lines = response.text.splitlines()
-
-        reader = csv.DictReader(lines)
-        for row in reader:
-            dataset_number = row['dataset_number'].strip()
-            _metadata[dataset_number] = row
-
-        all_mc_ids = list(_metadata.keys())
-
-        if is_random:
-            random_mc_id = random.choice(all_mc_ids)
-            all_metadata = atom.get_metadata(random_mc_id)
-            print(all_metadata['process'], all_metadata['short_name'])
-            return random_mc_id
-
-        return all_mc_ids
 
     def parse_files(self,
                        files_ids: list = None,
@@ -203,6 +258,37 @@ class ATLAS_Parser():
     def _should_yield_chunk(self):
         return self.events.layout.nbytes >= self.max_chunk_size_bytes
 
+    #TESTING METHODS
+    def fetch_mc_files_ids(self, release_year, is_random=False, all=False):
+        '''
+            Fetches the Monte Carlo records IDs for a given release year.
+            Returns a list of file URIs.
+        '''
+        release = consts.RELEASES_YEARS[release_year]
+        metadata_url = consts.LIBRARY_RELEASES_METADATA[release]
+
+        _metadata = {}
+
+        response = requests.get(metadata_url)
+
+        response.raise_for_status()
+        lines = response.text.splitlines()
+
+        reader = csv.DictReader(lines)
+        for row in reader:
+            dataset_number = row['dataset_number'].strip()
+            _metadata[dataset_number] = row
+
+        all_mc_ids = list(_metadata.keys())
+
+        if is_random:
+            random_mc_id = random.choice(all_mc_ids)
+            all_metadata = atom.get_metadata(random_mc_id)
+            print(all_metadata['process'], all_metadata['short_name'])
+            return random_mc_id
+
+        return all_mc_ids
+
     def log_cur_size(self):
         tqdm.write(
                 f"Yielding final chunk with {len(self.events)} events "
@@ -210,60 +296,9 @@ class ATLAS_Parser():
                 f"at {self.events.layout.nbytes / (1024 * 1024):.2f} MB. "
                 f"{self.total_size_kb  / (1024 * 1024):.2f} MB - accumulated size.")
 
-    #NOT YET IMPLEMENTED
-    def generate_histograms(self):
-        categories = combinatorics.make_objects_categories(
-            schemas.PARTICLE_LIST, min_n=2, max_n=4)
-        for category in categories:
-            combination = combinatorics.make_objects_combinations_for_category(
-                category, min_k=2, max_k=4)
-            # events = self.filter_events_by_combination(combination)
-
-    #NOT YET IMPLEMENTED
-    def calculate_mass_for_combination(self, events: ak.Array) -> ak.Array:
-        """
-        Compute invariant mass per event from the combined objects.
-        Compatible with jagged structure (variable number of particles per event).
-        """
-        if len(events) == 0:
-            return ak.Array([])
-
-        vectors_per_event = []
-
-        for obj in events.fields:
-            arr = events[obj]
-            if len(arr) == 0:
-                continue
- 
-            # Assign mass
-            if "m" in arr.fields:
-                mass = arr.m
-            elif obj in consts.KNOWN_MASSES:
-                mass = ak.ones_like(arr.pt) * consts.KNOWN_MASSES[obj]
-            else:
-                raise ValueError(f"Cannot compute mass for '{obj}': missing 'm' and no known constant.")
-
-            vec = ak.zip({
-                "pt": arr.pt,
-                "eta": arr.eta,
-                "phi": arr.phi,
-                "mass": mass
-            }, with_name="Momentum4D")
-
-            vectors_per_event.append(vec)
-
-        if not vectors_per_event:
-            return ak.Array([])
-
-        # Concatenate all objects into one jagged array per event
-        all_vectors = ak.concatenate(vectors_per_event, axis=1)  # concat along the per-event axis
-
-        # Sum per event
-        total_vec = ak.sum(all_vectors, axis=1)
-
-        return total_vec.mass
-
-    def filter_events_by_kinematics(self, events, kinematic_cuts):
+    #STATIC METHODS
+    @staticmethod
+    def filter_events_by_kinematics(events, kinematic_cuts):
         filtered_events = {}
 
         for obj in events.fields:
@@ -302,12 +337,15 @@ class ATLAS_Parser():
             filtered_events[obj] = ak.mask(particles, mask)
 
         return ak.Array(filtered_events)
-
-    def filter_events_by_counts(self, events, particle_counts):
+    
+    @staticmethod
+    def filter_events_by_counts(events, particle_counts):
         '''
             Filters the events by the given combination dictionary.
         '''
         for obj, range_dict in particle_counts.items():
+            if obj not in events.fields:
+                continue
             obj_array = events[obj]
             if ak.all(ak.is_none(obj_array)):
                 continue
@@ -318,36 +356,7 @@ class ATLAS_Parser():
             events = events[mask]
 
         return ak.to_packed(events)
-
     
-    def save_events(self, events, output_dir):
-        os.makedirs(output_dir, exist_ok=True)
-        
-        output_path = os.path.join(output_dir, f"filtered_{self.cur_chunk}.root")
-        with uproot.recreate(output_path) as f:
-            f["tree"] = events
-
-    def flatten_for_root(self, awk_arr):
-        """Flatten a top-level awkward Array into ROOT-friendly dict."""
-        root_ready = {}
-
-        for obj_name in awk_arr.fields:
-            obj = awk_arr[obj_name]
-
-            try:
-                # If this succeeds, obj is a record array (possibly jagged)
-                for field in obj.fields:
-                    root_ready[f"{obj_name}_{field}"] = obj[field]
-            except AttributeError:
-                # Not a record, already primitive or jagged primitive
-                root_ready[obj_name] = obj
-
-        return root_ready
-
-    def _load_events_from_file(self, file_path):
-        with uproot.open(file_path) as f:
-            return f["tree"]
-        
     @staticmethod
     def _prepare_obj_name(obj_name):
         final_name = None
