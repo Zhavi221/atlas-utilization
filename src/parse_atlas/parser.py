@@ -1,30 +1,57 @@
-import csv
-import random
-from tqdm import tqdm
+import awkward as ak
+import numpy as np
+import vector
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import uproot
-import numpy as np
-import awkward as ak
-import vector
 import requests
 import atlasopenmagic as atom
+
+import csv
+import random
+from tqdm import tqdm
 import os
+import traceback
 
 from . import combinatorics, schemas, consts
 
 class ATLAS_Parser():
     '''
-        ATLAS_Parser class is responsible for parsing ATLAS Open Data files.
-        Available methods:
-        - fetch_records_ids: Fetches the real records IDs for a given release year.
-        - fetch_mc_files_ids: Fetches the MC records IDs for a given release year.
-        - parse_files: Parses the files with the given IDs and yields chunks of events.
-        - _parse_file: Parses a single file by a generic schema.
-        - calculate_mass_for_combination: Computes invariant mass per event from the combined objects.
-        - filter_events_by_combination: Filters the events by the given combination dictionary.
-        - save_events: Saves the events to a file.
-        - load_events_from_file: Loads the events from a file.
+    ATLAS_Parser class is responsible for parsing ATLAS Open Data files and handling event selection, filtering, and output.
+    Attributes:
+        categories (list): List of object categories for combinatorics.
+        files_ids (list): List of file URIs to be parsed.
+        file_parsed_count (int): Counter for parsed files.
+        cur_chunk (int): Current chunk index.
+        events (ak.Array): Accumulated events.
+        total_size_kb (int): Total size of accumulated events in kilobytes.
+        max_chunk_size_bytes (int): Maximum chunk size in bytes before yielding.
+    Methods:
+        generate_histograms():
+            Generates histograms for object combinations (not yet implemented).
+        calculate_mass_for_combination(events: ak.Array) -> ak.Array:
+            Computes invariant mass per event from combined objects.
+        save_events_as_root(events, output_dir):
+            Saves filtered events to ROOT files in the specified directory.
+        flatten_for_root(awk_arr):
+            Flattens awkward arrays for ROOT compatibility.
+        fetch_records_ids(release_year):
+            Fetches file URIs for a given release year.
+        parse_files(files_ids: list = None, limit: int = 0, max_workers: int = 3):
+            Parses files in parallel and yields chunks of events.
+            Checks if the accumulated events exceed the chunk size.
+        fetch_mc_files_ids(release_year, is_random=False, all=False):
+            Fetches Monte Carlo records IDs for a given release year.
+        log_cur_size():
+            Logs the current size of accumulated events.
+        filter_events_by_kinematics(events, kinematic_cuts):
+            Filters events based on kinematic cuts.
+        filter_events_by_counts(events, particle_counts):
+            Filters events based on particle counts.
+        _prepare_obj_name(obj_name):
+            Prepares object name and zip function for parsing.
+        _normalize_fields(ak_array):
+            Normalizes fields in the awkward array to match schema.
     '''
     def __init__(self, max_chunk_size_bytes):
         self.categories = combinatorics.make_objects_categories(
@@ -91,12 +118,8 @@ class ATLAS_Parser():
 
         return total_vec.mass
     
-    def load_events_from_file(self, file_path):
-        with uproot.open(file_path) as f:
-            self.events = f["tree"]
-    
     #SAVING FILES
-    def save_events(self, events, output_dir):
+    def save_events_as_root(self, events, output_dir):
         os.makedirs(output_dir, exist_ok=True)
         
         output_path = os.path.join(output_dir, f"filtered_{self.cur_chunk}.root")
@@ -104,7 +127,10 @@ class ATLAS_Parser():
             f["tree"] = events
 
     def flatten_for_root(self, awk_arr):
-        """Flatten a top-level awkward Array into ROOT-friendly dict."""
+        '''
+            Flatten a top-level awkward Array into ROOT-friendly dict.
+        '''
+        
         root_ready = {}
 
         for obj_name in awk_arr.fields:
@@ -133,19 +159,20 @@ class ATLAS_Parser():
         datasets_ids = atom.available_data()
         release_files_uris = []
 
-        for file_id in datasets_ids:
-            release_files_uris.extend(atom.get_urls_data(file_id))
-        
+        for dataset_id in datasets_ids:
+            release_files_uris.extend(atom.get_urls_data(dataset_id))
+
         self.files_ids = release_files_uris
         return release_files_uris
 
+    #TODO: GO OVER
     def parse_files(self,
                        files_ids: list = None,
                        limit: int = 0,
                        max_workers: int = 3):
         '''
             Parses the input files by their IDs, otherwise uses the member files_ids.
-            Yields chunks of events as awkward arrays each 5GB.
+            Yields chunks of events as awkward arrays each size from the input limit.
         '''
         if files_ids is None:
             if self.files_ids is None:
@@ -166,8 +193,22 @@ class ATLAS_Parser():
             with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True) as pbar:
                 for future in as_completed(futures):
                     file_index = futures[future]
-                    cur_file_data = future.result()
-                    cur_file_data = ATLAS_Parser.normalize_fields(
+                    try:
+                        cur_file_data = future.result(timeout=10)
+                    except TimeoutError:
+                        tqdm.write(f"⏱️ Skipping file {file_index}: parsing took longer than 10s")
+                        pbar.update(1)
+                        continue
+                    except Exception as e:
+                        tqdm.write(f"⚠️ Error parsing file {file_index}: {e}")
+                        # Print the exception type and full traceback
+                        tqdm.write(f"Exception type: {type(e).__name__}")
+                        tb = traceback.format_exc()
+                        tqdm.write(f"Traceback:\n{tb}")
+                        pbar.update(1)
+                        continue
+
+                    cur_file_data = ATLAS_Parser._normalize_fields(
                                 cur_file_data)
                     
                     self._concatenate_events(cur_file_data)
@@ -196,7 +237,9 @@ class ATLAS_Parser():
         '''
             Parses a single file by a generic schema.
         '''
-        with uproot.open({file_index: "CollectionTree"}, vector_read=False) as tree:
+        with uproot.open({file_index: "CollectionTree"}, 
+                vector_read=False, 
+                xrootd_handler=uproot.source.xrootd.MultithreadedXRootDSource) as tree:
             events = {}
             objs_filtered = []
 
@@ -369,7 +412,7 @@ class ATLAS_Parser():
         return final_name, zip_function
 
     @staticmethod
-    def normalize_fields(ak_array):
+    def _normalize_fields(ak_array):
         for field in schemas.INVARIANT_MASS_SCHEMA.keys():
             if field not in ak_array.fields:
                 # Set to empty list per event (not None)
@@ -379,3 +422,11 @@ class ATLAS_Parser():
                     field
                 )
         return ak_array
+
+        xrootd_src = filename.startswith("root://")
+        if not xrootd_src:
+            return {"file_handler": uproot.MultithreadedFileSource} # otherwise the memory maps overload available Vmem
+        elif xrootd_src:
+            # uncomment below for MultithreadedXRootDSource
+            return {"xrootd_handler": uproot.source.xrootd.MultithreadedXRootDSource}
+        return {}

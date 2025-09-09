@@ -62,7 +62,7 @@ def run():
         root_ready = atlasparser.flatten_for_root(filtered_events)
 
         logging.info("Saving events")
-        atlasparser.save_events(root_ready, parsing_config["output_path"])        
+        atlasparser.save_events_as_root(root_ready, parsing_config["output_path"])        
         
 
 run()
