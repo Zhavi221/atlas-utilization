@@ -45,7 +45,7 @@ def run():
     for events_chunk in atlasparser.parse_files(
         files_ids=release_files_uris, 
         limit=parsing_config["file_limit"],
-        max_workers=parsing_config["max_workers"]
+        threads_for_process=parsing_config["max_threads"],
     ):
         
         logging.info("Cutting events")
@@ -55,7 +55,8 @@ def run():
         
         logging.info("Filtering events")
         filtered_events = parser.ATLAS_Parser.filter_events_by_counts(
-            cut_events, parsing_config["particle_counts"]
+            # cut_events, parsing_config["particle_counts"]
+            cut_events, {'nElectrons_eta': 2, 'nJets_eta': 4}, use_range=False
         )    
 
         logging.info("Flattening root")
@@ -65,4 +66,5 @@ def run():
         atlasparser.save_events_as_root(root_ready, parsing_config["output_path"])        
         
 
-run()
+if __name__ == "__main__":
+    run()

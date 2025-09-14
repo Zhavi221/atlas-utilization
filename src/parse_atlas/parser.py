@@ -12,6 +12,14 @@ import random
 from tqdm import tqdm
 import os
 import traceback
+import logging
+
+# ===== Enhanced: Statistics and crash handling imports =====
+import threading
+import datetime
+import time
+import json
+# ============================================================
 
 from . import combinatorics, schemas, consts
 
@@ -37,7 +45,7 @@ class ATLAS_Parser():
             Flattens awkward arrays for ROOT compatibility.
         fetch_records_ids(release_year):
             Fetches file URIs for a given release year.
-        parse_files(files_ids: list = None, limit: int = 0, max_workers: int = 3):
+        parse_files(files_ids: list = None, limit: int = 0, max_threads: int = 3):
             Parses files in parallel and yields chunks of events.
             Checks if the accumulated events exceed the chunk size.
         fetch_mc_files_ids(release_year, is_random=False, all=False):
@@ -64,60 +72,133 @@ class ATLAS_Parser():
         self.total_size_kb = 0
 
         self.max_chunk_size_bytes = max_chunk_size_bytes
+        
+        # ===== Enhanced: Comprehensive crash and statistics tracking =====
+        self.crash_log = "atlas_crashes.log"
+        self.stats_log = "atlas_stats.json"
+        self.crash_lock = threading.Lock()
+        self.failed_files = []
+        
+        # New statistics tracking
+        self.parsing_start_time = None
+        self.file_processing_times = []
+        self.chunk_stats = []
+        self.error_types = {}
+        self.timeout_count = 0
+        self.max_file_size_mb = 0
+        self.min_file_size_mb = float('inf')
+        self.total_events_processed = 0
+        # ================================================================
 
     #NOT YET IMPLEMENTED
-    def generate_histograms(self):
-        categories = combinatorics.make_objects_categories(
-            schemas.PARTICLE_LIST, min_n=2, max_n=4)
-        for category in categories:
-            combination = combinatorics.make_objects_combinations_for_category(
-                category, min_k=2, max_k=4)
-            # events = self.filter_events_by_combination(combination)
-
-    #NOT YET IMPLEMENTED
-    def calculate_mass_for_combination(self, events: ak.Array) -> ak.Array:
+    def calculate_mass_for_combination(self, events: ak.Array, combination: dict) -> ak.Array:
         """
         Compute invariant mass per event from the combined objects.
-        Compatible with jagged structure (variable number of particles per event).
+        Compatible with flattened structure where each particle type has separate fields.
+        Expected format: ParticleType_kinematic (e.g., 'Jets_rho', 'Jets_phi', etc.)
         """
         if len(events) == 0:
             return ak.Array([])
 
-        vectors_per_event = []
+        # Extract unique particle types from field names (excluding count fields)
+        particle_types = set()
+        for field in events.fields:
+            if '_' in field and not field.startswith('n'):
+                particle_type = field.split('_')[0]
+                particle_types.add(particle_type)
 
-        for obj in events.fields:
-            arr = events[obj]
-            if len(arr) == 0:
+
+        num_events = len(events)
+        total_px = np.zeros(num_events)
+        total_py = np.zeros(num_events)
+        total_pz = np.zeros(num_events)
+        total_energy = np.zeros(num_events)
+
+        for particle_type in particle_types:
+            print(f"Processing {particle_type}...")
+            
+            # Check if we have the required kinematic fields
+            rho_field = f"{particle_type}_rho"
+            phi_field = f"{particle_type}_phi"
+            eta_field = f"{particle_type}_eta"
+            
+            if not all(field in events.fields for field in [rho_field, phi_field, eta_field]):
+                print(f"Missing required fields for {particle_type}")
                 continue
- 
-            # Assign mass
-            if "m" in arr.fields:
-                mass = arr.m
-            elif obj in consts.KNOWN_MASSES:
-                mass = ak.ones_like(arr.pt) * consts.KNOWN_MASSES[obj]
+                
+            rho = events[rho_field]
+            phi = events[phi_field] 
+            eta = events[eta_field]
+            
+            # Convert rho to pt (assuming rho is transverse momentum)
+            pt = rho
+            
+            # Assign mass - default masses for common particles (in GeV/c²)
+            particle_key = particle_type.lower()
+            default_masses = {
+                'jets': 0.0,
+                'photons': 0.0,
+                'electrons': 0.000511,  # Convert from MeV to GeV
+                'muons': 0.10566      # Convert from MeV to GeV
+            }
+            
+            # Check for mass field first, then use defaults
+            mass_field = f"{particle_type}_m"
+            if mass_field in events.fields:
+                mass = events[mass_field]
+            elif particle_key in default_masses:
+                mass = ak.full_like(pt, default_masses[particle_key])
             else:
-                raise ValueError(f"Cannot compute mass for '{obj}': missing 'm' and no known constant.")
+                print(f"⚠️  Warning: No mass found for {particle_type}, assuming massless")
+                mass = ak.full_like(pt, 0.0)
 
-            vec = ak.zip({
-                "pt": arr.pt,
-                "eta": arr.eta,
-                "phi": arr.phi,
-                "mass": mass
-            }, with_name="Momentum4D")
+            # Handle the jagged structure - pt, eta, phi, mass should all be jagged arrays
+            # Convert to rectangular components for each event
+            
+            # Calculate px, py, pz, energy for each particle
+            px = pt * np.cos(phi)
+            py = pt * np.sin(phi)  
+            pz = pt * np.sinh(eta)
+            energy = np.sqrt(px**2 + py**2 + pz**2 + mass**2)
+            
+            # Sum over particles in each event
+            try:
+                px_sum = ak.sum(px, axis=1, keepdims=False)
+                py_sum = ak.sum(py, axis=1, keepdims=False)
+                pz_sum = ak.sum(pz, axis=1, keepdims=False)
+                energy_sum = ak.sum(energy, axis=1, keepdims=False)
+                
+                # Convert to numpy arrays and add to totals
+                total_px += ak.to_numpy(px_sum)
+                total_py += ak.to_numpy(py_sum)
+                total_pz += ak.to_numpy(pz_sum)
+                total_energy += ak.to_numpy(energy_sum)
+                
+            except Exception as e:
+                print(f"Error processing {particle_type}: {e}")
+                print(f"  px type: {ak.type(px)}")
+                print(f"  Trying alternative approach...")
+                
+                # Alternative: handle each event individually
+                for i in range(len(events)):
+                    try:
+                        if len(px[i]) > 0:
+                            total_px[i] += np.sum(ak.to_numpy(px[i]))
+                            total_py[i] += np.sum(ak.to_numpy(py[i]))
+                            total_pz[i] += np.sum(ak.to_numpy(pz[i]))
+                            total_energy[i] += np.sum(ak.to_numpy(energy[i]))
+                    except:
+                        continue
 
-            vectors_per_event.append(vec)
+        # Calculate invariant mass from total 4-momentum
+        total_mass_squared = total_energy**2 - (total_px**2 + total_py**2 + total_pz**2)
+        invariant_mass = np.where(total_mass_squared >= 0, np.sqrt(total_mass_squared), 0)
+        
+        print(f"Calculated {len(invariant_mass)} invariant masses")
+        print(f"Mass range: {np.min(invariant_mass)} to {np.max(invariant_mass)}")
+        
+        return ak.Array(invariant_mass)
 
-        if not vectors_per_event:
-            return ak.Array([])
-
-        # Concatenate all objects into one jagged array per event
-        all_vectors = ak.concatenate(vectors_per_event, axis=1)  # concat along the per-event axis
-
-        # Sum per event
-        total_vec = ak.sum(all_vectors, axis=1)
-
-        return total_vec.mass
-    
     #SAVING FILES
     def save_events_as_root(self, events, output_dir):
         os.makedirs(output_dir, exist_ok=True)
@@ -144,8 +225,13 @@ class ATLAS_Parser():
                     root_ready[f"{obj_name}_{field}"] = filled_branch
             except AttributeError:
                 # Not a record, already primitive or jagged primitive
+                logging.info(
+                    "⚠️Warning: Object is not a record array, saving as-is.")
                 root_ready[obj_name] = obj
-
+            except Exception as e:
+                logging.info(f"⚠️Error processing {obj_name}: {e}")
+                continue
+       
         return root_ready
     
     #PARSING METHODS
@@ -165,11 +251,101 @@ class ATLAS_Parser():
         self.files_ids = release_files_uris
         return release_files_uris
 
-    #TODO: GO OVER
+    # ===== Enhanced: Detailed crash and statistics logging =====
+    def _log_crash(self, file_index, exception, processing_time=None):
+        """Enhanced thread-safe crash logging with statistics"""
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        error_type = type(exception).__name__
+        
+        with self.crash_lock:
+            self.failed_files.append(file_index)
+            
+            # Track error types for statistics
+            if error_type not in self.error_types:
+                self.error_types[error_type] = 0
+            self.error_types[error_type] += 1
+            
+            # Track timeouts separately
+            if isinstance(exception, TimeoutError):
+                self.timeout_count += 1
+            
+            with open(self.crash_log, 'a') as f:
+                f.write(f"\n💥 CRASH at {timestamp}\n")
+                f.write(f"File: {file_index}\n")
+                f.write(f"Error Type: {error_type}\n")
+                f.write(f"Error: {exception}\n")
+                if processing_time:
+                    f.write(f"Processing Time: {processing_time:.2f}s\n")
+                f.write(f"Traceback:\n{traceback.format_exc()}\n")
+                f.write("-" * 60 + "\n")
+
+    def _save_statistics(self, total_files, successful_count):
+        """Save comprehensive parsing statistics to JSON"""
+        end_time = time.time()
+        total_time = end_time - self.parsing_start_time if self.parsing_start_time else 0
+        
+        avg_processing_time = np.mean(self.file_processing_times) if self.file_processing_times else 0
+        
+        stats = {
+            "parsing_session": {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "total_time_seconds": total_time,
+                "total_files": total_files,
+                "successful_files": successful_count,
+                "failed_files": len(self.failed_files),
+                "success_rate": (successful_count / total_files * 100) if total_files > 0 else 0
+            },
+            "performance": {
+                "avg_file_processing_time_seconds": avg_processing_time,
+                "max_file_size_mb": self.max_file_size_mb if self.max_file_size_mb > 0 else 0,
+                "min_file_size_mb": self.min_file_size_mb if self.min_file_size_mb != float('inf') else 0,
+                "total_data_processed_mb": self.total_size_kb / (1024 * 1024),
+                "total_events_processed": self.total_events_processed,
+                "chunks_created": self.cur_chunk,
+                "avg_chunk_size_mb": (self.total_size_kb / (1024 * 1024)) / max(self.cur_chunk, 1)
+            },
+            "errors": {
+                "timeout_count": self.timeout_count,
+                "error_types": self.error_types,
+                "failed_file_list": self.failed_files[:10]  # Only store first 10 for brevity
+            },
+            "chunk_details": self.chunk_stats
+        }
+        
+        with open(self.stats_log, 'w') as f:
+            json.dump(stats, f, indent=2)
+        
+        return stats
+
+    def print_statistics_summary(self, stats):
+        """Print a nice summary of parsing statistics"""
+        tqdm.write(f"\n" + "="*60)
+        tqdm.write(f"📊 ATLAS PARSING STATISTICS SUMMARY")
+        tqdm.write(f"="*60)
+        tqdm.write(f"⏱️  Total Time: {stats['parsing_session']['total_time_seconds']:.1f}s")
+        tqdm.write(f"📁 Files: ✅{stats['parsing_session']['successful_files']} / ❌{stats['parsing_session']['failed_files']} / 📊{stats['parsing_session']['total_files']}")
+        tqdm.write(f"✨ Success Rate: {stats['parsing_session']['success_rate']:.1f}%")
+        tqdm.write(f"💾 Data Processed: {stats['performance']['total_data_processed_mb']:.1f} MB")
+        tqdm.write(f"🎯 Events Processed: {stats['performance']['total_events_processed']:,}")
+        tqdm.write(f"📦 Chunks Created: {stats['performance']['chunks_created']}")
+        
+        if stats['errors']['error_types']:
+            tqdm.write(f"⚠️  Error Breakdown:")
+            for error_type, count in stats['errors']['error_types'].items():
+                tqdm.write(f"   • {error_type}: {count}")
+        
+        tqdm.write(f"📈 Avg File Time: {stats['performance']['avg_file_processing_time_seconds']:.2f}s")
+        tqdm.write(f"📋 Full stats saved to: {self.stats_log}")
+        if stats['parsing_session']['failed_files'] > 0:
+            tqdm.write(f"💥 Crash log saved to: {self.crash_log}")
+        tqdm.write(f"="*60)
+    # ============================================================
+
+    # ===== Enhanced: parse_files with better statistics tracking =====
     def parse_files(self,
                        files_ids: list = None,
                        limit: int = 0,
-                       max_workers: int = 3):
+                       max_threads: int = 3):
         '''
             Parses the input files by their IDs, otherwise uses the member files_ids.
             Yields chunks of events as awkward arrays each size from the input limit.
@@ -182,64 +358,146 @@ class ATLAS_Parser():
         if limit:
             files_ids = files_ids[:limit]
 
-        tqdm.write(
-            f"Starting to parse {len(files_ids)} files with {max_workers} threads.")
+        # ===== Enhanced: Initialize comprehensive tracking =====
+        self.parsing_start_time = time.time()
+        successful_count = 0
+        if os.path.exists(self.crash_log):
+            os.remove(self.crash_log)  # Clean previous log
+        if os.path.exists(self.stats_log):
+            os.remove(self.stats_log)  # Clean previous stats
+        # =====================================================
         
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        tqdm.write(
+            f"Starting to parse {len(files_ids)} files with {max_threads} threads.")
+        
+        with ThreadPoolExecutor(max_workers=max_threads) as executor:
             futures = {
-                executor.submit(self._parse_file, file_index): file_index
+                executor.submit(self._safe_parse_file, file_index): file_index
                 for file_index in files_ids
             }
             with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True) as pbar:
                 for future in as_completed(futures):
                     file_index = futures[future]
+                    file_start_time = time.time()
+                    
                     try:
                         cur_file_data = future.result(timeout=10)
-                    except TimeoutError:
-                        tqdm.write(f"⏱️ Skipping file {file_index}: parsing took longer than 10s")
-                        pbar.update(1)
-                        continue
-                    except Exception as e:
-                        tqdm.write(f"⚠️ Error parsing file {file_index}: {e}")
-                        # Print the exception type and full traceback
-                        tqdm.write(f"Exception type: {type(e).__name__}")
-                        tb = traceback.format_exc()
-                        tqdm.write(f"Traceback:\n{tb}")
-                        pbar.update(1)
-                        continue
-
-                    cur_file_data = ATLAS_Parser._normalize_fields(
-                                cur_file_data)
-                    
-                    self._concatenate_events(cur_file_data)
-                    
-                    tqdm.write(
-                        f"Current file size:{cur_file_data.layout.nbytes / (1024 * 1024):.2f} MB.")
-                    if self._should_yield_chunk():
-                        self.log_cur_size()
-                        self.cur_chunk += 1
-                        yield self.events
-                        self.events = None
+                        file_processing_time = time.time() - file_start_time
                         
-                    pbar.set_postfix_str(f"{self.total_size_kb  / (1024 * 1024):.2f} MB | {file_index}")
+                        # ===== Enhanced: Better statistics tracking =====
+                        if cur_file_data is not None:
+                            successful_count += 1
+                            self.file_processing_times.append(file_processing_time)
+                            
+                            # Track file size statistics
+                            file_size_mb = cur_file_data.layout.nbytes / (1024 * 1024)
+                            self.max_file_size_mb = max(self.max_file_size_mb, file_size_mb)
+                            self.min_file_size_mb = min(self.min_file_size_mb, file_size_mb)
+                            
+                            # Track events in this file
+                            events_in_file = len(cur_file_data)
+                            self.total_events_processed += events_in_file
+                            
+                            cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
+                            self._concatenate_events(cur_file_data)
+                            
+                            tqdm.write(f"✅ File processed: {file_size_mb:.2f} MB, {events_in_file:,} events, {file_processing_time:.1f}s")
+                            
+                            if self._should_yield_chunk():
+                                chunk_info = {
+                                    "chunk_id": self.cur_chunk,
+                                    "events": len(self.events),
+                                    "size_mb": self.events.layout.nbytes / (1024 * 1024),
+                                    "files_included": self.file_parsed_count
+                                }
+                                self.chunk_stats.append(chunk_info)
+                                
+                                self.log_cur_size()
+                                self.cur_chunk += 1
+                                yield self.events
+                                self.events = None
+                        # ===============================================
+                        
+                    except TimeoutError:
+                        file_processing_time = time.time() - file_start_time
+                        self._log_crash(file_index, TimeoutError(f"Parsing took longer than 10s"), file_processing_time)
+                        tqdm.write(f"⏱️ Timeout: {file_index} ({file_processing_time:.1f}s)")
+                        
+                    except Exception as e:
+                        file_processing_time = time.time() - file_start_time
+                        self._log_crash(file_index, e, file_processing_time)
+                        tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}")
+
+                    # ===== Enhanced: More detailed progress display =====
+                    success_rate = (successful_count / (successful_count + len(self.failed_files)) * 100) if (successful_count + len(self.failed_files)) > 0 else 0
+                    pbar.set_postfix_str(f"✅{successful_count} ❌{len(self.failed_files)} ({success_rate:.1f}%) | {self.total_size_kb / (1024 * 1024):.1f}MB | {self.total_events_processed:,} events")
+                    # =======================================================
                     pbar.update(1)
 
-                    tqdm.write(
-                        f"Parsed file with objects: {list(cur_file_data.fields)}")
-            
+        # ===== Enhanced: Final statistics and summary =====
+        stats = self._save_statistics(len(files_ids), successful_count)
+        self.print_statistics_summary(stats)
+        # =================================================
+        
         if self.events is not None:
+            # Final chunk statistics
+            final_chunk_info = {
+                "chunk_id": self.cur_chunk,
+                "events": len(self.events),
+                "size_mb": self.events.layout.nbytes / (1024 * 1024),
+                "files_included": self.file_parsed_count
+            }
+            self.chunk_stats.append(final_chunk_info)
+            
             self.log_cur_size()
             self.cur_chunk += 1
             yield self.events
             self.events = None
+
+    def threads_futures(self, data_chunk: List[dict]) -> List[dict]:
+        """Process a chunk of data using threading within a process"""
+        with ThreadPoolExecutor(max_workers=2) as thread_executor:
+            futures = [thread_executor.submit(mixed_task, data) for data in data_chunk]
+            return [future.result() for future in as_completed(futures)]
+        
+        
+    def _prepare_threads_futures(self, files_ids, max_threads):            
+        with ThreadPoolExecutor(max_workers=max_threads) as executor:
+            futures = {
+                executor.submit(self._parse_file, file_index): file_index
+                for file_index in files_ids
+            }
+
+            return futures
+        
+    def basic_decorator(self, func):
+        def wrapper(*args, **kwargs):
+            print(f"Calling function {func.__name__}")
+            result = func(*args, **kwargs)
+            print(f"Function {func.__name__} finished")
+            return result
+        return wrapper
+
+    # ===== Enhanced: Better error tracking in safe parsing =====
+    def _safe_parse_file(self, file_index):
+        """Safe wrapper for _parse_file that handles crashes with timing"""
+        start_time = time.time()
+        try:
+            result = self._parse_file(file_index)
+            processing_time = time.time() - start_time
+            return result
+        except Exception as e:
+            processing_time = time.time() - start_time
+            self._log_crash(file_index, e, processing_time)
+            return None  # Return None to indicate failure
+    # =============================================================
 
     def _parse_file(self, file_index):
         '''
             Parses a single file by a generic schema.
         '''
         with uproot.open({file_index: "CollectionTree"}, 
-                vector_read=False, 
-                xrootd_handler=uproot.source.xrootd.MultithreadedXRootDSource) as tree:
+                vector_read=False) as tree:
             events = {}
             objs_filtered = []
 
@@ -275,15 +533,6 @@ class ATLAS_Parser():
                 events[obj_name] = tree_as_rows
 
             return ak.zip(events, depth_limit=1)
-    
-    def _load_and_parse_in_parallel(self, files_ids, max_workers):            
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(self._parse_file, file_index): file_index
-                for file_index in files_ids
-            }
-
-            return futures
     
     def _concatenate_events(self, cur_file_data):
         if self.events is None:
@@ -334,10 +583,10 @@ class ATLAS_Parser():
 
     def log_cur_size(self):
         tqdm.write(
-                f"Yielding final chunk with {len(self.events)} events "
-                f"after a total of {self.file_parsed_count} files "
-                f"at {self.events.layout.nbytes / (1024 * 1024):.2f} MB. "
-                f"{self.total_size_kb  / (1024 * 1024):.2f} MB - accumulated size.")
+                f"Yielding chunk #{self.cur_chunk} with {len(self.events):,} events "
+                f"from {self.file_parsed_count} files "
+                f"({self.events.layout.nbytes / (1024 * 1024):.2f} MB). "
+                f"Total: {self.total_size_kb  / (1024 * 1024):.2f} MB accumulated.")
 
     #STATIC METHODS
     @staticmethod
@@ -382,20 +631,26 @@ class ATLAS_Parser():
         return ak.Array(filtered_events)
     
     @staticmethod
-    def filter_events_by_counts(events, particle_counts):
+    def filter_events_by_counts(events, particle_counts, use_range=True):
         '''
             Filters the events by the given combination dictionary.
         '''
         for obj, range_dict in particle_counts.items():
             if obj not in events.fields:
                 continue
+            
             obj_array = events[obj]
             if ak.all(ak.is_none(obj_array)):
                 continue
 
-            obj_count = ak.num(obj_array)
+            # obj_count = ak.num(obj_array)
+            obj_count = obj_array
             # Use bitwise & instead of logical and for array operations
-            mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
+            if not use_range:
+                mask = obj_count == range_dict
+            else:
+                mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
+            
             events = events[mask]
 
         return ak.to_packed(events)

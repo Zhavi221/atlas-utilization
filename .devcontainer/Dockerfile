@@ -1,4 +1,4 @@
-FROM rootproject/root:latest
+FROM rootproject/root:custom_config_v3
 
 # Install required system dependencies
 RUN apt-get update && \
@@ -11,6 +11,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Install Python packages
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
+    rpy2 \
+    scikit-learn \
+    seaborn \
     ipykernel \
     uproot \
     awkward \
