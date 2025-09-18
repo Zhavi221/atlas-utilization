@@ -54,18 +54,17 @@ def make_objects_combinations_for_category(
                 
                 yield obj_selection
             
-# --- Example usage ---
-if __name__ == "__main__":
-    object_types = ["Electrons", "Muons", "Photons"]
-    cats = make_objects_categories(object_types, min_n=2, max_n=4)
-    print(f"Generated {len(cats)} categories.\n")
-
+def get_all_combinations(object_types):
+    categories = make_objects_categories(object_types, min_n=2, max_n=4)
+    all_combinations = []
     # Show first example category
-    example_cat = cats[0]
-    print("Example category:", example_cat)
-    print(cats)
-    combos = list(make_objects_combinations_for_category(example_cat, min_k=2, max_k=4))
-    # print(json.dumps(combos[:3]))
-    # print(f"Number of combinations: {len(combos)}")
-    # for tcombo, labels in combos[:5]:
-    #     print(f"  Types={tcombo}, Labels={labels}")
+    for category in categories:
+        category_combinations = list(make_objects_combinations_for_category(category, min_k=2, max_k=4))
+        all_combinations.extend(category_combinations)
+    
+    return all_combinations
+
+if __name__ == "__main__":
+    all_combinations = get_all_combinations(['Electrons', 'Muons', 'Jets', 'Photons'])
+    print(all_combinations)
+    print(f"Generated {len(all_combinations)} combinations.\n")

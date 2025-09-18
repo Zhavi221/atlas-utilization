@@ -10,7 +10,6 @@ import uproot
 import awkward as ak
 import os
 
-release_years = ["2016", "2020", "2024", "2025"]
 
 logging.basicConfig(
     level=logging.INFO,

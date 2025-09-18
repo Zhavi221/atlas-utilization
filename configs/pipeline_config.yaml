@@ -8,6 +8,12 @@ parsing:
   file_limit: 50
   output_path: 'output_dir/'
 
+  objects_to_calculate:
+    - Electrons
+    - Muons
+    - Jets
+    - Photons
+
   particle_counts:
     Electrons:
       min: 1
