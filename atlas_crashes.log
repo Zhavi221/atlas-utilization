@@ -1,0 +1,14 @@
+
+💥 CRASH at 2025-09-18 22:05:18
+File: root://eospublic.cern.ch//eos/opendata/atlas/rucio/data15_13TeV/DAOD_PHYSLITE.37001626._000001.pool.root.1
+Error Type: TypeError
+Error: ATLAS_Parser._log_file_metadata() missing 1 required positional argument: 'file_processing_time'
+Processing Time: 0.00s
+Traceback:
+Traceback (most recent call last):
+  File "/workspaces/opendata_ddp/src/parse_atlas/parser.py", line 393, in parse_files
+    self._log_file_metadata(cur_file_data)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+TypeError: ATLAS_Parser._log_file_metadata() missing 1 required positional argument: 'file_processing_time'
+
+------------------------------------------------------------

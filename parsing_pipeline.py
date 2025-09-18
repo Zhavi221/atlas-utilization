@@ -31,7 +31,10 @@ parsing_config = config["parsing"]
 
 def run():
     atlasparser = parser.ATLAS_Parser(
-        max_chunk_size_bytes=parsing_config["max_chunk_size_bytes"])
+        max_chunk_size_bytes=parsing_config["max_chunk_size_bytes"],
+        max_threads=parsing_config["max_threads"],
+        max_processes=parsing_config["max_processes"]
+        )
 
     release_files_uris = atlasparser.fetch_records_ids(
         release_year=parsing_config["release_year"]
@@ -44,8 +47,7 @@ def run():
     
     for events_chunk in atlasparser.parse_files(
         files_ids=release_files_uris, 
-        limit=parsing_config["file_limit"],
-        threads_for_process=parsing_config["max_threads"],
+        limit=parsing_config["file_limit"]
     ):
         
         logging.info("Cutting events")

@@ -1,7 +1,7 @@
 import awkward as ak
 import numpy as np
 import vector
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 
 import uproot
 import requests
@@ -14,12 +14,10 @@ import os
 import traceback
 import logging
 
-# ===== Enhanced: Statistics and crash handling imports =====
 import threading
 import datetime
 import time
 import json
-# ============================================================
 
 from . import combinatorics, schemas, consts
 
@@ -61,7 +59,7 @@ class ATLAS_Parser():
         _normalize_fields(ak_array):
             Normalizes fields in the awkward array to match schema.
     '''
-    def __init__(self, max_chunk_size_bytes):
+    def __init__(self, max_chunk_size_bytes, max_threads, max_processes):
         self.categories = combinatorics.make_objects_categories(
             schemas.PARTICLE_LIST, min_n=2, max_n=4)
         self.files_ids = None
@@ -81,7 +79,6 @@ class ATLAS_Parser():
         
         # New statistics tracking
         self.parsing_start_time = None
-        self.file_processing_times = []
         self.chunk_stats = []
         self.error_types = {}
         self.timeout_count = 0
@@ -90,7 +87,11 @@ class ATLAS_Parser():
         self.total_events_processed = 0
         # ================================================================
 
-    #NOT YET IMPLEMENTED
+        #PARALLELISM CONFIG
+        self.max_threads = max_threads
+        self.max_processes = max_processes
+
+    #TODO: go over this and understand
     def calculate_mass_for_combination(self, events: ak.Array, combination: dict) -> ak.Array:
         """
         Compute invariant mass per event from the combined objects.
@@ -341,11 +342,16 @@ class ATLAS_Parser():
         tqdm.write(f"="*60)
     # ============================================================
 
-    # ===== Enhanced: parse_files with better statistics tracking =====
+    def _initialize_statistics(self):
+        self.parsing_start_time = time.time()
+        if os.path.exists(self.crash_log):
+            os.remove(self.crash_log) 
+        if os.path.exists(self.stats_log):
+            os.remove(self.stats_log) 
+
     def parse_files(self,
                        files_ids: list = None,
-                       limit: int = 0,
-                       max_threads: int = 3):
+                       limit: int = 0):
         '''
             Parses the input files by their IDs, otherwise uses the member files_ids.
             Yields chunks of events as awkward arrays each size from the input limit.
@@ -358,66 +364,38 @@ class ATLAS_Parser():
         if limit:
             files_ids = files_ids[:limit]
 
-        # ===== Enhanced: Initialize comprehensive tracking =====
-        self.parsing_start_time = time.time()
         successful_count = 0
-        if os.path.exists(self.crash_log):
-            os.remove(self.crash_log)  # Clean previous log
-        if os.path.exists(self.stats_log):
-            os.remove(self.stats_log)  # Clean previous stats
-        # =====================================================
+        self._initialize_statistics()
         
         tqdm.write(
-            f"Starting to parse {len(files_ids)} files with {max_threads} threads.")
+            f"Starting to parse {len(files_ids)} files with {self.max_threads} threads.")
         
-        with ThreadPoolExecutor(max_workers=max_threads) as executor:
+        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
             futures = {
-                executor.submit(self._safe_parse_file, file_index): file_index
+                executor.submit(self._parse_file, file_index): file_index
                 for file_index in files_ids
             }
+        
             with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True) as pbar:
+
                 for future in as_completed(futures):
                     file_index = futures[future]
                     file_start_time = time.time()
-                    
+
                     try:
                         cur_file_data = future.result(timeout=10)
-                        file_processing_time = time.time() - file_start_time
                         
-                        # ===== Enhanced: Better statistics tracking =====
                         if cur_file_data is not None:
                             successful_count += 1
-                            self.file_processing_times.append(file_processing_time)
-                            
-                            # Track file size statistics
-                            file_size_mb = cur_file_data.layout.nbytes / (1024 * 1024)
-                            self.max_file_size_mb = max(self.max_file_size_mb, file_size_mb)
-                            self.min_file_size_mb = min(self.min_file_size_mb, file_size_mb)
-                            
-                            # Track events in this file
-                            events_in_file = len(cur_file_data)
-                            self.total_events_processed += events_in_file
-                            
+                            self._log_file_metadata(cur_file_data)
                             cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
                             self._concatenate_events(cur_file_data)
                             
-                            tqdm.write(f"✅ File processed: {file_size_mb:.2f} MB, {events_in_file:,} events, {file_processing_time:.1f}s")
-                            
-                            if self._should_yield_chunk():
-                                chunk_info = {
-                                    "chunk_id": self.cur_chunk,
-                                    "events": len(self.events),
-                                    "size_mb": self.events.layout.nbytes / (1024 * 1024),
-                                    "files_included": self.file_parsed_count
-                                }
-                                self.chunk_stats.append(chunk_info)
-                                
-                                self.log_cur_size()
-                                self.cur_chunk += 1
+                            if self._chunk_size_enough():
+                                self._log_chunk()
                                 yield self.events
                                 self.events = None
-                        # ===============================================
-                        
+
                     except TimeoutError:
                         file_processing_time = time.time() - file_start_time
                         self._log_crash(file_index, TimeoutError(f"Parsing took longer than 10s"), file_processing_time)
@@ -428,69 +406,62 @@ class ATLAS_Parser():
                         self._log_crash(file_index, e, file_processing_time)
                         tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}")
 
-                    # ===== Enhanced: More detailed progress display =====
-                    success_rate = (successful_count / (successful_count + len(self.failed_files)) * 100) if (successful_count + len(self.failed_files)) > 0 else 0
-                    pbar.set_postfix_str(f"✅{successful_count} ❌{len(self.failed_files)} ({success_rate:.1f}%) | {self.total_size_kb / (1024 * 1024):.1f}MB | {self.total_events_processed:,} events")
-                    # =======================================================
+                    status = self._get_parsing_status(successful_count)
+                    pbar.set_postfix_str(status)
                     pbar.update(1)
 
-        # ===== Enhanced: Final statistics and summary =====
         stats = self._save_statistics(len(files_ids), successful_count)
-        self.print_statistics_summary(stats)
-        # =================================================
+        self.print_statistics_summary(stats) #TODO: go over this weird function
         
         if self.events is not None:
-            # Final chunk statistics
-            final_chunk_info = {
-                "chunk_id": self.cur_chunk,
-                "events": len(self.events),
-                "size_mb": self.events.layout.nbytes / (1024 * 1024),
-                "files_included": self.file_parsed_count
-            }
-            self.chunk_stats.append(final_chunk_info)
-            
-            self.log_cur_size()
-            self.cur_chunk += 1
+            self._log_chunk()
             yield self.events
             self.events = None
 
-    def threads_futures(self, data_chunk: List[dict]) -> List[dict]:
-        """Process a chunk of data using threading within a process"""
-        with ThreadPoolExecutor(max_workers=2) as thread_executor:
-            futures = [thread_executor.submit(mixed_task, data) for data in data_chunk]
-            return [future.result() for future in as_completed(futures)]
+    def _get_parsing_status(self, successful_count):
+        success_rate = (
+                        (successful_count / (successful_count + len(self.failed_files)) * 100)
+                        if (successful_count + len(self.failed_files)) > 0 else 0
+                    )
+        status = (
+                f"✅ {successful_count} | "
+                f"❌ {len(self.failed_files)} | "
+                f"✨ {success_rate:.1f}% | "
+                f"💾 {self.total_size_kb / (1024 * 1024):.1f} MB | "
+                f"🎯 {self.total_events_processed:,} events"
+            )
         
-        
-    def _prepare_threads_futures(self, files_ids, max_threads):            
-        with ThreadPoolExecutor(max_workers=max_threads) as executor:
-            futures = {
-                executor.submit(self._parse_file, file_index): file_index
-                for file_index in files_ids
-            }
+        return status
 
-            return futures
+    def _log_file_metadata(self, cur_file_data, file_processing_time):
+        self.file_processing_times.append(file_processing_time)
+                            
+        file_size_mb = cur_file_data.layout.nbytes / (1024 * 1024)
+        self.max_file_size_mb = max(self.max_file_size_mb, file_size_mb)
+        self.min_file_size_mb = min(self.min_file_size_mb, file_size_mb)
+                            
+        events_in_file = len(cur_file_data)
+        self.total_events_processed += events_in_file
+                            
+                            
+        tqdm.write(f"✅ File processed: {file_size_mb:.2f} MB, {events_in_file:,} events, {file_processing_time:.1f}s")
+    
+    def _log_chunk(self):
+        chunk_info = {
+            "chunk_id": self.cur_chunk,
+            "events": len(self.events),
+            "size_mb": self.events.layout.nbytes / (1024 * 1024),
+            "files_included": self.file_parsed_count
+        }
+        self.chunk_stats.append(chunk_info)
         
-    def basic_decorator(self, func):
-        def wrapper(*args, **kwargs):
-            print(f"Calling function {func.__name__}")
-            result = func(*args, **kwargs)
-            print(f"Function {func.__name__} finished")
-            return result
-        return wrapper
-
-    # ===== Enhanced: Better error tracking in safe parsing =====
-    def _safe_parse_file(self, file_index):
-        """Safe wrapper for _parse_file that handles crashes with timing"""
-        start_time = time.time()
-        try:
-            result = self._parse_file(file_index)
-            processing_time = time.time() - start_time
-            return result
-        except Exception as e:
-            processing_time = time.time() - start_time
-            self._log_crash(file_index, e, processing_time)
-            return None  # Return None to indicate failure
-    # =============================================================
+        self.cur_chunk += 1
+        
+        tqdm.write(
+                f"Yielding chunk #{self.cur_chunk} with {len(self.events):,} events "
+                f"from {self.file_parsed_count} files "
+                f"({self.events.layout.nbytes / (1024 * 1024):.2f} MB). "
+                f"Total: {self.total_size_kb  / (1024 * 1024):.2f} MB accumulated.")
 
     def _parse_file(self, file_index):
         '''
@@ -547,7 +518,7 @@ class ATLAS_Parser():
         chunk_size_kb = cur_file_data.layout.nbytes
         self.total_size_kb += chunk_size_kb
     
-    def _should_yield_chunk(self):
+    def _chunk_size_enough(self):
         return self.events.layout.nbytes >= self.max_chunk_size_bytes
 
     #TESTING METHODS
@@ -580,13 +551,6 @@ class ATLAS_Parser():
             return random_mc_id
 
         return all_mc_ids
-
-    def log_cur_size(self):
-        tqdm.write(
-                f"Yielding chunk #{self.cur_chunk} with {len(self.events):,} events "
-                f"from {self.file_parsed_count} files "
-                f"({self.events.layout.nbytes / (1024 * 1024):.2f} MB). "
-                f"Total: {self.total_size_kb  / (1024 * 1024):.2f} MB accumulated.")
 
     #STATIC METHODS
     @staticmethod
