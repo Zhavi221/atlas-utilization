@@ -1,52 +1,48 @@
 import logging
 import sys
-from src.parse_atlas import parser, combinatorics, consts, schemas
-import matplotlib.pyplot as plt # plotting
-import awkward as ak
-import tqdm
-import random
+import argparse
+import yaml
 
-release_years = ['2016', '2020', '2024', '2025']
+CONFIG_PATH = "configs/pipeline_config.yaml"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+def main():
+    main_logger = init_logging()
+    config = load_config(CONFIG_PATH)
+    tasks = config["tasks"]
+        
+    if tasks["do_parsing"]:
+        main_logger.info("Starting parsing task")
+        from src.pipelines import parsing_pipeline
+        parsing_pipeline.parse(config["parsing"])
+    
+    if tasks["do_mass_calculating"]:
+        main_logger.info("Starting calculations task")
+        from src.pipelines import inv_masses_pipeline
+        inv_masses_pipeline.mass_calculate(config["mass_calculate"])
+    
 
-def run():
-    atlasparser = parser.ATLAS_Parser()
-    release_files_uris = atlasparser.fetch_records_ids(release_year='2024')
+def init_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
 
-    categories = combinatorics.make_objects_categories(schemas.PARTICLE_LIST, min_n=2, max_n=4)
+    main_logger = logging.getLogger(__name__)
 
-    # for events_chunk in atlasparser.parse_files(files_ids=release_files_uris, limit=30):
-    for events_chunk in atlasparser.parse_files(files_ids=
-                                                random.sample(release_files_uris, k=1)):
-        for category in categories:
-            # logging.info(f"Processing category: {category}")
-            combination_dict_gen = combinatorics.make_objects_combinations_for_category(
-                    category, min_k=2, max_k=4)
-            combination_dict = next(combination_dict_gen)
-            #IF CAN FILTER ACCORDING TO ITERATION'S COMBINATION
-            if not all(obj in events_chunk.fields for obj in combination_dict.keys()):
-                logging.info ('Not all of the combination objects are present in the events chunk. ')
-                continue    
+    return main_logger
 
-            combo_events = atlasparser.filter_events_by_combination(
-                events_chunk, combination_dict)
+def load_config(config_path):
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--config", help="Config file", default=config_path)
+    args = arg_parser.parse_args()
 
-            combination_events_mass = atlasparser.calculate_mass_for_combination(combo_events)
+    with open(args.config) as f:
+        config = yaml.safe_load(f)
+
+    return config
+
             
-            #COMBO_EVENTS IS THE EVENTS FILTERED FOR EACH COMBINTATION
-            #NEXT STEP, MAKE A MASS HIST OUT OF IT
-            plt.hist(ak.flatten(combination_events_mass / consts.GeV, axis=None), bins=100)
-            plt.xlabel("Reconstructed Top Quark Mass (GeV)")
-            plt.ylabel("Number of Events")
-            plt.title("Distribution of Reconstructed Top Quark Mass")
-            plt.axvline(172.76, color='r', linestyle='dashed', linewidth=2, label='Expected Top Quark Mass')
-            plt.legend()
-            plt.show()
-            0/0
-            
-run()
+
+if __name__ == "__main__":
+    main()
