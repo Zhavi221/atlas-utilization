@@ -9,6 +9,7 @@ xrootd-5.5.4-py311h28ae080_0.conda
 
 BumpNet-main/*
 output_dir/*
+data/*
 root_atom_docker.sif
 root_atom.sif
 סיכום פרויקט שקמה.txt

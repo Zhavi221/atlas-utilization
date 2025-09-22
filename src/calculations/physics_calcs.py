@@ -1,8 +1,15 @@
 import awkward as ak
 import numpy as np
 
+DEFAULT_MASSES = {
+    'jets': 0.0,
+    'photons': 0.0,
+    'electrons': 0.000511,  # Convert from MeV to GeV
+    'muons': 0.10566      # Convert from MeV to GeV
+}
+
 #TODO: go over this and understand
-def calculate_inv_mass(events: ak.Array) -> ak.Array:
+def calc_events_mass(events: ak.Array) -> ak.Array:
         """
         Compute invariant mass per event from the combined objects.
         Compatible with flattened structure where each particle type has separate fields.
@@ -12,12 +19,7 @@ def calculate_inv_mass(events: ak.Array) -> ak.Array:
             return ak.Array([])
 
         # Extract unique particle types from field names (excluding count fields)
-        particle_types = set()
-        for field in events.fields:
-            if '_' in field and not field.startswith('n'):
-                particle_type = field.split('_')[0]
-                particle_types.add(particle_type)
-
+        particle_types = extract_object_types(events.fields)
 
         num_events = len(events)
         total_px = np.zeros(num_events)
@@ -46,19 +48,13 @@ def calculate_inv_mass(events: ak.Array) -> ak.Array:
             
             # Assign mass - default masses for common particles (in GeV/c²)
             particle_key = particle_type.lower()
-            default_masses = {
-                'jets': 0.0,
-                'photons': 0.0,
-                'electrons': 0.000511,  # Convert from MeV to GeV
-                'muons': 0.10566      # Convert from MeV to GeV
-            }
             
             # Check for mass field first, then use defaults
             mass_field = f"{particle_type}_m"
             if mass_field in events.fields:
                 mass = events[mass_field]
-            elif particle_key in default_masses:
-                mass = ak.full_like(pt, default_masses[particle_key])
+            elif particle_key in DEFAULT_MASSES:
+                mass = ak.full_like(pt, DEFAULT_MASSES[particle_key])
             else:
                 print(f"⚠️  Warning: No mass found for {particle_type}, assuming massless")
                 mass = ak.full_like(pt, 0.0)
@@ -109,6 +105,15 @@ def calculate_inv_mass(events: ak.Array) -> ak.Array:
         print(f"Mass range: {np.min(invariant_mass)} to {np.max(invariant_mass)}")
         
         return ak.Array(invariant_mass)
+
+def extract_object_types(fields: list) -> set:
+    particle_types = set()
+    for field in fields:
+        if '_' in field and not field.startswith('n'):
+            particle_type = field.split('_')[0]
+            particle_types.add(particle_type)
+
+    return particle_types
 
 def filter_events_by_combination(events, particle_counts, use_count_range=True):
     '''

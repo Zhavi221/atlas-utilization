@@ -300,7 +300,7 @@ class ATLAS_Parser():
                     pbar.update(1)
 
         stats = self._save_statistics(len(files_ids), successful_count)
-        self.print_statistics_summary(stats) #TODO: go over this weird function
+        self.print_statistics_summary(stats) 
         
         if self.events is not None:
             self._log_chunk()

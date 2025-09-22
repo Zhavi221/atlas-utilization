@@ -44,16 +44,23 @@ def mass_calculate(config):
                     arrays, combination, use_count_range=False
                 )    
 
-                inv_mass = physics_calcs.calculate_inv_mass(filtered_events) 
+                inv_mass = physics_calcs.calc_events_mass(filtered_events) 
 
+                combination_name = prepare_combination_name(combination)
                 output_path = os.path.join(
                     config["output_dir"], 
-                    f"{filename}_{combination}_inv_mass.npy" #TODO: MAKE THIS MORE ROBUST (e.g. 2e2j instead of 2electrons_2jets
+                    f"{filename}_{combination_name}_inv_mass.npy" #TODO: MAKE THIS MORE ROBUST (e.g. 2e2j instead of 2electrons_2jets
                     )
                 np.save(output_path, ak.to_numpy(inv_mass))
     #######
 
+def prepare_combination_name(combination: dict) -> str:
+    combination_name = ''
+    for object, amount in combination:
+        combination_name += str(amount)
+        combination_name += object
 
+    return combination_name
 
 def init_logging():
     logging.basicConfig(
