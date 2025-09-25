@@ -22,6 +22,7 @@ def mass_calculate(config):
     # )
     # main_category = categories[0]
 
+    os.makedirs(config["input_dir"], exist_ok=True)
     all_combinations = combinatorics.get_all_combinations(config["objects_to_calculate"])
 
     for combination in all_combinations:    
