@@ -93,7 +93,7 @@ class ATLAS_Parser():
     def save_events_as_root(self, events, output_dir):
         os.makedirs(output_dir, exist_ok=True)
         
-        output_path = os.path.join(output_dir, f"filtered_{self.cur_chunk}.root")
+        output_path = os.path.join(output_dir, f"chunk_{self.cur_chunk}.root")
         with uproot.recreate(output_path) as f:
             f["tree"] = events
 

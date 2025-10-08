@@ -1,6 +1,6 @@
 tasks:
-  do_parsing: false
-  do_mass_calculating: true
+  do_parsing: true
+  do_mass_calculating: false
 
 parsing:
   release_year: '2024'
@@ -9,7 +9,7 @@ parsing:
   # max_chunk_size_bytes: 1000000000 #5GB
   # max_chunk_size_bytes: 2000000000 #2GB 
   max_chunk_size_bytes: 2000000 #2MB 
-  file_limit: 50
+  file_limit: 10
   output_path: 'data/root_files'
   logging_path: 'logs/'
 

@@ -1,6 +1,7 @@
 import logging
 import sys
 from src.parse_atlas import parser, consts, schemas
+from src.calculations import combinatorics, physics_calcs
 import matplotlib.pyplot as plt # plotting
 import awkward as ak
 import tqdm
@@ -34,11 +35,10 @@ def parse(config):
         )
         
         logger.info("Filtering events")
-        #TODO: ADJUST THIS FILTER TO THE CONFIG TO JUST MAKE GENERAL CUTS
-        filtered_events = parser.ATLAS_Parser.filter_events_by_counts(
-            # cut_events, config["particle_counts"]
-            cut_events, {'nElectrons_eta': 2, 'nJets_eta': 4}, use_range=False
-        )    
+        
+        filtered_events = physics_calcs.filter_events_by_combination(
+            cut_events, config["particle_counts"], use_count_range=False
+        ) 
 
         logger.info("Flattening root")
         root_ready = atlasparser.flatten_for_root(filtered_events)
