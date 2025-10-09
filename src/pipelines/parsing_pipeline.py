@@ -36,8 +36,10 @@ def parse(config):
         
         logger.info("Filtering events")
         
-        filtered_events = physics_calcs.filter_events_by_combination(
-            cut_events, config["particle_counts"], use_count_range=False
+        filtered_events = physics_calcs.filter_events_by_particle_counts(
+            events=cut_events, 
+            particle_counts=config["particle_counts"], 
+            is_particle_counts_range=True
         ) 
 
         logger.info("Flattening root")

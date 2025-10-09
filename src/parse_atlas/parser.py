@@ -63,6 +63,7 @@ class ATLAS_Parser():
         self.files_ids = None
         self.file_parsed_count = 0
         self.cur_chunk = 0
+        self.cur_chunk_hash = None
         
         self.events = None
         self.total_size_kb = 0
@@ -93,35 +94,50 @@ class ATLAS_Parser():
     def save_events_as_root(self, events, output_dir):
         os.makedirs(output_dir, exist_ok=True)
         
+        #TODO: for each chunk, create a has representing it's underlying files
         output_path = os.path.join(output_dir, f"chunk_{self.cur_chunk}.root")
-        with uproot.recreate(output_path) as f:
-            f["tree"] = events
+        with uproot.recreate(output_path) as file:
+            file["CollectionTree"] = events
 
     def flatten_for_root(self, awk_arr):
-        '''
-            Flatten a top-level awkward Array into ROOT-friendly dict.
-        '''
-        
+        """
+        Flatten a top-level awkward Array into a ROOT-friendly dict
+        compatible with _parse_file()'s expected field structure.
+        Specifically, each particle object is stored under
+        "<cur_obj_name>AuxDyn.<field>" branches.
+        """
         root_ready = {}
 
         for obj_name in awk_arr.fields:
             obj = awk_arr[obj_name]
 
+            # e.g., obj_name = "Jets"  -> cur_obj_name = "AnalysisJets"
+            cur_obj_name = ATLAS_Parser._prepare_obj_name(obj_name)
+
+            if cur_obj_name is None:
+                cur_obj_name = obj_name
+
             try:
-                # If this succeeds, obj is a record array (possibly jagged)
+                # If obj is a record array, iterate over its fields
                 for field in obj.fields:
                     branch = obj[field]
+                    # ROOT doesn't like None — fill with 0.0
                     filled_branch = ak.fill_none(branch, 0.0)
-                    root_ready[f"{obj_name}_{field}"] = filled_branch
+
+                    # IMPORTANT: match the structure used by _parse_file
+                    # e.g., "AnalysisJetsAuxDyn.pt"
+                    branch_name = f"{cur_obj_name}AuxDyn.{field}"
+                    root_ready[branch_name] = filled_branch
+
             except AttributeError:
-                # Not a record, already primitive or jagged primitive
-                logging.info(
-                    "⚠️Warning: Object is not a record array, saving as-is.")
-                root_ready[obj_name] = obj
+                # Not a record array — save as a top-level branch
+                logging.info(f"Warning: {obj_name} is not a record array, saving as-is.")
+                root_ready[obj_name] = ak.fill_none(obj, 0.0)
+
             except Exception as e:
-                logging.info(f"⚠️Error processing {obj_name}: {e}")
+                logging.info(f"Error processing {obj_name}: {e}")
                 continue
-       
+
         return root_ready
     
     #PARSING METHODS
@@ -174,8 +190,6 @@ class ATLAS_Parser():
         end_time = time.time()
         total_time = end_time - self.parsing_start_time if self.parsing_start_time else 0
         
-        avg_processing_time = np.mean(self.file_processing_times) if self.file_processing_times else 0
-        
         stats = {
             "parsing_session": {
                 "timestamp": datetime.datetime.now().isoformat(),
@@ -186,7 +200,6 @@ class ATLAS_Parser():
                 "success_rate": (successful_count / total_files * 100) if total_files > 0 else 0
             },
             "performance": {
-                "avg_file_processing_time_seconds": avg_processing_time,
                 "max_file_size_mb": self.max_file_size_mb if self.max_file_size_mb > 0 else 0,
                 "min_file_size_mb": self.min_file_size_mb if self.min_file_size_mb != float('inf') else 0,
                 "total_data_processed_mb": self.total_size_kb / (1024 * 1024),
@@ -224,7 +237,6 @@ class ATLAS_Parser():
             for error_type, count in stats['errors']['error_types'].items():
                 tqdm.write(f"   • {error_type}: {count}")
         
-        tqdm.write(f"📈 Avg File Time: {stats['performance']['avg_file_processing_time_seconds']:.2f}s")
         tqdm.write(f"📋 Full stats saved to: {self.stats_log}")
         if stats['parsing_session']['failed_files'] > 0:
             tqdm.write(f"💥 Crash log saved to: {self.crash_log}")
@@ -261,7 +273,7 @@ class ATLAS_Parser():
         
         with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
             futures = {
-                executor.submit(self._parse_file, file_index): file_index
+                executor.submit(self.parse_file, file_index): file_index
                 for file_index in files_ids
             }
         
@@ -350,11 +362,12 @@ class ATLAS_Parser():
                 f"({self.events.layout.nbytes / (1024 * 1024):.2f} MB). "
                 f"Total: {self.total_size_kb  / (1024 * 1024):.2f} MB accumulated.")
 
-    def _parse_file(self, file_index):
+    @staticmethod
+    def parse_file(file_index, tree_name="CollectionTree") -> ak.Array:
         '''
             Parses a single file by a generic schema.
         '''
-        with uproot.open({file_index: "CollectionTree"}, 
+        with uproot.open({file_index: tree_name}, 
                 vector_read=False) as tree:
             events = {}
             objs_filtered = []
@@ -365,8 +378,7 @@ class ATLAS_Parser():
                 desc=f"Parsing file",
                 unit="obj"
             ):
-                cur_obj_name, zip_function = ATLAS_Parser._prepare_obj_name(
-                    obj_name)
+                cur_obj_name = ATLAS_Parser._prepare_obj_name(obj_name)
 
                 filtered_fields = list(filter(
                     lambda field: f"{cur_obj_name}AuxDyn.{field}" in tree.keys(),
@@ -384,13 +396,16 @@ class ATLAS_Parser():
                 sep_to_arrays = ak.unzip(tree_as_rows)
                 field_names = tree_as_rows.fields
 
-                tree_as_rows = zip_function(
+                tree_as_rows = vector.zip(
                     dict(zip(field_names, sep_to_arrays))
                 )
 
                 events[obj_name] = tree_as_rows
 
-            return ak.zip(events, depth_limit=1)
+            if events:
+                return ak.zip(events, depth_limit=1)
+            else:
+                return None
     
     def _concatenate_events(self, cur_file_data):
         if self.events is None:
@@ -480,18 +495,21 @@ class ATLAS_Parser():
             filtered_events[obj] = ak.mask(particles, mask)
 
         return ak.Array(filtered_events)
-        
+    
     @staticmethod
     def _prepare_obj_name(obj_name):
-        final_name = None
         if obj_name in schemas.PARTICLE_LIST:
-            final_name = "Analysis" + obj_name
-            zip_function = vector.zip
+            return "Analysis" + obj_name
         else:
-            zip_function = ak.zip
+            return obj_name
 
-        return final_name, zip_function
-
+    # @staticmethod
+    # def _decide_zip_function(obj_name):
+    #     if obj_name in ['Electrons', 'Muons', 'Jets', 'Photons']:
+    #         return ak.zip
+    #     else:
+    #         return lambda x: x  # Identity function if no zipping needed
+        
     @staticmethod
     def _normalize_fields(ak_array):
         for field in schemas.INVARIANT_MASS_SCHEMA.keys():

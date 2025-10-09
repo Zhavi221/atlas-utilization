@@ -8,20 +8,18 @@ import yaml
 import uproot
 import awkward as ak
 import os
+import vector
 
 from src.calculations import combinatorics, physics_calcs
+from src.parse_atlas import parser
 
 import argparse, yaml, uproot
 import numpy as np
 
+branches = set()
 def mass_calculate(config):
     logger = init_logging()
     
-    # categories = combinatorics.make_objects_categories(
-    #     schemas.PARTICLE_LIST, min_n=4, max_n=4
-    # )
-    # main_category = categories[0]
-
     os.makedirs(config["input_dir"], exist_ok=True)
     all_combinations = combinatorics.get_all_combinations(config["objects_to_calculate"])
 
@@ -32,34 +30,47 @@ def mass_calculate(config):
                 logger.info(f"Processing file: {filename}")
                 file_path = os.path.join(config["input_dir"], filename)
                 
-                #TODO: MAKE SURE THIS IS GOOD
-                with uproot.open(file_path) as f:
-                    e = f["tree"]
-                arrays = e.arrays(library="ak")
+                particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
                 
-                #TODO: filter each file by all the combinations 
-                # AND THEN calculate the invariant mass for each combination
-                # AND SAVE the results as a new numpy array OR directly train BumpNet? (requiers post processing) 
-                
-                filtered_events = physics_calcs.filter_events_by_combination(
-                    arrays, combination, use_count_range=False
+                filtered_events: ak.Array = physics_calcs.filter_events_by_particle_counts(
+                    events=particle_arrays, 
+                    particle_counts=combination, 
+                    is_particle_counts_range=False
                 )    
 
-                inv_mass = physics_calcs.calc_events_mass(filtered_events) 
+                if len(filtered_events) == 0:
+                    continue
+                
+                #TODO: make this robust and generic,
+                # DO TESTS TO MAKE SURE ERROR CATCHING 
+                # ALSO MAKE SURE UNDERSTAND WHY NEED FOR CONCATENAT AND ZIP
+                                
+                # inv_mass = physics_calcs.calc_events_mass(filtered_events) 
+                inv_mass: list = physics_calcs.calc_inv_mass_v2(filtered_events) 
+                
+                if not ak.any(inv_mass):
+                    continue
 
                 combination_name = prepare_combination_name(combination)
                 output_path = os.path.join(
                     config["output_dir"], 
-                    f"{filename}_{combination_name}_inv_mass.npy" #TODO: MAKE THIS MORE ROBUST (e.g. 2e2j instead of 2electrons_2jets
+                    f"{filename}_{combination_name}_inv_mass.npy" 
                     )
+                
                 np.save(output_path, ak.to_numpy(inv_mass))
-    #######
+
+def parse_file(file_path):
+    with uproot.open(file_path) as file:
+        tree = file["tree"]           
+        particle_arrays = tree.arrays(library="ak")
+
+        return particle_arrays
 
 def prepare_combination_name(combination: dict) -> str:
     combination_name = ''
-    for object, amount in combination:
+    for object, amount in combination.items():
         combination_name += str(amount)
-        combination_name += object
+        combination_name += object[0].lower()
 
     return combination_name
 

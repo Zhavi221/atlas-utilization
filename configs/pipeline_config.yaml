@@ -1,19 +1,18 @@
 tasks:
-  do_parsing: true
-  do_mass_calculating: false
+  do_parsing: false
+  do_mass_calculating: true
 
 parsing:
   release_year: '2024'
-  max_threads: 3
+  max_threads: 5
   max_processes: 3
   # max_chunk_size_bytes: 1000000000 #5GB
   # max_chunk_size_bytes: 2000000000 #2GB 
-  max_chunk_size_bytes: 2000000 #2MB 
-  file_limit: 10
+  max_chunk_size_bytes: 200000000 
+  file_limit: 30
   output_path: 'data/root_files'
   logging_path: 'logs/'
 
-  
   particle_counts:
     Electrons:
       min: 1
