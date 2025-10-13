@@ -1,0 +1,52 @@
+tasks:
+  do_parsing: false
+  do_mass_calculating: true
+
+parsing:
+  release_year: '2024'
+  max_threads: 5
+  max_processes: 3
+  # max_chunk_size_bytes: 1000000000 #5GB
+  # max_chunk_size_bytes: 2000000000 #2GB 
+  max_chunk_size_bytes: 200000000 
+  file_limit: 30
+  output_path: 'data/root_files'
+  logging_path: 'logs/'
+
+  particle_counts:
+    Electrons:
+      min: 1
+      max: 6
+    Muons:
+      min: 1
+      max: 6
+    Jets:
+      min: 2
+      max: 8
+    Photons:
+      min: 0
+      max: 5
+    Taus:
+      min: 0
+      max: 3
+
+  kinematic_cuts:
+    rho:
+      min: 0
+    eta:
+      min: -5
+      max: 5
+    phi:
+      min: -3.141592653589793
+      max: 3.141592653589793
+    tau:
+      min: 0
+
+mass_calculate:
+  input_dir: 'data/root_files'
+  output_dir: 'data/inv_masses'
+  objects_to_calculate:
+      - Electrons
+      - Muons
+      - Jets
+      - Photons

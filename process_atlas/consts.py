@@ -1,1 +1,0 @@
-PARAMETERS_JSON = 'parameters.json'
