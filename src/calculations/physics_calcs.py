@@ -49,6 +49,8 @@ def get_particle_mass(particle_type, particle_array):
     # tau can refer to mass/energy
     if 'tau' in particle_array.fields:
         return particle_array.tau
+    elif 'm' in particle_array.fields:
+        return particle_array.m
     else:
         return PARTICLE_MASSES.get(particle_type, 0.0) 
 

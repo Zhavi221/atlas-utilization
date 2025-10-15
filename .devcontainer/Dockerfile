@@ -1,4 +1,4 @@
-FROM rootproject/root:custom_config_v3
+FROM rootproject/root:latest
 
 # Install required system dependencies
 RUN apt-get update && \
@@ -8,29 +8,13 @@ RUN apt-get update && \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Set environment variable for rpy2 build
+ENV RPY2_CFFI_MODE=ABI
+
 # Install Python packages
+COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir \
-    rpy2 \
-    scikit-learn \
-    seaborn \
-    ipykernel \
-    uproot \
-    awkward \
-    vector \
-    matplotlib \
-    tqdm \
-    pandas \
-    notebook \
-    atlasopenmagic \
-    numpy \
-    setuptools \
-    xrootd \
-    fsspec-xrootd \
-    cernopendata_client \
-    jupyterlab \
-    debugpy  # For VS Code debugging
+    pip install --no-cache-dir -r requirements.txt
 
 # Register Jupyter kernel
 RUN python -m ipykernel install --name root-env --display-name "ROOT Python"
-

@@ -157,7 +157,6 @@ class ATLAS_Parser():
         self.files_ids = release_files_uris
         return release_files_uris
 
-    # ===== Enhanced: Detailed crash and statistics logging =====
     def _log_crash(self, file_index, exception, processing_time=None):
         """Enhanced thread-safe crash logging with statistics"""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -241,8 +240,7 @@ class ATLAS_Parser():
         if stats['parsing_session']['failed_files'] > 0:
             tqdm.write(f"💥 Crash log saved to: {self.crash_log}")
         tqdm.write(f"="*60)
-    # ============================================================
-
+   
     def _initialize_statistics(self):
         self.parsing_start_time = time.time()
         if os.path.exists(self.crash_log):
@@ -273,7 +271,7 @@ class ATLAS_Parser():
         
         with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
             futures = {
-                executor.submit(self.parse_file, file_index): file_index
+                executor.submit(ATLAS_Parser.parse_file, file_index): file_index
                 for file_index in files_ids
             }
         
@@ -363,7 +361,79 @@ class ATLAS_Parser():
                 f"Total: {self.total_size_kb  / (1024 * 1024):.2f} MB accumulated.")
 
     @staticmethod
-    def parse_file(file_index, tree_name="CollectionTree") -> ak.Array:
+    #TODO new parse file method
+    def parse_file(file_index, tree_name="CollectionTree", batch_size=40_000) -> ak.Array:
+        """
+        Parse an ATLAS DAOD file in batches if necessary.
+        Accumulates raw arrays and zips into vector objects only once per object.
+        """
+        with uproot.open({file_index: tree_name}) as tree:
+            all_keys = set(tree.keys())
+            n_entries = tree.num_entries
+            is_big = n_entries > batch_size  # flag large files
+
+            # 1. Precompute all fields to read
+            field_map = ATLAS_Parser._extract_branches_by_schema(all_keys, schema=schemas.INVARIANT_MASS_SCHEMA)
+
+            if not field_map.values():
+                return None
+            
+            all_fields = sorted({x for v in field_map.values() for x in v})
+
+            # 2. Initialize storage for raw batches
+            all_events = {obj_name: [] for obj_name in field_map}
+
+            # 3. Define entry ranges
+            entry_ranges = []
+            parsing_label = ""
+            if is_big:
+                parsing_label = "Parsing file as batches"
+                entry_ranges = [
+                    (start, min(start + batch_size, n_entries)) 
+                    for start in range(0, n_entries, batch_size)
+                ]
+            else:
+                parsing_label = "Parsing file"
+                entry_ranges = [(0, n_entries)]
+
+            # 4. Read batches
+            for entry_start, entry_stop in tqdm(entry_ranges, desc=parsing_label, unit="batch"):
+                batch_data = tree.arrays(all_fields, entry_start=entry_start, entry_stop=entry_stop)
+
+                # Append raw arrays only
+                for obj_name, fields in field_map.items():
+                    subset = batch_data[fields]
+                    all_events[obj_name].append(subset)
+
+            # 5. Concatenate batches and zip once per object
+            for obj_name, chunks in all_events.items():
+                concatenated = ak.concatenate(chunks)
+                field_names = [f.split('.')[-1] for f in field_map[obj_name]]
+                all_events[obj_name] = vector.zip({name: concatenated[full] 
+                                                for name, full in zip(field_names, field_map[obj_name])})
+
+            #TODO what is this
+            return ak.zip({k: v for k, v in all_events.items() if v is not None}, depth_limit=1)
+
+    @staticmethod
+    #TODO go over
+    def _extract_branches_by_schema(all_keys, schema: dict):
+        field_map = {}
+        all_fields = []
+        for obj_name, fields in schema.items():
+            cur_obj_name = ATLAS_Parser._prepare_obj_name(obj_name)
+            physical_quantities = [
+                    f for f in fields if f"{cur_obj_name}AuxDyn.{f}" in all_keys
+                ]
+
+            if ATLAS_Parser.can_calculate_inv_mass(physical_quantities):
+                full_branches = [f"{cur_obj_name}AuxDyn.{f}" for f in physical_quantities]
+                field_map[obj_name] = full_branches
+
+        return field_map
+
+    @staticmethod
+    def parse_filea(file_index, tree_name="CollectionTree") -> ak.Array:
         '''
             Parses a single file by a generic schema.
         '''
@@ -372,6 +442,7 @@ class ATLAS_Parser():
             events = {}
             objs_filtered = []
 
+            tree_keys = tree.keys()
             # Wrap the schema iteration with tqdm
             for obj_name, fields in tqdm(
                 schemas.INVARIANT_MASS_SCHEMA.items(),
@@ -381,11 +452,14 @@ class ATLAS_Parser():
                 cur_obj_name = ATLAS_Parser._prepare_obj_name(obj_name)
 
                 filtered_fields = list(filter(
-                    lambda field: f"{cur_obj_name}AuxDyn.{field}" in tree.keys(),
+                    lambda field: f"{cur_obj_name}AuxDyn.{field}" in tree_keys,
                     fields))
 
-                if len(filtered_fields) < len(fields):
+                #TODO make this check robust and less fatal
+                if not ATLAS_Parser.can_calculate_inv_mass(filtered_fields):
                     continue
+                # if len(filtered_fields) < len(fields):
+                #     continue
 
                 objs_filtered.append(cur_obj_name)
                 tree_as_rows = tree.arrays(
@@ -455,6 +529,19 @@ class ATLAS_Parser():
         return all_mc_ids
 
     #STATIC METHODS
+    #TODO: check this
+    @staticmethod
+    def can_calculate_inv_mass(filtered_fields):
+        required_fields = {'pt', 'eta', 'phi', 'm'} #NAME ACCORDING TO QUANTITIES PRESENT
+        required_fields2 = {'rho', 'eta', 'phi', 'tau'} #NAME ACCORDING TO QUANTITIES PRESENT
+        
+        temp = set(filtered_fields)
+
+        if 'm' not in temp:
+            temp.update('m')  #what is this
+
+        return required_fields == temp or required_fields2 == temp
+    
     @staticmethod
     def filter_events_by_kinematics(events, kinematic_cuts):
         filtered_events = {}
@@ -503,13 +590,6 @@ class ATLAS_Parser():
         else:
             return obj_name
 
-    # @staticmethod
-    # def _decide_zip_function(obj_name):
-    #     if obj_name in ['Electrons', 'Muons', 'Jets', 'Photons']:
-    #         return ak.zip
-    #     else:
-    #         return lambda x: x  # Identity function if no zipping needed
-        
     @staticmethod
     def _normalize_fields(ak_array):
         for field in schemas.INVARIANT_MASS_SCHEMA.keys():
