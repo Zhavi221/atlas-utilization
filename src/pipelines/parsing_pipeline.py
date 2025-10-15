@@ -10,11 +10,13 @@ import yaml
 import uproot
 import awkward as ak
 import os
+import gc
 
 def parse(config):
     logger = init_logging()
 
     atlasparser = parser.ATLAS_Parser(
+        max_process_memory_mb=config["max_process_memory_mb"],
         max_chunk_size_bytes=config["max_chunk_size_bytes"],
         max_threads=config["max_threads"],
         max_processes=config["max_processes"]
@@ -33,7 +35,7 @@ def parse(config):
         cut_events = parser.ATLAS_Parser.filter_events_by_kinematics(
             events_chunk, config["kinematic_cuts"]
         )
-        
+        del events_chunk  
         logger.info("Filtering events")
         
         filtered_events = physics_calcs.filter_events_by_particle_counts(
@@ -41,13 +43,15 @@ def parse(config):
             particle_counts=config["particle_counts"], 
             is_particle_counts_range=True
         ) 
-
+        del cut_events
         logger.info("Flattening root")
         root_ready = atlasparser.flatten_for_root(filtered_events)
-
+        del filtered_events
         logger.info("Saving events")
         atlasparser.save_events_as_root(root_ready, config["output_path"])        
-        
+        del root_ready
+
+        gc.collect()  
 
 def init_logging():
     logging.basicConfig(
@@ -59,3 +63,4 @@ def init_logging():
     logger = logging.getLogger(__name__)
 
     return logger
+

@@ -13,11 +13,14 @@ from tqdm import tqdm
 import os
 import traceback
 import logging
+import sys
 
 import threading
 import datetime
 import time
 import json
+import gc
+import tracemalloc
 
 from . import schemas, consts
 
@@ -59,7 +62,7 @@ class ATLAS_Parser():
         _normalize_fields(ak_array):
             Normalizes fields in the awkward array to match schema.
     '''
-    def __init__(self, max_chunk_size_bytes, max_threads, max_processes):
+    def __init__(self, max_process_memory_mb, max_chunk_size_bytes, max_threads, max_processes):
         self.files_ids = None
         self.file_parsed_count = 0
         self.cur_chunk = 0
@@ -69,6 +72,7 @@ class ATLAS_Parser():
         self.total_size_kb = 0
 
         self.max_chunk_size_bytes = max_chunk_size_bytes
+        self.max_process_memory_mb = max_process_memory_mb 
         
         # ===== Enhanced: Comprehensive crash and statistics tracking =====
         self.crash_log = "atlas_crashes.log"
@@ -275,7 +279,7 @@ class ATLAS_Parser():
                 for file_index in files_ids
             }
         
-            with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True) as pbar:
+            with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
 
                 for future in as_completed(futures):
                     file_index = futures[future]
@@ -289,11 +293,41 @@ class ATLAS_Parser():
                             self._log_file_metadata(cur_file_data)
                             cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
                             self._concatenate_events(cur_file_data)
-                            
+
+                            tqdm.write(f"{self._get_actual_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
                             if self._chunk_size_enough():
                                 self._log_chunk()
-                                yield self.events
+                                
+                                # Store chunk reference
+                                chunk_to_yield = self.events
+                                
+                                # CRITICAL: Clear reference BEFORE yielding
                                 self.events = None
+                                self.file_parsed_count = 0
+                                
+                                # Force garbage collection BEFORE yield
+                                gc.collect()
+                                
+                                mem_before_yield = self._get_actual_memory_mb()
+                                
+                                # Yield the chunk
+                                yield chunk_to_yield
+                                
+                                # CRITICAL: Delete local reference after yield
+                                del chunk_to_yield
+                                
+                                # Force aggressive cleanup after yield
+                                gc.collect()
+                                
+                                mem_after_yield = self._get_actual_memory_mb()
+                                mem_freed = mem_before_yield - mem_after_yield
+                                
+                                tqdm.write(
+                                    f"🧹 Memory before yield: {mem_before_yield:.1f} MB "
+                                    f"🧹 Memory after yield: {mem_after_yield:.1f} MB "
+                                    f"(freed: {mem_freed:.1f} MB)"
+                                )
+                                # tqdm.write(str(self.list_top_variables_global(n=10)))
 
                     except TimeoutError:
                         file_processing_time = time.time() - file_start_time
@@ -316,6 +350,13 @@ class ATLAS_Parser():
             self._log_chunk()
             yield self.events
             self.events = None
+    
+    def _get_actual_memory_mb(self):
+        """Get actual process memory usage"""
+        import psutil
+        import os
+        process = psutil.Process(os.getpid())
+        return process.memory_info().rss / (1024**2)
 
     def _get_parsing_status(self, successful_count):
         success_rate = (
@@ -354,11 +395,6 @@ class ATLAS_Parser():
         
         self.cur_chunk += 1
         
-        tqdm.write(
-                f"Yielding chunk #{self.cur_chunk} with {len(self.events):,} events "
-                f"from {self.file_parsed_count} files "
-                f"({self.events.layout.nbytes / (1024 * 1024):.2f} MB). "
-                f"Total: {self.total_size_kb  / (1024 * 1024):.2f} MB accumulated.")
 
     @staticmethod
     #TODO new parse file method
@@ -408,10 +444,19 @@ class ATLAS_Parser():
             # 5. Concatenate batches and zip once per object
             for obj_name, chunks in all_events.items():
                 concatenated = ak.concatenate(chunks)
+                
+                # CRITICAL: Delete chunks immediately after concatenation
+                chunks.clear()  # Clear the list
+                
                 field_names = [f.split('.')[-1] for f in field_map[obj_name]]
                 all_events[obj_name] = vector.zip({name: concatenated[full] 
                                                 for name, full in zip(field_names, field_map[obj_name])})
-
+                
+                # Delete the concatenated intermediate
+                del concatenated
+            
+            # Force GC before returning
+            gc.collect()
             #TODO what is this
             return ak.zip({k: v for k, v in all_events.items() if v is not None}, depth_limit=1)
 
@@ -482,20 +527,46 @@ class ATLAS_Parser():
                 return None
     
     def _concatenate_events(self, cur_file_data):
+        chunk_size_kb = cur_file_data.layout.nbytes
+        self.total_size_kb += chunk_size_kb
+        
+        mem_before = self._get_actual_memory_mb()
+
         if self.events is None:
             self.events = cur_file_data
         else:
-            self.events = ak.concatenate(
-                [self.events, cur_file_data], axis=0)
+            old_events = self.events
+            self.events = ak.concatenate([old_events, cur_file_data], axis=0)
+            del old_events
+            del cur_file_data
+            gc.collect()
+        
+        mem_after = self._get_actual_memory_mb()
+        mem_delta = mem_after - mem_before
+        
+        # Log if memory grew unexpectedly
+        if mem_delta > chunk_size_kb / (1024 * 1024) * 3:  # More than 3x file size
+            tqdm.write(f"⚠️  High memory growth: {mem_delta:.1f} MB for {chunk_size_kb/(1024*1024):.1f} MB file")
         
         self.file_parsed_count += 1
-        # chunk_size_mb = sys.getsizeof(cur_file_data) / (1024 * 1024)
-        # chunk_size_mb = ak.nbytes(cur_file_data)
-        chunk_size_kb = cur_file_data.layout.nbytes
-        self.total_size_kb += chunk_size_kb
     
+    #TODO check
     def _chunk_size_enough(self):
-        return self.events.layout.nbytes >= self.max_chunk_size_bytes
+        """Check if we should yield based on ACTUAL memory pressure"""
+        if self.events is None:
+            return False
+        
+        # Track both for logging purposes
+        logical_size = self.events.layout.nbytes
+        actual_memory = self._get_actual_memory_mb() 
+        
+        # But decide based on actual memory
+        if actual_memory >= self.max_process_memory_mb - 1000:
+            tqdm.write(f"⚠️  High memory usage: {actual_memory:.1f} MB (limit: {self.max_process_memory_mb} MB)")
+            return True
+        
+        return logical_size >= self.max_chunk_size_bytes
+        # return logical_size >= self.max_chunk_size_bytes
 
     #TESTING METHODS
     def fetch_mc_files_ids(self, release_year, is_random=False, all=False):
@@ -544,6 +615,10 @@ class ATLAS_Parser():
     
     @staticmethod
     def filter_events_by_kinematics(events, kinematic_cuts):
+        """
+        MEMORY OPTIMIZED: Build masks per particle type, apply once per type.
+        Avoids creating multiple intermediate filtered arrays.
+        """
         filtered_events = {}
 
         for obj in events.fields:
@@ -551,37 +626,33 @@ class ATLAS_Parser():
 
             # Skip empty arrays
             if len(particles) == 0:
+                filtered_events[obj] = particles
                 continue
 
             # Start with all True mask
-            mask = ak.ones_like(particles, dtype=bool)
+            mask = ak.ones_like(particles.rho if hasattr(particles, "rho") else particles.pt, dtype=bool)
 
-            # rho cut
+            # Apply all cuts to the same mask (no intermediate arrays)
             if "rho" in kinematic_cuts and hasattr(particles, "rho"):
                 rho_vals = ak.values_astype(particles.rho, float)
-                mask = ak.mask(mask, rho_vals >= kinematic_cuts["rho"]["min"])
+                mask = mask & (rho_vals >= kinematic_cuts["rho"]["min"])
 
-            # eta cut
             if "eta" in kinematic_cuts and hasattr(particles, "eta"):
                 eta_vals = ak.values_astype(particles.eta, float)
-                mask = ak.mask(mask, (eta_vals >= kinematic_cuts["eta"]["min"]) &
-                                        (eta_vals <= kinematic_cuts["eta"]["max"]))
+                mask = mask & (eta_vals >= kinematic_cuts["eta"]["min"]) & (eta_vals <= kinematic_cuts["eta"]["max"])
 
-            # phi cut
             if "phi" in kinematic_cuts and hasattr(particles, "phi"):
                 phi_vals = ak.values_astype(particles.phi, float)
-                mask = ak.mask(mask, (phi_vals >= kinematic_cuts["phi"]["min"]) &
-                                        (phi_vals <= kinematic_cuts["phi"]["max"]))
+                mask = mask & (phi_vals >= kinematic_cuts["phi"]["min"]) & (phi_vals <= kinematic_cuts["phi"]["max"])
 
-            # tau cut
             if "tau" in kinematic_cuts and hasattr(particles, "tau"):
                 tau_vals = ak.values_astype(particles.tau, float)
-                mask = ak.mask(mask, tau_vals >= kinematic_cuts["tau"]["min"])
+                mask = mask & (tau_vals >= kinematic_cuts["tau"]["min"])
 
-            # Apply mask to particles
-            filtered_events[obj] = ak.mask(particles, mask)
+            # Apply mask once
+            filtered_events[obj] = particles[mask]
 
-        return ak.Array(filtered_events)
+        return ak.zip(filtered_events, depth_limit=1)
     
     @staticmethod
     def _prepare_obj_name(obj_name):
@@ -601,3 +672,96 @@ class ATLAS_Parser():
                     field
                 )
         return ak_array
+
+    #TODO get rid of
+    @staticmethod
+    def list_top_variables_global(n=10, include_modules=False):
+        """
+        Lists the top N variables by memory size across the entire program.
+        
+        Parameters:
+        -----------
+        n : int
+            Number of top variables to display (default: 10)
+        include_modules : bool
+            Whether to include imported modules in the analysis (default: False)
+        
+        Returns:
+        --------
+        list of tuples: (variable_name, size_in_bytes, type, location)
+        """
+        # Force garbage collection to get accurate count
+        gc.collect()
+        
+        # Get all objects tracked by garbage collector
+        all_objects = gc.get_objects()
+        
+        var_sizes = []
+        seen_ids = set()
+        
+        for obj in all_objects:
+            obj_id = id(obj)
+            
+            # Skip if already processed
+            if obj_id in seen_ids:
+                continue
+            seen_ids.add(obj_id)
+            
+            # Skip modules unless explicitly requested
+            if not include_modules and type(obj).__name__ == 'module':
+                continue
+            
+            try:
+                size = sys.getsizeof(obj)
+                obj_type = type(obj).__name__
+                
+                # Try to find a meaningful name for the object
+                name = None
+                
+                # Check in globals
+                for global_name, global_obj in globals().items():
+                    if global_obj is obj and not global_name.startswith('_'):
+                        name = f"globals().{global_name}"
+                        break
+                
+                # If not found, use type and id
+                if name is None:
+                    # For built-in types, try to get a representative value
+                    if obj_type in ['str', 'int', 'float', 'bool']:
+                        rep = repr(obj)
+                        if len(rep) > 30:
+                            rep = rep[:27] + "..."
+                        name = f"{obj_type}({rep})"
+                    else:
+                        name = f"{obj_type}_object"
+                
+                var_sizes.append((name, size, obj_type, obj))
+            except Exception as e:
+                tqdm.write(f"Error processing object: {e}")
+        
+        # Sort by size (descending) and get top N
+        var_sizes.sort(key=lambda x: x[1], reverse=True)
+        top_vars = var_sizes[:n]
+        
+        # Print results
+        tqdm.write(f"\nTop {min(n, len(top_vars))} Objects by Memory Size (Entire Program):")
+        tqdm.write("=" * 80)
+        tqdm.write(f"{'Object':<40} {'Type':<20} {'Size':<20}")
+        tqdm.write("=" * 80)
+        
+        for name, size, obj_type, obj in top_vars:
+            if size >= 1024 ** 3:
+                size_str = f"{size / (1024**3):.2f} GB"
+            elif size >= 1024 ** 2:
+                size_str = f"{size / (1024**2):.2f} MB"
+            elif size >= 1024:
+                size_str = f"{size / 1024:.2f} KB"
+            else:
+                size_str = f"{size} bytes"
+            
+            # Truncate name if too long
+            display_name = name if len(name) <= 39 else name[:36] + "..."
+            
+            tqdm.write(f"{display_name:<40} {obj_type:<20} {size_str:<20}")
+        
+        return [(name, size, obj_type) for name, size, obj_type, _ in top_vars]
