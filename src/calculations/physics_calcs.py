@@ -1,6 +1,7 @@
 import awkward as ak
 import numpy as np
 import vector
+import gc
 
 PARTICLE_MASSES = {
     'Muons': 0.10566,

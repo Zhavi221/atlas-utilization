@@ -21,6 +21,7 @@ import time
 import json
 import gc
 import tracemalloc
+import hashlib
 
 from . import schemas, consts
 
@@ -66,7 +67,7 @@ class ATLAS_Parser():
         self.files_ids = None
         self.file_parsed_count = 0
         self.cur_chunk = 0
-        self.cur_chunk_hash = None
+        self.cur_files_ids = []
         
         self.events = None
         self.total_size_kb = 0
@@ -98,11 +99,16 @@ class ATLAS_Parser():
     def save_events_as_root(self, events, output_dir):
         os.makedirs(output_dir, exist_ok=True)
         
-        #TODO: for each chunk, create a has representing it's underlying files
-        output_path = os.path.join(output_dir, f"chunk_{self.cur_chunk}.root")
+        #TODO: for each chunk, create a hash representing it's underlying files
+        file_ids_hash = ATLAS_Parser._list_to_filename_hash(self.cur_files_ids)
+
+        output_path = os.path.join(output_dir, f"{file_ids_hash}.root")
         with uproot.recreate(output_path) as file:
             file["CollectionTree"] = events
 
+        self.cur_files_ids = []  # Reset after saving
+    
+    
     def flatten_for_root(self, awk_arr):
         """
         Flatten a top-level awkward Array into a ROOT-friendly dict
@@ -141,7 +147,9 @@ class ATLAS_Parser():
             except Exception as e:
                 logging.info(f"Error processing {obj_name}: {e}")
                 continue
-
+        
+        root_ready['file_ids'] = ak.Array([self.cur_files_ids])
+        
         return root_ready
     
     #PARSING METHODS
@@ -293,6 +301,7 @@ class ATLAS_Parser():
                             self._log_file_metadata(cur_file_data)
                             cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
                             self._concatenate_events(cur_file_data)
+                            self.cur_files_ids.append(file_index)
 
                             tqdm.write(f"{self._get_actual_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
                             if self._chunk_size_enough():
@@ -373,12 +382,14 @@ class ATLAS_Parser():
         
         return status
 
+    #TODO validate the way metadata is checked
     def _log_file_metadata(self, cur_file_data):
                             
         file_size_mb = cur_file_data.layout.nbytes / (1024 * 1024)
         self.max_file_size_mb = max(self.max_file_size_mb, file_size_mb)
         self.min_file_size_mb = min(self.min_file_size_mb, file_size_mb)
-                            
+        
+        #TODO is this correct?
         events_in_file = len(cur_file_data)
         self.total_events_processed += events_in_file
                             
@@ -672,7 +683,13 @@ class ATLAS_Parser():
                     field
                 )
         return ak_array
-
+    
+    @staticmethod
+    def _list_to_filename_hash(strings):
+        combined = "|".join(strings)  # delimiter avoids ambiguity
+        digest = hashlib.sha1(combined.encode('utf-8')).hexdigest()
+        return digest[:16]  # shorten to 16 chars if desired
+    
     #TODO get rid of
     @staticmethod
     def list_top_variables_global(n=10, include_modules=False):
