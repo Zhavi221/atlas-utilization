@@ -9,7 +9,7 @@ parsing:
   max_process_memory_mb: 8192
   # max_chunk_size_bytes: 1000000000 #5GB
   # max_chunk_size_bytes: 1000000000 #1GB 
-  max_chunk_size_bytes: 10000000 #10MB
+  max_chunk_size_bytes: 1000000 #1MB
   file_limit: 10
   output_path: 'data/root_files'
   logging_path: 'logs/'

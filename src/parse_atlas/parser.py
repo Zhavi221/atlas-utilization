@@ -99,12 +99,17 @@ class ATLAS_Parser():
     def save_events_as_root(self, events, output_dir):
         os.makedirs(output_dir, exist_ok=True)
         
-        #TODO: for each chunk, create a hash representing it's underlying files
         file_ids_hash = ATLAS_Parser._list_to_filename_hash(self.cur_files_ids)
 
         output_path = os.path.join(output_dir, f"{file_ids_hash}.root")
         with uproot.recreate(output_path) as file:
             file["CollectionTree"] = events
+            metadata = {
+                'file_ids': ak.Array([','.join(self.cur_files_ids)]),
+                'n_files': ak.Array([len(self.cur_files_ids)])
+            }
+            file["metadata"] = metadata
+            print(file.keys())
 
         self.cur_files_ids = []  # Reset after saving
     
@@ -148,7 +153,6 @@ class ATLAS_Parser():
                 logging.info(f"Error processing {obj_name}: {e}")
                 continue
         
-        root_ready['file_ids'] = ak.Array([self.cur_files_ids])
         
         return root_ready
     
@@ -314,10 +318,10 @@ class ATLAS_Parser():
                                 self.events = None
                                 self.file_parsed_count = 0
                                 
+                                mem_before_yield = self._get_actual_memory_mb()
                                 # Force garbage collection BEFORE yield
                                 gc.collect()
                                 
-                                mem_before_yield = self._get_actual_memory_mb()
                                 
                                 # Yield the chunk
                                 yield chunk_to_yield
@@ -417,23 +421,23 @@ class ATLAS_Parser():
         with uproot.open({file_index: tree_name}) as tree:
             all_keys = set(tree.keys())
             n_entries = tree.num_entries
-            is_big = n_entries > batch_size  # flag large files
+            is_file_big = n_entries > batch_size  # flag large files
 
             # 1. Precompute all fields to read
-            field_map = ATLAS_Parser._extract_branches_by_schema(all_keys, schema=schemas.INVARIANT_MASS_SCHEMA)
+            obj_branches: dict = ATLAS_Parser._extract_branches_for_inv_mass(all_keys, schema=schemas.INVARIANT_MASS_SCHEMA)
 
-            if not field_map.values():
+            if not obj_branches.values():
                 return None
             
-            all_fields = sorted({x for v in field_map.values() for x in v})
+            all_branches = {branch for branches_list in obj_branches.values() for branch in branches_list}
 
             # 2. Initialize storage for raw batches
-            all_events = {obj_name: [] for obj_name in field_map}
+            all_events = {obj_name: [] for obj_name in obj_branches}
 
             # 3. Define entry ranges
             entry_ranges = []
             parsing_label = ""
-            if is_big:
+            if is_file_big:
                 parsing_label = "Parsing file as batches"
                 entry_ranges = [
                     (start, min(start + batch_size, n_entries)) 
@@ -445,10 +449,10 @@ class ATLAS_Parser():
 
             # 4. Read batches
             for entry_start, entry_stop in tqdm(entry_ranges, desc=parsing_label, unit="batch"):
-                batch_data = tree.arrays(all_fields, entry_start=entry_start, entry_stop=entry_stop)
+                batch_data = tree.arrays(all_branches, entry_start=entry_start, entry_stop=entry_stop)
 
                 # Append raw arrays only
-                for obj_name, fields in field_map.items():
+                for obj_name, fields in obj_branches.items():
                     subset = batch_data[fields]
                     all_events[obj_name].append(subset)
 
@@ -459,9 +463,9 @@ class ATLAS_Parser():
                 # CRITICAL: Delete chunks immediately after concatenation
                 chunks.clear()  # Clear the list
                 
-                field_names = [f.split('.')[-1] for f in field_map[obj_name]]
+                field_names = [f.split('.')[-1] for f in obj_branches[obj_name]]
                 all_events[obj_name] = vector.zip({name: concatenated[full] 
-                                                for name, full in zip(field_names, field_map[obj_name])})
+                                                for name, full in zip(field_names, obj_branches[obj_name])})
                 
                 # Delete the concatenated intermediate
                 del concatenated
@@ -472,71 +476,21 @@ class ATLAS_Parser():
             return ak.zip({k: v for k, v in all_events.items() if v is not None}, depth_limit=1)
 
     @staticmethod
-    #TODO go over
-    def _extract_branches_by_schema(all_keys, schema: dict):
-        field_map = {}
-        all_fields = []
+    #TODO doesnt return well
+    def _extract_branches_for_inv_mass(all_keys, schema: dict):
+        obj_branches = {}
         for obj_name, fields in schema.items():
             cur_obj_name = ATLAS_Parser._prepare_obj_name(obj_name)
             physical_quantities = [
                     f for f in fields if f"{cur_obj_name}AuxDyn.{f}" in all_keys
                 ]
 
-            if ATLAS_Parser.can_calculate_inv_mass(physical_quantities):
+            if ATLAS_Parser._can_calculate_inv_mass(physical_quantities):
                 full_branches = [f"{cur_obj_name}AuxDyn.{f}" for f in physical_quantities]
-                field_map[obj_name] = full_branches
+                obj_branches[obj_name] = full_branches
 
-        return field_map
+        return obj_branches
 
-    @staticmethod
-    def parse_filea(file_index, tree_name="CollectionTree") -> ak.Array:
-        '''
-            Parses a single file by a generic schema.
-        '''
-        with uproot.open({file_index: tree_name}, 
-                vector_read=False) as tree:
-            events = {}
-            objs_filtered = []
-
-            tree_keys = tree.keys()
-            # Wrap the schema iteration with tqdm
-            for obj_name, fields in tqdm(
-                schemas.INVARIANT_MASS_SCHEMA.items(),
-                desc=f"Parsing file",
-                unit="obj"
-            ):
-                cur_obj_name = ATLAS_Parser._prepare_obj_name(obj_name)
-
-                filtered_fields = list(filter(
-                    lambda field: f"{cur_obj_name}AuxDyn.{field}" in tree_keys,
-                    fields))
-
-                #TODO make this check robust and less fatal
-                if not ATLAS_Parser.can_calculate_inv_mass(filtered_fields):
-                    continue
-                # if len(filtered_fields) < len(fields):
-                #     continue
-
-                objs_filtered.append(cur_obj_name)
-                tree_as_rows = tree.arrays(
-                    filtered_fields,
-                    aliases={field: f"{cur_obj_name}AuxDyn.{field}" for field in filtered_fields}
-                )
-
-                sep_to_arrays = ak.unzip(tree_as_rows)
-                field_names = tree_as_rows.fields
-
-                tree_as_rows = vector.zip(
-                    dict(zip(field_names, sep_to_arrays))
-                )
-
-                events[obj_name] = tree_as_rows
-
-            if events:
-                return ak.zip(events, depth_limit=1)
-            else:
-                return None
-    
     def _concatenate_events(self, cur_file_data):
         chunk_size_kb = cur_file_data.layout.nbytes
         self.total_size_kb += chunk_size_kb
@@ -561,7 +515,7 @@ class ATLAS_Parser():
         
         self.file_parsed_count += 1
     
-    #TODO check
+    #TODO add logic to check memory pressure
     def _chunk_size_enough(self):
         """Check if we should yield based on ACTUAL memory pressure"""
         if self.events is None:
@@ -613,7 +567,7 @@ class ATLAS_Parser():
     #STATIC METHODS
     #TODO: check this
     @staticmethod
-    def can_calculate_inv_mass(filtered_fields):
+    def _can_calculate_inv_mass(filtered_fields):
         required_fields = {'pt', 'eta', 'phi', 'm'} #NAME ACCORDING TO QUANTITIES PRESENT
         required_fields2 = {'rho', 'eta', 'phi', 'tau'} #NAME ACCORDING TO QUANTITIES PRESENT
         
@@ -684,101 +638,10 @@ class ATLAS_Parser():
                 )
         return ak_array
     
-    @staticmethod
-    def _list_to_filename_hash(strings):
-        combined = "|".join(strings)  # delimiter avoids ambiguity
-        digest = hashlib.sha1(combined.encode('utf-8')).hexdigest()
-        return digest[:16]  # shorten to 16 chars if desired
+
+def list_to_filename_hash(strings):
+    combined = "|".join(strings)  # delimiter avoids ambiguity
+    digest = hashlib.sha1(combined.encode('utf-8')).hexdigest()
+    return digest[:16]  # shorten to 16 chars if desired
     
-    #TODO get rid of
-    @staticmethod
-    def list_top_variables_global(n=10, include_modules=False):
-        """
-        Lists the top N variables by memory size across the entire program.
-        
-        Parameters:
-        -----------
-        n : int
-            Number of top variables to display (default: 10)
-        include_modules : bool
-            Whether to include imported modules in the analysis (default: False)
-        
-        Returns:
-        --------
-        list of tuples: (variable_name, size_in_bytes, type, location)
-        """
-        # Force garbage collection to get accurate count
-        gc.collect()
-        
-        # Get all objects tracked by garbage collector
-        all_objects = gc.get_objects()
-        
-        var_sizes = []
-        seen_ids = set()
-        
-        for obj in all_objects:
-            obj_id = id(obj)
-            
-            # Skip if already processed
-            if obj_id in seen_ids:
-                continue
-            seen_ids.add(obj_id)
-            
-            # Skip modules unless explicitly requested
-            if not include_modules and type(obj).__name__ == 'module':
-                continue
-            
-            try:
-                size = sys.getsizeof(obj)
-                obj_type = type(obj).__name__
-                
-                # Try to find a meaningful name for the object
-                name = None
-                
-                # Check in globals
-                for global_name, global_obj in globals().items():
-                    if global_obj is obj and not global_name.startswith('_'):
-                        name = f"globals().{global_name}"
-                        break
-                
-                # If not found, use type and id
-                if name is None:
-                    # For built-in types, try to get a representative value
-                    if obj_type in ['str', 'int', 'float', 'bool']:
-                        rep = repr(obj)
-                        if len(rep) > 30:
-                            rep = rep[:27] + "..."
-                        name = f"{obj_type}({rep})"
-                    else:
-                        name = f"{obj_type}_object"
-                
-                var_sizes.append((name, size, obj_type, obj))
-            except Exception as e:
-                tqdm.write(f"Error processing object: {e}")
-        
-        # Sort by size (descending) and get top N
-        var_sizes.sort(key=lambda x: x[1], reverse=True)
-        top_vars = var_sizes[:n]
-        
-        # Print results
-        tqdm.write(f"\nTop {min(n, len(top_vars))} Objects by Memory Size (Entire Program):")
-        tqdm.write("=" * 80)
-        tqdm.write(f"{'Object':<40} {'Type':<20} {'Size':<20}")
-        tqdm.write("=" * 80)
-        
-        for name, size, obj_type, obj in top_vars:
-            if size >= 1024 ** 3:
-                size_str = f"{size / (1024**3):.2f} GB"
-            elif size >= 1024 ** 2:
-                size_str = f"{size / (1024**2):.2f} MB"
-            elif size >= 1024:
-                size_str = f"{size / 1024:.2f} KB"
-            else:
-                size_str = f"{size} bytes"
-            
-            # Truncate name if too long
-            display_name = name if len(name) <= 39 else name[:36] + "..."
-            
-            tqdm.write(f"{display_name:<40} {obj_type:<20} {size_str:<20}")
-        
-        return [(name, size, obj_type) for name, size, obj_type, _ in top_vars]
+    

@@ -85,9 +85,13 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
             continue
         
         # Count particles
+        print(obj_array.type)
         if "Vector" in str(obj_array.type) or "Momentum" in str(obj_array.type):
+            print('counting vectors')
             obj_count = ak.num(obj_array)
         else:
+            print('lol')
+            print(obj_count)
             obj_count = obj_array
         
         # Build mask for this particle type
