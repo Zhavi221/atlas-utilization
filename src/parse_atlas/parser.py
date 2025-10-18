@@ -11,6 +11,7 @@ import csv
 import random
 from tqdm import tqdm
 import os
+import psutil
 import traceback
 import logging
 import sys
@@ -99,7 +100,7 @@ class ATLAS_Parser():
     def save_events_as_root(self, events, output_dir):
         os.makedirs(output_dir, exist_ok=True)
         
-        file_ids_hash = ATLAS_Parser._list_to_filename_hash(self.cur_files_ids)
+        file_ids_hash = list_to_filename_hash(self.cur_files_ids)
 
         output_path = os.path.join(output_dir, f"{file_ids_hash}.root")
         with uproot.recreate(output_path) as file:
@@ -366,10 +367,9 @@ class ATLAS_Parser():
     
     def _get_actual_memory_mb(self):
         """Get actual process memory usage"""
-        import psutil
-        import os
         process = psutil.Process(os.getpid())
-        return process.memory_info().rss / (1024**2)
+        process_rss_bytes = process.memory_info().rss
+        return process_rss_bytes / (1024**2)
 
     def _get_parsing_status(self, successful_count):
         success_rate = (
@@ -386,18 +386,17 @@ class ATLAS_Parser():
         
         return status
 
-    #TODO validate the way metadata is checked
-    def _log_file_metadata(self, cur_file_data):
-                            
+    def _log_file_metadata(self, cur_file_data):                    
         file_size_mb = cur_file_data.layout.nbytes / (1024 * 1024)
         self.max_file_size_mb = max(self.max_file_size_mb, file_size_mb)
         self.min_file_size_mb = min(self.min_file_size_mb, file_size_mb)
-        
-        #TODO is this correct?
+
         events_in_file = len(cur_file_data)
         self.total_events_processed += events_in_file
-                            
-        tqdm.write(f"✅ File processed: {file_size_mb:.2f} MB, {events_in_file:,} events")
+        tqdm.write(
+            f"✅ File processed: {file_size_mb:.2f} MB logical size, " 
+            f"{events_in_file:,} events."
+        )
     
     def _log_chunk(self):
         chunk_info = {
@@ -515,7 +514,6 @@ class ATLAS_Parser():
         
         self.file_parsed_count += 1
     
-    #TODO add logic to check memory pressure
     def _chunk_size_enough(self):
         """Check if we should yield based on ACTUAL memory pressure"""
         if self.events is None:
@@ -615,7 +613,7 @@ class ATLAS_Parser():
                 mask = mask & (tau_vals >= kinematic_cuts["tau"]["min"])
 
             # Apply mask once
-            filtered_events[obj] = particles[mask]
+            filtered_events[obj] = ak.mask(particles, mask)
 
         return ak.zip(filtered_events, depth_limit=1)
     
