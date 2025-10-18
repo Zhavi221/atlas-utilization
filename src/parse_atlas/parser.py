@@ -11,6 +11,7 @@ import csv
 import random
 from tqdm import tqdm
 import os
+import psutil
 import traceback
 import logging
 import sys
@@ -99,20 +100,17 @@ class ATLAS_Parser():
     def save_events_as_root(self, events, output_dir):
         os.makedirs(output_dir, exist_ok=True)
         
-        file_ids_hash = ATLAS_Parser._list_to_filename_hash(self.cur_files_ids)
+        file_ids_hash = list_to_filename_hash(self.cur_files_ids)
 
         output_path = os.path.join(output_dir, f"{file_ids_hash}.root")
         with uproot.recreate(output_path) as file:
             file["CollectionTree"] = events
-            metadata = {
+            file["metadata"] = {
                 'file_ids': ak.Array([','.join(self.cur_files_ids)]),
                 'n_files': ak.Array([len(self.cur_files_ids)])
             }
-            file["metadata"] = metadata
-            print(file.keys())
 
-        self.cur_files_ids = []  # Reset after saving
-    
+        self.cur_files_ids = []
     
     def flatten_for_root(self, awk_arr):
         """
@@ -291,70 +289,74 @@ class ATLAS_Parser():
                 for file_index in files_ids
             }
         
-            with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
+            # with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
 
-                for future in as_completed(futures):
-                    file_index = futures[future]
-                    file_start_time = time.time()
+            for future in as_completed(futures):
+                file_index = futures[future]
+                file_start_time = time.time()
 
-                    try:
-                        cur_file_data = future.result(timeout=10)
-                        
-                        if cur_file_data is not None:
-                            successful_count += 1
-                            self._log_file_metadata(cur_file_data)
-                            cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
-                            self._concatenate_events(cur_file_data)
-                            self.cur_files_ids.append(file_index)
+                try:
+                    cur_file_data = future.result(timeout=10)
+                    
+                    if cur_file_data is not None:
+                        successful_count += 1
 
-                            tqdm.write(f"{self._get_actual_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
-                            if self._chunk_size_enough():
-                                self._log_chunk()
-                                
-                                # Store chunk reference
-                                chunk_to_yield = self.events
-                                
-                                # CRITICAL: Clear reference BEFORE yielding
-                                self.events = None
-                                self.file_parsed_count = 0
-                                
-                                mem_before_yield = self._get_actual_memory_mb()
-                                # Force garbage collection BEFORE yield
-                                gc.collect()
-                                
-                                
-                                # Yield the chunk
-                                yield chunk_to_yield
-                                
-                                # CRITICAL: Delete local reference after yield
-                                del chunk_to_yield
-                                
-                                # Force aggressive cleanup after yield
-                                gc.collect()
-                                
-                                mem_after_yield = self._get_actual_memory_mb()
-                                mem_freed = mem_before_yield - mem_after_yield
-                                
-                                tqdm.write(
-                                    f"🧹 Memory before yield: {mem_before_yield:.1f} MB "
-                                    f"🧹 Memory after yield: {mem_after_yield:.1f} MB "
-                                    f"(freed: {mem_freed:.1f} MB)"
-                                )
-                                # tqdm.write(str(self.list_top_variables_global(n=10)))
+                        # cur_file_data = self._convert_to_vector_objects(cur_file_data)
+                        cur_file_data = self._convert_to_vector_objects(cur_file_data)
 
-                    except TimeoutError:
-                        file_processing_time = time.time() - file_start_time
-                        self._log_crash(file_index, TimeoutError(f"Parsing took longer than 10s"), file_processing_time)
-                        tqdm.write(f"⏱️ Timeout: {file_index} ({file_processing_time:.1f}s)")
-                        
-                    except Exception as e:
-                        file_processing_time = time.time() - file_start_time
-                        self._log_crash(file_index, e, file_processing_time)
-                        tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}")
+                        self._log_file_metadata(cur_file_data)
+                        cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
+                        self._concatenate_events(cur_file_data)
+                        self.cur_files_ids.append(file_index)
 
-                    status = self._get_parsing_status(successful_count)
-                    pbar.set_postfix_str(status)
-                    pbar.update(1)
+                        tqdm.write(f"{self._get_actual_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
+                        if self._chunk_size_enough():
+                            self._log_chunk()
+                            
+                            # Store chunk reference
+                            chunk_to_yield = self.events
+                            
+                            # CRITICAL: Clear reference BEFORE yielding
+                            self.events = None
+                            self.file_parsed_count = 0
+                            
+                            mem_before_yield = self._get_actual_memory_mb()
+                            # Force garbage collection BEFORE yield
+                            gc.collect()
+                            
+                            
+                            # Yield the chunk
+                            yield chunk_to_yield
+                            
+                            # CRITICAL: Delete local reference after yield
+                            del chunk_to_yield
+                            
+                            # Force aggressive cleanup after yield
+                            gc.collect()
+                            
+                            mem_after_yield = self._get_actual_memory_mb()
+                            mem_freed = mem_before_yield - mem_after_yield
+                            
+                            tqdm.write(
+                                f"🧹 Memory before yield: {mem_before_yield:.1f} MB "
+                                f"🧹 Memory after yield: {mem_after_yield:.1f} MB "
+                                f"(freed: {mem_freed:.1f} MB)"
+                            )
+                            # tqdm.write(str(self.list_top_variables_global(n=10)))
+
+                except TimeoutError:
+                    file_processing_time = time.time() - file_start_time
+                    self._log_crash(file_index, TimeoutError(f"Parsing took longer than 10s"), file_processing_time)
+                    tqdm.write(f"⏱️ Timeout: {file_index} ({file_processing_time:.1f}s)")
+                    
+                except Exception as e:
+                    file_processing_time = time.time() - file_start_time
+                    self._log_crash(file_index, e, file_processing_time)
+                    tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}")
+
+                status = self._get_parsing_status(successful_count)
+                # pbar.set_postfix_str(status)
+                # pbar.update(1)
 
         stats = self._save_statistics(len(files_ids), successful_count)
         self.print_statistics_summary(stats) 
@@ -363,13 +365,43 @@ class ATLAS_Parser():
             self._log_chunk()
             yield self.events
             self.events = None
+
+    def _convert_to_vector_objects(self, plain_events):
+        """
+        Convert plain awkward arrays to vector objects in MAIN process.
+        This avoids pickling issues with lambda functions in vector objects.
+        """
+        vector_events = {}
+        
+        for obj_name in plain_events.fields:
+            obj_data = plain_events[obj_name]
+            
+            # Check if it's a record array with physics fields
+            if hasattr(obj_data, 'fields') and len(obj_data.fields) > 0:
+                fields = obj_data.fields
+                
+                # Check if we have vector-compatible fields
+                has_pt = 'pt' in fields or 'rho' in fields
+                has_eta = 'eta' in fields
+                has_phi = 'phi' in fields
+                
+                if has_pt and has_eta and has_phi:
+                    # Convert to vector object
+                    field_dict = {field: obj_data[field] for field in fields}
+                    vector_events[obj_name] = vector.zip(field_dict)
+                else:
+                    # Keep as plain awkward array
+                    vector_events[obj_name] = obj_data
+            else:
+                vector_events[obj_name] = obj_data
+        
+        return ak.zip(vector_events, depth_limit=1)
     
     def _get_actual_memory_mb(self):
         """Get actual process memory usage"""
-        import psutil
-        import os
         process = psutil.Process(os.getpid())
-        return process.memory_info().rss / (1024**2)
+        process_rss_bytes = process.memory_info().rss
+        return process_rss_bytes / (1024**2)
 
     def _get_parsing_status(self, successful_count):
         success_rate = (
@@ -386,18 +418,17 @@ class ATLAS_Parser():
         
         return status
 
-    #TODO validate the way metadata is checked
-    def _log_file_metadata(self, cur_file_data):
-                            
+    def _log_file_metadata(self, cur_file_data):                    
         file_size_mb = cur_file_data.layout.nbytes / (1024 * 1024)
         self.max_file_size_mb = max(self.max_file_size_mb, file_size_mb)
         self.min_file_size_mb = min(self.min_file_size_mb, file_size_mb)
-        
-        #TODO is this correct?
+
         events_in_file = len(cur_file_data)
         self.total_events_processed += events_in_file
-                            
-        tqdm.write(f"✅ File processed: {file_size_mb:.2f} MB, {events_in_file:,} events")
+        tqdm.write(
+            f"✅ File processed: {file_size_mb:.2f} MB logical size, " 
+            f"{events_in_file:,} events."
+        )
     
     def _log_chunk(self):
         chunk_info = {
@@ -515,7 +546,6 @@ class ATLAS_Parser():
         
         self.file_parsed_count += 1
     
-    #TODO add logic to check memory pressure
     def _chunk_size_enough(self):
         """Check if we should yield based on ACTUAL memory pressure"""
         if self.events is None:
@@ -615,7 +645,7 @@ class ATLAS_Parser():
                 mask = mask & (tau_vals >= kinematic_cuts["tau"]["min"])
 
             # Apply mask once
-            filtered_events[obj] = particles[mask]
+            filtered_events[obj] = ak.mask(particles, mask)
 
         return ak.zip(filtered_events, depth_limit=1)
     

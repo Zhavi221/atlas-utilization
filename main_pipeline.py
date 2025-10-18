@@ -12,8 +12,10 @@ def main():
         
     if tasks["do_parsing"]:
         main_logger.info("Starting parsing task")
-        from src.pipelines import parsing_pipeline
-        parsing_pipeline.parse(config["parsing"])
+        # from src.pipelines import parsing_pipeline
+        # parsing_pipeline.parse(config["parsing"])
+        from src.pipelines import subprocessing_parsing
+        subprocessing_parsing.parse_with_per_chunk_subprocess(config["parsing"])
     
     if tasks["do_mass_calculating"]:
         main_logger.info("Starting calculations task")
