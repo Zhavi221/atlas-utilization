@@ -46,12 +46,7 @@ def mass_calculate(config):
                 if len(filtered_events) == 0:
                     continue
                 
-                #TODO: make this robust and generic,
-                # DO TESTS TO MAKE SURE ERROR CATCHING 
-                # ALSO MAKE SURE UNDERSTAND WHY NEED FOR CONCATENAT AND ZIP
-                                
-                # inv_mass = physics_calcs.calc_events_mass(filtered_events) 
-                inv_mass: list = physics_calcs.calc_inv_mass_v2(filtered_events) 
+                inv_mass: list = physics_calcs.calc_inv_mass(filtered_events) 
                 
                 if not ak.any(inv_mass):
                     continue

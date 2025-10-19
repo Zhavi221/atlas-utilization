@@ -17,6 +17,7 @@ def main():
         from src.pipelines import subprocessing_parsing
         subprocessing_parsing.parse_with_per_chunk_subprocess(config["parsing"])
     
+    #TODO skip over empty mass arrays
     if tasks["do_mass_calculating"]:
         main_logger.info("Starting calculations task")
         from src.pipelines import inv_masses_pipeline

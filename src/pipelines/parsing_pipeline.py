@@ -19,8 +19,7 @@ def parse(config):
     atlasparser = parser.ATLAS_Parser(
         max_process_memory_mb=config["max_process_memory_mb"],
         max_chunk_size_bytes=config["max_chunk_size_bytes"],
-        max_threads=config["max_threads"],
-        max_processes=config["max_processes"]
+        max_threads=config["max_threads"]
         )
 
     release_files_uris = atlasparser.fetch_records_ids(
@@ -34,7 +33,7 @@ def parse(config):
         
         #TODO move to physics_calcs
         logger.info("Cutting events")
-        cut_events = parser.ATLAS_Parser.filter_events_by_kinematics(
+        cut_events = physics_calcs.filter_events_by_kinematics(
             events_chunk, config["kinematic_cuts"]
         )
         del events_chunk  

@@ -25,15 +25,16 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
         atlasparser = parser.ATLAS_Parser(
             max_process_memory_mb=config["max_process_memory_mb"],
             max_chunk_size_bytes=config["max_chunk_size_bytes"],
-            max_threads=config["max_threads"],
-            max_processes=config["max_processes"]
+            max_threads=config["max_threads"]
         )
         
         # Parse until we get ONE chunk
         chunk_received = False
         for events_chunk in atlasparser.parse_files(
             files_ids=files_to_parse,
-            limit=config.get("file_limit", 0)
+            limit=config.get("file_limit", 0),
+            tracking_enabled=False,
+            save_statistics=False
         ):
             files_parsed = atlasparser.cur_files_ids.copy()
             chunk_size_before = events_chunk.layout.nbytes / (1024**2)
@@ -43,9 +44,10 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
             
             # PROCESS IN SUBPROCESS
             logger.info("Cutting events")
-            cut_events = parser.ATLAS_Parser.filter_events_by_kinematics(
+            cut_events = physics_calcs.filter_events_by_kinematics(
                 events_chunk, config["kinematic_cuts"]
             )
+            
             del events_chunk
             
             logger.info("Filtering events")
@@ -117,8 +119,7 @@ def parse_with_per_chunk_subprocess(config):
     temp_parser = parser.ATLAS_Parser(
         max_process_memory_mb=config["max_process_memory_mb"],
         max_chunk_size_bytes=config["max_chunk_size_bytes"],
-        max_threads=config["max_threads"],
-        max_processes=config["max_processes"]
+        max_threads=config["max_threads"]
     )
     
     all_files = temp_parser.fetch_records_ids(
@@ -158,7 +159,7 @@ def parse_with_per_chunk_subprocess(config):
         
         # Wait for subprocess to complete
         try:
-            status = status_queue.get(timeout=600)  # 10 min timeout
+            status = status_queue.get(timeout=None)  # 10 min timeout
             
             if status["status"] == "chunk_complete":
                 files_parsed = status["files_parsed"]

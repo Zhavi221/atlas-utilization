@@ -12,8 +12,7 @@ PARTICLE_MASSES = {
     # Add other particles as needed
 }
 
-#TODO: check if this works, prettify
-def calc_inv_mass_v2(particle_events: ak.Array) -> ak.Array:
+def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
     if len(particle_events) == 0:
         return ak.Array([])
 
@@ -107,6 +106,51 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
     gc.collect()
     
     return ak.to_packed(filtered_events)
+
+def filter_events_by_kinematics(events, kinematic_cuts):
+    """
+    MEMORY OPTIMIZED: Build masks per particle type, apply once per type.
+    Avoids creating multiple intermediate filtered arrays.
+    """
+    filtered_events = {}
+    i = 0
+    print(len(events.fields))
+    for obj in events.fields:
+        print('first')
+        particles = events[obj]
+
+        # Skip empty arrays
+        if len(particles) == 0:
+            filtered_events[obj] = particles
+            print('thats it')
+            continue
+
+        # Start with all True mask
+        mask = ak.ones_like(particles.rho if hasattr(particles, "rho") else particles.pt, dtype=bool)
+        print('second')
+
+        # Apply all cuts to the same mask (no intermediate arrays)
+        if "rho" in kinematic_cuts and hasattr(particles, "rho"):
+            rho_vals = ak.values_astype(particles.rho, float)
+            mask = mask & (rho_vals >= kinematic_cuts["rho"]["min"])
+
+        if "eta" in kinematic_cuts and hasattr(particles, "eta"):
+            eta_vals = ak.values_astype(particles.eta, float)
+            mask = mask & (eta_vals >= kinematic_cuts["eta"]["min"]) & (eta_vals <= kinematic_cuts["eta"]["max"])
+
+        if "phi" in kinematic_cuts and hasattr(particles, "phi"):
+            phi_vals = ak.values_astype(particles.phi, float)
+            mask = mask & (phi_vals >= kinematic_cuts["phi"]["min"]) & (phi_vals <= kinematic_cuts["phi"]["max"])
+
+        if "tau" in kinematic_cuts and hasattr(particles, "tau"):
+            tau_vals = ak.values_astype(particles.tau, float)
+            mask = mask & (tau_vals >= kinematic_cuts["tau"]["min"])
+
+        # Apply mask once
+        print('third')
+        filtered_events[obj] = ak.mask(particles, mask)
+
+    return ak.zip(filtered_events, depth_limit=1)
 
 def find_actual_field_name(fields, obj_name):
     '''
