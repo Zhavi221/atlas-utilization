@@ -299,7 +299,6 @@ class ATLAS_Parser():
                             successful_count += 1
 
                             # cur_file_data = self._convert_to_vector_objects(cur_file_data)
-                            cur_file_data = self._convert_to_vector_objects(cur_file_data)
 
                             self._log_file_metadata(cur_file_data)
                             cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
@@ -308,6 +307,7 @@ class ATLAS_Parser():
 
                             tqdm.write(f"{self._get_actual_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
                             if self._chunk_size_enough():
+
                                 self._log_chunk()
                                 
                                 # Store chunk reference
@@ -323,6 +323,8 @@ class ATLAS_Parser():
                                 
                                 
                                 # Yield the chunk
+                                if chunk_to_yield is None:
+                                    pass
                                 yield chunk_to_yield
                                 
                                 # CRITICAL: Delete local reference after yield
@@ -486,19 +488,34 @@ class ATLAS_Parser():
                     all_events[obj_name].append(subset)
 
             # 5. Concatenate batches and zip once per object
+            # for obj_name, chunks in all_events.items():
+            #     concatenated = ak.concatenate(chunks)
+                
+            #     # CRITICAL: Delete chunks immediately after concatenation
+            #     chunks.clear()  # Clear the list
+                
+            #     field_names = [f.split('.')[-1] for f in obj_branches[obj_name]]
+            #     #TODO here vector.zip interprets the system to use with rho
+            #     all_events[obj_name] = vector.zip({name: concatenated[full] 
+            #                                     for name, full in zip(field_names, obj_branches[obj_name])})
+                
+            #     # Delete the concatenated intermediate
+            #     del concatenated
+
+            #TODO below is temporary to check if vector.zip is required
             for obj_name, chunks in all_events.items():
                 concatenated = ak.concatenate(chunks)
+                chunks.clear()
                 
-                # CRITICAL: Delete chunks immediately after concatenation
-                chunks.clear()  # Clear the list
-                
+                # Keep as plain awkward array with proper field names
                 field_names = [f.split('.')[-1] for f in obj_branches[obj_name]]
-                all_events[obj_name] = vector.zip({name: concatenated[full] 
-                                                for name, full in zip(field_names, obj_branches[obj_name])})
+                all_events[obj_name] = ak.zip({
+                    name: concatenated[full] 
+                    for name, full in zip(field_names, obj_branches[obj_name])
+                })  # Plain ak.zip, not vector.zip
                 
-                # Delete the concatenated intermediate
                 del concatenated
-            
+
             # Force GC before returning
             gc.collect()
             #TODO what is this
@@ -603,8 +620,8 @@ class ATLAS_Parser():
         """
         available = set(available_fields)
         
-        cartesian_required = {'pt', 'eta', 'phi', 'm'}
-        cylindrical_required = {'rho', 'eta', 'phi', 'tau'}
+        cylindrical_required = {'phi', 'eta', 'pt'}
+        cartesian_required = {'phi', 'eta', 'rho'}
         
         # Check if either coordinate system is complete
         has_cartesian = cartesian_required.issubset(available)

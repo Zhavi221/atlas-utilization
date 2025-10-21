@@ -1,15 +1,17 @@
 tasks:
   do_parsing: true
-  do_mass_calculating: false
+  do_mass_calculating: true
 
 parsing:
+  parse_in_subprocess: true 
+  random_files: false
   release_year: '2024'
-  max_threads: 1
+  max_threads: 3
   max_process_memory_mb: 8192
   # max_chunk_size_bytes: 1000000000 #5GB
   # max_chunk_size_bytes: 1000000000 #1GB 
-  max_chunk_size_bytes: 10000000 #10MB 
-  file_limit: 500
+  max_chunk_size_bytes: 5000000 #50MB
+  file_limit: 50
   output_path: 'data/root_files'
   logging_path: 'logs/'
 
@@ -31,7 +33,7 @@ parsing:
       max: 3
 
   kinematic_cuts:
-    rho:
+    pt:
       min: 0
     eta:
       min: -5
@@ -39,8 +41,6 @@ parsing:
     phi:
       min: -3.141592653589793
       max: 3.141592653589793
-    tau:
-      min: 0
 
 mass_calculate:
   input_dir: 'data/root_files'

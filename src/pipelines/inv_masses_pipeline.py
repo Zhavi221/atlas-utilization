@@ -28,15 +28,16 @@ def mass_calculate(config):
     
     all_combinations = combinatorics.get_all_combinations(config["objects_to_calculate"])
 
-    for combination in all_combinations:    
-        logger.info(f"Processing combination: {combination}")
-        for filename in os.listdir(config["input_dir"]):
-            if filename.endswith(".root"):
-                logger.info(f"Processing file: {filename}")
-                file_path = os.path.join(config["input_dir"], filename)
-                
-                particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
-                
+    for filename in os.listdir(config["input_dir"]):
+        if filename.endswith(".root"):
+            logger.info(f"Processing file: {filename}")
+            file_path = os.path.join(config["input_dir"], filename)
+            
+            particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
+
+            #TODO just for testing
+            for combination in all_combinations[:5]:  # Limit to first 5 combinations for testing
+                logger.info(f"Processing combination: {combination}")
                 filtered_events: ak.Array = physics_calcs.filter_events_by_particle_counts(
                     events=particle_arrays, 
                     particle_counts=combination, 
@@ -45,7 +46,7 @@ def mass_calculate(config):
 
                 if len(filtered_events) == 0:
                     continue
-                
+                #TODO: add here apply_vector_corrections
                 inv_mass: list = physics_calcs.calc_inv_mass(filtered_events) 
                 
                 if not ak.any(inv_mass):

@@ -3,6 +3,8 @@ import numpy as np
 import vector
 import gc
 
+vector.register_awkward()
+
 PARTICLE_MASSES = {
     'Muons': 0.10566,
     'Electrons': 0.000511,
@@ -16,14 +18,69 @@ def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
     if len(particle_events) == 0:
         return ak.Array([])
 
-    all_vectors = concat_events(particle_events)
+    all_vectors = concat_events_better(particle_events)
     combined_vectors = ak.concatenate(all_vectors, axis=1)
 
+    # total_momentum = ak.sum(combined_vectors, axis=1)
     total_momentum = ak.sum(combined_vectors, axis=1)
     
-    inv_mass = total_momentum.mass
+    if hasattr(total_momentum, 'tau'):
+        inv_mass = total_momentum.tau
+    else:
+        inv_mass = total_momentum.mass
 
     return inv_mass
+
+def concat_events_better(particle_events: ak.Array) -> ak.Array:
+    """
+    Convert particle arrays to momentum vectors.
+    Detects coordinate system (Cartesian or cylindrical) and creates vectors accordingly.
+    Adds mass field if missing.
+    """
+    all_vectors = []
+    particle_types = particle_events.fields
+    
+    for particle_type in particle_types:
+        particle_array = particle_events[particle_type]
+        
+        # Skip empty arrays
+        if len(particle_array) == 0:
+            continue
+        
+        # Add mass field if it doesn't exist
+        if not hasattr(particle_array, 'm'):
+            mass = get_particle_mass(particle_type, particle_array)
+            particle_array = ak.with_field(particle_array, mass, 'm')
+        
+        # Detect which coordinate system is available
+        has_cartesian = hasattr(particle_array, 'pt') and hasattr(particle_array, 'eta') and hasattr(particle_array, 'phi') and hasattr(particle_array, 'm')
+        has_cylindrical = hasattr(particle_array, 'rho') and hasattr(particle_array, 'eta') and hasattr(particle_array, 'phi') and hasattr(particle_array, 'tau')
+        
+        if has_cartesian:
+            # Cartesian: pt, eta, phi, m
+            momentum_vector = vector.zip({
+                "pt": particle_array.pt,
+                "eta": particle_array.eta,
+                "phi": particle_array.phi,
+                "mass": particle_array.m
+            })
+        elif has_cylindrical:
+            # Cylindrical: rho, eta, phi, tau
+            momentum_vector = vector.zip({
+                "rho": particle_array.rho,
+                "eta": particle_array.eta,
+                "phi": particle_array.phi,
+                "tau": particle_array.tau
+            })
+        else:
+            raise ValueError(
+                f"Particle type '{particle_type}' has neither Cartesian "
+                f"(pt, eta, phi, m) nor cylindrical (rho, eta, phi, tau) coordinates"
+            )
+        
+        all_vectors.append(momentum_vector)
+    
+    return all_vectors
 
 def concat_events(particle_events: ak.Array) -> ak.Array:
     all_vectors = []
@@ -31,8 +88,7 @@ def concat_events(particle_events: ak.Array) -> ak.Array:
     for particle_type in particle_types:
         particle_array = particle_events[particle_type]
 
-        #TODO: make this more robust
-        mass = get_particle_mass(particle_type, particle_array)
+        mass = get_particle_known_mass(particle_type, particle_array)
         
         momentum_vector = vector.zip({
             "rho": particle_array.rho,
@@ -45,11 +101,8 @@ def concat_events(particle_events: ak.Array) -> ak.Array:
 
     return all_vectors 
 
-def get_particle_mass(particle_type, particle_array):
-    # tau can refer to mass/energy
-    if 'tau' in particle_array.fields:
-        return particle_array.tau
-    elif 'm' in particle_array.fields:
+def get_particle_known_mass(particle_type, particle_array):
+    if 'm' in particle_array.fields:
         return particle_array.m
     else:
         return PARTICLE_MASSES.get(particle_type, 0.0) 
@@ -68,6 +121,7 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
     MEMORY OPTIMIZED VERSION: Builds combined mask first, applies once.
     This avoids creating intermediate filtered arrays.
     """
+
     if len(events) == 0:
         return events
     
@@ -84,10 +138,7 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
             continue
         
         # Count particles
-        if "Vector" in str(obj_array.type) or "Momentum" in str(obj_array.type):
-            obj_count = ak.num(obj_array)
-        else:
-            obj_count = obj_array
+        obj_count = ak.num(obj_array)
         
         # Build mask for this particle type
         if not is_particle_counts_range:
@@ -114,25 +165,22 @@ def filter_events_by_kinematics(events, kinematic_cuts):
     """
     filtered_events = {}
     i = 0
-    print(len(events.fields))
     for obj in events.fields:
-        print('first')
         particles = events[obj]
 
         # Skip empty arrays
         if len(particles) == 0:
             filtered_events[obj] = particles
-            print('thats it')
             continue
 
-        # Start with all True mask
-        mask = ak.ones_like(particles.rho if hasattr(particles, "rho") else particles.pt, dtype=bool)
-        print('second')
+        mask_by = None
+        if hasattr(particles, "pt"): 
+            mask_by = particles.pt 
+        mask = ak.ones_like(mask_by, dtype=bool)
 
-        # Apply all cuts to the same mask (no intermediate arrays)
-        if "rho" in kinematic_cuts and hasattr(particles, "rho"):
-            rho_vals = ak.values_astype(particles.rho, float)
-            mask = mask & (rho_vals >= kinematic_cuts["rho"]["min"])
+        if "pt" in kinematic_cuts and hasattr(particles, "pt"):
+            pt_vals = ak.values_astype(particles.pt, float)
+            mask = mask & (pt_vals >= kinematic_cuts["pt"]["min"])
 
         if "eta" in kinematic_cuts and hasattr(particles, "eta"):
             eta_vals = ak.values_astype(particles.eta, float)
@@ -142,12 +190,7 @@ def filter_events_by_kinematics(events, kinematic_cuts):
             phi_vals = ak.values_astype(particles.phi, float)
             mask = mask & (phi_vals >= kinematic_cuts["phi"]["min"]) & (phi_vals <= kinematic_cuts["phi"]["max"])
 
-        if "tau" in kinematic_cuts and hasattr(particles, "tau"):
-            tau_vals = ak.values_astype(particles.tau, float)
-            mask = mask & (tau_vals >= kinematic_cuts["tau"]["min"])
-
         # Apply mask once
-        print('third')
         filtered_events[obj] = ak.mask(particles, mask)
 
     return ak.zip(filtered_events, depth_limit=1)
