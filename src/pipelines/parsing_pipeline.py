@@ -12,6 +12,7 @@ import uproot
 import awkward as ak
 import os
 import gc
+import random
 
 def parse(config):
     logger = init_logging()
@@ -19,19 +20,22 @@ def parse(config):
     atlasparser = parser.ATLAS_Parser(
         max_process_memory_mb=config["max_process_memory_mb"],
         max_chunk_size_bytes=config["max_chunk_size_bytes"],
-        max_threads=config["max_threads"]
+        max_threads=config["max_threads"],
+        logging_path=config["logging_path"]
         )
 
     release_files_uris = atlasparser.fetch_records_ids(
         release_year=config["release_year"]
     )
-    
+
+    if config.get("random_files", True):
+        random.shuffle(release_files_uris)
+
     for events_chunk in atlasparser.parse_files(
         files_ids=release_files_uris, 
         limit=config["file_limit"]
     ):
         
-        #TODO move to physics_calcs
         logger.info("Cutting events")
         cut_events = physics_calcs.filter_events_by_kinematics(
             events_chunk, config["kinematic_cuts"]

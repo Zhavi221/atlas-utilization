@@ -1,6 +1,7 @@
 PARTICLE_LIST = ['Electrons', 'Muons', 'Jets', 'Photons']
 
-INVARIANT_MASS_SCHEMA = {
+#IS THIS REQUIRED
+INVARIANT_MASS_SCHEMA_ORIGINAL = {
     "Electrons": [
         "pt",   # AnalysisElectronsAuxDyn.pt
         "eta",  # AnalysisElectronsAuxDyn.eta
@@ -32,27 +33,27 @@ INVARIANT_MASS_SCHEMA = {
         "rho"
     ]
 }
-INVARIANT_MASS_SCHEMAa = {
+INVARIANT_MASS_SCHEMA = {
     "Electrons": [
-        "rho",  # AnalysisElectronsAuxDyn.rho  (transverse momentum)
+        "pt",  # AnalysisElectronsAuxDyn.rho  (transverse momentum)
         "eta",  # AnalysisElectronsAuxDyn.eta  (pseudorapidity)
         "phi",  # AnalysisElectronsAuxDyn.phi  (azimuthal angle)
-        "tau"   # AnalysisElectronsAuxDyn.tau  (energy/time)
+        "mass"   # AnalysisElectronsAuxDyn.tau  (energy/time)
     ],
     "Muons": [
-        "rho",  # AnalysisMuonsAuxDyn.rho
-        "eta",  # AnalysisMuonsAuxDyn.eta
-        "phi",  # AnalysisMuonsAuxDyn.phi
-        "tau"   # AnalysisMuonsAuxDyn.tau
+        "pt",  # AnalysisElectronsAuxDyn.rho  (transverse momentum)
+        "eta",  # AnalysisElectronsAuxDyn.eta  (pseudorapidity)
+        "phi",  # AnalysisElectronsAuxDyn.phi  (azimuthal angle)
+        "mass"   # AnalysisElectronsAuxDyn.tau  (energy/time)
     ],
     "Jets": [
-        "rho",  # AnalysisJetsAuxDyn.rho
-        "eta",  # AnalysisJetsAuxDyn.eta
-        "phi",  # AnalysisJetsAuxDyn.phi
-        "tau"   # AnalysisJetsAuxDyn.tau
+        "pt",  # AnalysisElectronsAuxDyn.rho  (transverse momentum)
+        "eta",  # AnalysisElectronsAuxDyn.eta  (pseudorapidity)
+        "phi",  # AnalysisElectronsAuxDyn.phi  (azimuthal angle)
+        "mass"   # AnalysisElectronsAuxDyn.tau  (energy/time)
     ],
     "Photons": [
-        "rho",  # AnalysisPhotonsAuxDyn.rho
+        "pt",  # AnalysisPhotonsAuxDyn.rho
         "eta",  # AnalysisPhotonsAuxDyn.eta
         "phi"   # AnalysisPhotonsAuxDyn.phi
         # No tau field listed for photons; usually treated as massless

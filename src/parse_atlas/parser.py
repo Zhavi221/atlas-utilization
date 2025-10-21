@@ -60,7 +60,7 @@ class ATLAS_Parser():
         _normalize_fields(ak_array):
             Normalizes fields in the awkward array to match schema.
     '''
-    def __init__(self, max_process_memory_mb, max_chunk_size_bytes, max_threads):
+    def __init__(self, max_process_memory_mb, max_chunk_size_bytes, max_threads, logging_path):
         self.files_ids = None
         self.file_parsed_count = 0
         self.cur_chunk = 0
@@ -73,8 +73,8 @@ class ATLAS_Parser():
         self.max_process_memory_mb = max_process_memory_mb 
         
         # ===== Enhanced: Comprehensive crash and statistics tracking =====
-        self.crash_log = "atlas_crashes.log"
-        self.stats_log = "atlas_stats.json"
+        self.crash_log = logging_path + "atlas_crashes.log"
+        self.stats_log = logging_path + "atlas_stats.json"
         self.crash_lock = threading.Lock()
         self.failed_files = []
         
@@ -299,7 +299,6 @@ class ATLAS_Parser():
                             successful_count += 1
 
                             # cur_file_data = self._convert_to_vector_objects(cur_file_data)
-                            cur_file_data = self._convert_to_vector_objects(cur_file_data)
 
                             self._log_file_metadata(cur_file_data)
                             cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
@@ -308,6 +307,7 @@ class ATLAS_Parser():
 
                             tqdm.write(f"{self._get_actual_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
                             if self._chunk_size_enough():
+
                                 self._log_chunk()
                                 
                                 # Store chunk reference
@@ -323,6 +323,8 @@ class ATLAS_Parser():
                                 
                                 
                                 # Yield the chunk
+                                if chunk_to_yield is None:
+                                    pass
                                 yield chunk_to_yield
                                 
                                 # CRITICAL: Delete local reference after yield
@@ -486,19 +488,34 @@ class ATLAS_Parser():
                     all_events[obj_name].append(subset)
 
             # 5. Concatenate batches and zip once per object
+            # for obj_name, chunks in all_events.items():
+            #     concatenated = ak.concatenate(chunks)
+                
+            #     # CRITICAL: Delete chunks immediately after concatenation
+            #     chunks.clear()  # Clear the list
+                
+            #     field_names = [f.split('.')[-1] for f in obj_branches[obj_name]]
+            #     #TODO here vector.zip interprets the system to use with rho
+            #     all_events[obj_name] = vector.zip({name: concatenated[full] 
+            #                                     for name, full in zip(field_names, obj_branches[obj_name])})
+                
+            #     # Delete the concatenated intermediate
+            #     del concatenated
+
+            #TODO below is temporary to check if vector.zip is required
             for obj_name, chunks in all_events.items():
                 concatenated = ak.concatenate(chunks)
+                chunks.clear()
                 
-                # CRITICAL: Delete chunks immediately after concatenation
-                chunks.clear()  # Clear the list
-                
+                # Keep as plain awkward array with proper field names
                 field_names = [f.split('.')[-1] for f in obj_branches[obj_name]]
-                all_events[obj_name] = vector.zip({name: concatenated[full] 
-                                                for name, full in zip(field_names, obj_branches[obj_name])})
+                all_events[obj_name] = ak.zip({
+                    name: concatenated[full] 
+                    for name, full in zip(field_names, obj_branches[obj_name])
+                })  # Plain ak.zip, not vector.zip
                 
-                # Delete the concatenated intermediate
                 del concatenated
-            
+
             # Force GC before returning
             gc.collect()
             #TODO what is this
@@ -548,17 +565,14 @@ class ATLAS_Parser():
         if self.events is None:
             return False
         
-        # Track both for logging purposes
         logical_size = self.events.layout.nbytes
         actual_memory = self._get_actual_memory_mb() 
         
-        # But decide based on actual memory
         if actual_memory >= self.max_process_memory_mb - 1000:
-            tqdm.write(f"⚠️  High memory usage: {actual_memory:.1f} MB (limit: {self.max_process_memory_mb} MB)")
+            tqdm.write(f"⚠️High memory usage: {actual_memory:.1f} MB (limit: {self.max_process_memory_mb} MB)")
             return True
-        tqdm.write("chunk size check: ")
+
         return logical_size >= self.max_chunk_size_bytes
-        # return logical_size >= self.max_chunk_size_bytes
 
     #TESTING METHODS
     def fetch_mc_files_ids(self, release_year, is_random=False, all=False):
@@ -592,25 +606,18 @@ class ATLAS_Parser():
         return all_mc_ids
 
     #STATIC METHODS
-    #TODO: check this
     @staticmethod
     def _can_calculate_inv_mass(available_fields):
         """
         Check if we have the minimum fields needed to calculate invariant mass.
-        Two coordinate systems are supported:
-        - Cartesian: pt, eta, phi, m
-        - Cylindrical: rho, eta, phi, tau
         """
         available = set(available_fields)
         
-        cartesian_required = {'pt', 'eta', 'phi', 'm'}
-        cylindrical_required = {'rho', 'eta', 'phi', 'tau'}
+        cartesian_required = {'phi', 'eta', 'pt'}
         
-        # Check if either coordinate system is complete
         has_cartesian = cartesian_required.issubset(available)
-        has_cylindrical = cylindrical_required.issubset(available)
-        
-        return has_cartesian or has_cylindrical
+
+        return has_cartesian
     
     @staticmethod
     def _prepare_obj_name(obj_name):

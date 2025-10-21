@@ -12,12 +12,15 @@ def main():
         
     if tasks["do_parsing"]:
         main_logger.info("Starting parsing task")
-        # from src.pipelines import parsing_pipeline
-        # parsing_pipeline.parse(config["parsing"])
-        from src.pipelines import subprocessing_parsing
-        subprocessing_parsing.parse_with_per_chunk_subprocess(config["parsing"])
+        parsing_config = config["parsing"]
+
+        if parsing_config.get("parse_with_subprocess", True):
+            from src.pipelines import subprocessing_parsing
+            subprocessing_parsing.parse_with_per_chunk_subprocess(parsing_config)
+        else:
+            from src.pipelines import parsing_pipeline
+            parsing_pipeline.parse(parsing_config)
     
-    #TODO skip over empty mass arrays
     if tasks["do_mass_calculating"]:
         main_logger.info("Starting calculations task")
         from src.pipelines import inv_masses_pipeline
@@ -45,7 +48,7 @@ def load_config(config_path):
 
     return config
 
-            
+
 
 if __name__ == "__main__":
     main()

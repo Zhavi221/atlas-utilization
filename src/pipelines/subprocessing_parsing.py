@@ -10,7 +10,7 @@ from tqdm import tqdm
 import yaml
 import os
 import gc
-
+import random
 
 def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue):
     """
@@ -25,7 +25,8 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
         atlasparser = parser.ATLAS_Parser(
             max_process_memory_mb=config["max_process_memory_mb"],
             max_chunk_size_bytes=config["max_chunk_size_bytes"],
-            max_threads=config["max_threads"]
+            max_threads=config["max_threads"],
+            logging_path=config["logging_path"]
         )
         
         # Parse until we get ONE chunk
@@ -36,6 +37,7 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
             tracking_enabled=False,
             save_statistics=False
         ):
+
             files_parsed = atlasparser.cur_files_ids.copy()
             chunk_size_before = events_chunk.layout.nbytes / (1024**2)
             num_events = len(events_chunk)
@@ -119,7 +121,8 @@ def parse_with_per_chunk_subprocess(config):
     temp_parser = parser.ATLAS_Parser(
         max_process_memory_mb=config["max_process_memory_mb"],
         max_chunk_size_bytes=config["max_chunk_size_bytes"],
-        max_threads=config["max_threads"]
+        max_threads=config["max_threads"],
+        logging_path=config["logging_path"]
     )
     
     all_files = temp_parser.fetch_records_ids(
@@ -128,6 +131,9 @@ def parse_with_per_chunk_subprocess(config):
     del temp_parser
     gc.collect()
     
+    if config.get("random_files", True):
+        random.shuffle(all_files)
+
     if config.get("file_limit"):
         all_files = all_files[:config["file_limit"]]
     
