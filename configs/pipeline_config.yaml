@@ -6,10 +6,10 @@ parsing:
   parse_in_subprocess: true #Important for cluster processing
   random_files: false #For testing
   release_year: '2024'
-  max_threads: 5
+  max_threads: 2
   max_process_memory_mb: 8192
   # max_chunk_size_bytes: 1000000000 #1GB 
-  max_chunk_size_bytes: 5000000 #50MB
+  max_chunk_size_bytes: 50000000 #500MB
   file_limit: 50
   output_path: 'data/root_files'
   logging_path: 'logs/'

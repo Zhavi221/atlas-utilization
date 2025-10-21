@@ -213,6 +213,8 @@ def parse_with_per_chunk_subprocess(config):
             logger.info("Subprocess terminated, memory freed to OS")
             
             gc.collect()
+            #TEMP
+            time.sleep(10)
     
     pbar.close()
     logger.info(

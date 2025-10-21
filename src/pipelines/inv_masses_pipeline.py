@@ -35,7 +35,7 @@ def mass_calculate(config):
             
             particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
 
-            #TODO just for testing
+            #FOR TESTING
             for combination in all_combinations[:5]:  # Limit to first 5 combinations for testing
                 logger.info(f"Processing combination: {combination}")
                 filtered_events: ak.Array = physics_calcs.filter_events_by_particle_counts(
@@ -43,7 +43,7 @@ def mass_calculate(config):
                     particle_counts=combination, 
                     is_particle_counts_range=False
                 )    
-
+                
                 if len(filtered_events) == 0:
                     continue
                 #TODO: add here apply_vector_corrections

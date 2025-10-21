@@ -495,14 +495,14 @@ class ATLAS_Parser():
             #     chunks.clear()  # Clear the list
                 
             #     field_names = [f.split('.')[-1] for f in obj_branches[obj_name]]
-            #     #TODO here vector.zip interprets the system to use with rho
+
             #     all_events[obj_name] = vector.zip({name: concatenated[full] 
             #                                     for name, full in zip(field_names, obj_branches[obj_name])})
                 
             #     # Delete the concatenated intermediate
             #     del concatenated
-
-            #TODO below is temporary to check if vector.zip is required
+            
+            #TEMP
             for obj_name, chunks in all_events.items():
                 concatenated = ak.concatenate(chunks)
                 chunks.clear()
@@ -518,8 +518,9 @@ class ATLAS_Parser():
 
             # Force GC before returning
             gc.collect()
-            #TODO what is this
-            return ak.zip({k: v for k, v in all_events.items() if v is not None}, depth_limit=1)
+            
+            # return ak.zip({k: v for k, v in all_events.items() if v is not None}, depth_limit=1)
+            return ak.zip(all_events, depth_limit=1) #TEMP
 
     @staticmethod
     def _extract_branches_for_inv_mass(all_keys, schema: dict):
