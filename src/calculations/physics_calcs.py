@@ -169,7 +169,7 @@ def filter_events_by_kinematics(events, kinematic_cuts):
         particles = events[obj]
 
         # Skip empty arrays
-        if len(particles) == 0:
+        if len(particles.fields) == 0:
             filtered_events[obj] = particles
             continue
 

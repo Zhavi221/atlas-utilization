@@ -3,12 +3,11 @@ tasks:
   do_mass_calculating: true
 
 parsing:
-  parse_in_subprocess: true 
-  random_files: false
+  parse_in_subprocess: true #Important for cluster processing
+  random_files: false #For testing
   release_year: '2024'
-  max_threads: 3
+  max_threads: 5
   max_process_memory_mb: 8192
-  # max_chunk_size_bytes: 1000000000 #5GB
   # max_chunk_size_bytes: 1000000000 #1GB 
   max_chunk_size_bytes: 5000000 #50MB
   file_limit: 50
@@ -28,9 +27,6 @@ parsing:
     Photons:
       min: 0
       max: 5
-    Taus:
-      min: 0
-      max: 3
 
   kinematic_cuts:
     pt:
