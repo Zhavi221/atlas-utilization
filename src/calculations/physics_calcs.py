@@ -18,7 +18,7 @@ def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
     if len(particle_events) == 0:
         return ak.Array([])
 
-    all_vectors = concat_events_better(particle_events)
+    all_vectors = concat_events(particle_events)
     combined_vectors = ak.concatenate(all_vectors, axis=1)
 
     # total_momentum = ak.sum(combined_vectors, axis=1)
@@ -31,6 +31,7 @@ def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
 
     return inv_mass
 
+#TODO check
 def concat_events_better(particle_events: ak.Array) -> ak.Array:
     """
     Convert particle arrays to momentum vectors.
@@ -91,7 +92,7 @@ def concat_events(particle_events: ak.Array) -> ak.Array:
         mass = get_particle_known_mass(particle_type, particle_array)
         
         momentum_vector = vector.zip({
-            "rho": particle_array.rho,
+            "pt": particle_array.pt,
             "phi": particle_array.phi,
             "eta": particle_array.eta,
             "mass": mass  
@@ -128,7 +129,7 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
     # Start with all events passing (True mask)
     combined_mask = ak.ones_like(ak.num(events[events.fields[0]]), dtype=bool)
     
-    for obj, range_dict in particle_counts.items():
+    for obj, value in particle_counts.items():
         actual_field = find_actual_field_name(events.fields, obj)
         if not actual_field:
             continue
@@ -142,8 +143,10 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
         
         # Build mask for this particle type
         if not is_particle_counts_range:
-            particle_mask = (obj_count == range_dict)
+            count = value
+            particle_mask = (obj_count == count)
         else:
+            range_dict = value
             particle_mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
         
         # Combine with overall mask using logical AND
