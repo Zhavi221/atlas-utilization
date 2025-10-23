@@ -11,6 +11,7 @@ import yaml
 import os
 import gc
 import random
+import json
 
 def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue):
     """
@@ -165,7 +166,8 @@ def parse_with_per_chunk_subprocess(config):
         
         # Wait for subprocess to complete
         try:
-            status = status_queue.get(timeout=None)  # 10 min timeout
+            #FOR TESTING - timeout
+            status = status_queue.get(timeout=300)
             
             if status["status"] == "chunk_complete":
                 files_parsed = status["files_parsed"]
@@ -186,6 +188,13 @@ def parse_with_per_chunk_subprocess(config):
                 total_events += num_events
                 pbar.update(len(files_parsed))
                 
+                if not files_remaining:
+                    crashed_files_path = config["logging_path"] + "crashed_files.json"
+                    if os.path.exists(crashed_files_path):
+                        with open(crashed_files_path, "r") as f:
+                            data = json.load(f)
+                            files_remaining = data.get("failed_files", [])
+
             elif status["status"] == "no_chunks":
                 logger.info("No more chunks to process")
                 break
@@ -211,10 +220,11 @@ def parse_with_per_chunk_subprocess(config):
             
             worker_process.join()
             logger.info("Subprocess terminated, memory freed to OS")
+            logger.info("Sleeping 60 seconds to allow OS to reclaim memory...")
             
             gc.collect()
-            #TEMP test for spawning process delay
-            time.sleep(30)
+            #FOR TESTING - sleep 
+            time.sleep(60)
     
     pbar.close()
     logger.info(

@@ -75,6 +75,7 @@ class ATLAS_Parser():
         # ===== Enhanced: Comprehensive crash and statistics tracking =====
         self.crash_log = logging_path + "atlas_crashes.log"
         self.stats_log = logging_path + "atlas_stats.json"
+        self.crashed_files = logging_path + "crashed_files.json"
         self.crash_lock = threading.Lock()
         self.failed_files = []
         
@@ -193,6 +194,18 @@ class ATLAS_Parser():
                 f.write(f"Traceback:\n{traceback.format_exc()}\n")
                 f.write("-" * 60 + "\n")
 
+            
+            if os.path.exists(self.crashed_files):
+                with open(self.crashed_files, 'r') as f:
+                    data = json.load(f)
+            else:
+                data = {"failed_files": []}
+
+            data["failed_files"].append(file_index)
+
+            with open(self.crashed_files, 'w') as f:
+                json.dump(data, f, indent=2)
+
     def _save_statistics(self, total_files, successful_count):
         """Save comprehensive parsing statistics to JSON"""
         end_time = time.time()
@@ -298,6 +311,7 @@ class ATLAS_Parser():
                         if cur_file_data is not None:
                             successful_count += 1
 
+                            #TODO remove? works fine without.
                             # cur_file_data = self._convert_to_vector_objects(cur_file_data)
 
                             self._log_file_metadata(cur_file_data)
@@ -487,22 +501,6 @@ class ATLAS_Parser():
                     subset = batch_data[fields]
                     all_events[obj_name].append(subset)
 
-            # 5. Concatenate batches and zip once per object
-            # for obj_name, chunks in all_events.items():
-            #     concatenated = ak.concatenate(chunks)
-                
-            #     # CRITICAL: Delete chunks immediately after concatenation
-            #     chunks.clear()  # Clear the list
-                
-            #     field_names = [f.split('.')[-1] for f in obj_branches[obj_name]]
-
-            #     all_events[obj_name] = vector.zip({name: concatenated[full] 
-            #                                     for name, full in zip(field_names, obj_branches[obj_name])})
-                
-            #     # Delete the concatenated intermediate
-            #     del concatenated
-            
-            #TEMP
             for obj_name, chunks in all_events.items():
                 concatenated = ak.concatenate(chunks)
                 chunks.clear()
@@ -519,8 +517,7 @@ class ATLAS_Parser():
             # Force GC before returning
             gc.collect()
             
-            # return ak.zip({k: v for k, v in all_events.items() if v is not None}, depth_limit=1)
-            return ak.zip(all_events, depth_limit=1) #TEMP
+            return ak.zip(all_events, depth_limit=1)
 
     @staticmethod
     def _extract_branches_for_inv_mass(all_keys, schema: dict):

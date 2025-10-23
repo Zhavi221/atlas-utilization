@@ -11,7 +11,6 @@ PARTICLE_MASSES = {
     'Tau': 1.777,
     'Jets': 0.0,
     'Photons': 0.0
-    # Add other particles as needed
 }
 
 def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
@@ -30,58 +29,6 @@ def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
         inv_mass = total_momentum.mass
 
     return inv_mass
-
-#TODO check
-def concat_events_better(particle_events: ak.Array) -> ak.Array:
-    """
-    Convert particle arrays to momentum vectors.
-    Detects coordinate system (Cartesian or cylindrical) and creates vectors accordingly.
-    Adds mass field if missing.
-    """
-    all_vectors = []
-    particle_types = particle_events.fields
-    
-    for particle_type in particle_types:
-        particle_array = particle_events[particle_type]
-        
-        # Skip empty arrays
-        if len(particle_array) == 0:
-            continue
-        
-        # Add mass field if it doesn't exist
-        if not hasattr(particle_array, 'm'):
-            mass = get_particle_mass(particle_type, particle_array)
-            particle_array = ak.with_field(particle_array, mass, 'm')
-        
-        # Detect which coordinate system is available
-        has_cartesian = hasattr(particle_array, 'pt') and hasattr(particle_array, 'eta') and hasattr(particle_array, 'phi') and hasattr(particle_array, 'm')
-        has_cylindrical = hasattr(particle_array, 'rho') and hasattr(particle_array, 'eta') and hasattr(particle_array, 'phi') and hasattr(particle_array, 'tau')
-        
-        if has_cartesian:
-            # Cartesian: pt, eta, phi, m
-            momentum_vector = vector.zip({
-                "pt": particle_array.pt,
-                "eta": particle_array.eta,
-                "phi": particle_array.phi,
-                "mass": particle_array.m
-            })
-        elif has_cylindrical:
-            # Cylindrical: rho, eta, phi, tau
-            momentum_vector = vector.zip({
-                "rho": particle_array.rho,
-                "eta": particle_array.eta,
-                "phi": particle_array.phi,
-                "tau": particle_array.tau
-            })
-        else:
-            raise ValueError(
-                f"Particle type '{particle_type}' has neither Cartesian "
-                f"(pt, eta, phi, m) nor cylindrical (rho, eta, phi, tau) coordinates"
-            )
-        
-        all_vectors.append(momentum_vector)
-    
-    return all_vectors
 
 def concat_events(particle_events: ak.Array) -> ak.Array:
     all_vectors = []
