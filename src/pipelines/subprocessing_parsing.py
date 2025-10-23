@@ -214,7 +214,7 @@ def parse_with_per_chunk_subprocess(config):
             
             gc.collect()
             #TEMP test for spawning process delay
-            time.sleep(10)
+            time.sleep(30)
     
     pbar.close()
     logger.info(
