@@ -46,7 +46,7 @@ def mass_calculate(config):
                 
                 if len(filtered_events) == 0:
                     continue
-                #TODO: add here apply_vector_corrections
+                
                 inv_mass: list = physics_calcs.calc_inv_mass(filtered_events) 
                 
                 if not ak.any(inv_mass):
