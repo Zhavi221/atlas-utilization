@@ -311,9 +311,6 @@ class ATLAS_Parser():
                         if cur_file_data is not None:
                             successful_count += 1
 
-                            #TODO remove? works fine without.
-                            # cur_file_data = self._convert_to_vector_objects(cur_file_data)
-
                             self._log_file_metadata(cur_file_data)
                             cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
                             self._concatenate_events(cur_file_data)

@@ -167,7 +167,7 @@ def parse_with_per_chunk_subprocess(config):
         # Wait for subprocess to complete
         try:
             #FOR TESTING - timeout
-            status = status_queue.get(timeout=300)
+            status = status_queue.get(timeout=None) 
             
             if status["status"] == "chunk_complete":
                 files_parsed = status["files_parsed"]
@@ -220,11 +220,20 @@ def parse_with_per_chunk_subprocess(config):
             
             worker_process.join()
             logger.info("Subprocess terminated, memory freed to OS")
-            logger.info("Sleeping 60 seconds to allow OS to reclaim memory...")
+            logger.info("Sleeping 50 seconds to allow OS to reclaim memory...")
             
             gc.collect()
             #FOR TESTING - sleep 
-            time.sleep(60)
+            time.sleep(10)
+            logger.info("10 seconds passed")
+            time.sleep(20)
+            logger.info("20 seconds passed")
+            time.sleep(30)
+            logger.info("30 seconds passed")
+            time.sleep(40)
+            logger.info("40 seconds passed")
+            time.sleep(50)
+            logger.info("50 seconds passed")
     
     pbar.close()
     logger.info(
