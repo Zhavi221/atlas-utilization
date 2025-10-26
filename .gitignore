@@ -16,3 +16,6 @@ root_atom.sif
 atlas_crashes.log
 src/parse_atlas/parser.py
 atlas_stats.json
+test_main.ipynb
+test.py
+src/testing_scripts/*
