@@ -24,7 +24,7 @@ def mass_calculate(config):
         logger.warning(f"Input directory '{config['input_dir']}' is empty.")
         return
     
-    os.makedirs(config["input_dir"], exist_ok=True)
+    os.makedirs(config["output_dir"], exist_ok=True)
     
     all_combinations = combinatorics.get_all_combinations(config["objects_to_calculate"])
 

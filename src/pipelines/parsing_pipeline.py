@@ -40,7 +40,7 @@ def parse(config):
         cut_events = physics_calcs.filter_events_by_kinematics(
             events_chunk, config["kinematic_cuts"]
         )
-        del events_chunk  
+        #del events_chunk  
 
         logger.info("Filtering events")
         filtered_events = physics_calcs.filter_events_by_particle_counts(
@@ -48,17 +48,17 @@ def parse(config):
             particle_counts=config["particle_counts"], 
             is_particle_counts_range=True
         ) 
-        del cut_events
+        #del cut_events
 
         logger.info("Flattening root")
         root_ready = atlasparser.flatten_for_root(filtered_events)
-        del filtered_events
+        #del filtered_events
 
         logger.info("Saving events")
         atlasparser.save_events_as_root(root_ready, config["output_path"])        
-        del root_ready
+        #del root_ready
 
-        gc.collect()  
+        #gc.collect()  
 
 def init_logging():
     logging.basicConfig(

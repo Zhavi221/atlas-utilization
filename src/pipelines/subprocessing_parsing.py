@@ -35,8 +35,8 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
         for events_chunk in atlasparser.parse_files(
             files_ids=files_to_parse,
             limit=config.get("file_limit", 0),
-            tracking_enabled=False,
-            save_statistics=False
+            tracking_enabled=True, #FOR TESTING
+            save_statistics=True #FOR TESTING
         ):
 
             files_parsed = atlasparser.cur_files_ids.copy()
@@ -68,9 +68,6 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
             logger.info("Saving events to disk")
             atlasparser.cur_files_ids = files_parsed
             atlasparser.save_events_as_root(root_ready, config["output_path"])
-            del root_ready
-            
-            gc.collect()
             
             # Send status back to main
             status_queue.put({
@@ -82,10 +79,6 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
             
             chunk_received = True
             
-            # Clear subprocess state
-            atlasparser.events = None
-            atlasparser.cur_files_ids = []
-            gc.collect()
             
             # Exit after processing ONE chunk
             break
@@ -129,8 +122,6 @@ def parse_with_per_chunk_subprocess(config):
     all_files = temp_parser.fetch_records_ids(
         release_year=config["release_year"]
     )
-    del temp_parser
-    gc.collect()
     
     if config.get("random_files", True):
         random.shuffle(all_files)
@@ -220,26 +211,18 @@ def parse_with_per_chunk_subprocess(config):
             
             worker_process.join()
             logger.info("Subprocess terminated, memory freed to OS")
-            logger.info("Sleeping 50 seconds to allow OS to reclaim memory...")
+            logger.info("Sleeping 10 seconds to allow OS to reclaim memory...")
             
-            gc.collect()
             #FOR TESTING - sleep 
             time.sleep(10)
             logger.info("10 seconds passed")
-            time.sleep(20)
-            logger.info("20 seconds passed")
-            time.sleep(30)
-            logger.info("30 seconds passed")
-            time.sleep(40)
-            logger.info("40 seconds passed")
-            time.sleep(50)
-            logger.info("50 seconds passed")
     
     pbar.close()
     logger.info(
         f"Parsing complete! Processed {chunk_count} chunks, "
         f"{total_events:,} total events"
     )
+
 
 
 def init_logging():

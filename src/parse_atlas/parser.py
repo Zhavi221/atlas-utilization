@@ -87,11 +87,255 @@ class ATLAS_Parser():
         self.max_file_size_mb = 0
         self.min_file_size_mb = float('inf')
         self.total_events_processed = 0
+        self.max_memory_captured = 0
         # ================================================================
 
         #PARALLELISM CONFIG
         self.max_threads = max_threads
 
+    #FETCHING FILE IDS
+    def fetch_records_ids(self, release_year):
+        '''
+            Fetches the real records IDs for a given release year.
+            Returns a list of file URIs.
+        '''
+        atom.set_release(consts.RELEASES_YEARS.get(release_year))
+
+        datasets_ids = atom.available_data()
+        release_files_uris = []
+
+        for dataset_id in datasets_ids:
+            release_files_uris.extend(atom.get_urls_data(dataset_id))
+
+        self.files_ids = release_files_uris
+        return release_files_uris
+    
+    def fetch_mc_files_ids(self, release_year, is_random=False, all=False):
+        '''
+            Fetches the Monte Carlo records IDs for a given release year.
+            Returns a list of file URIs.
+        '''
+        release = consts.RELEASES_YEARS[release_year]
+        metadata_url = consts.LIBRARY_RELEASES_METADATA[release]
+
+        _metadata = {}
+
+        response = requests.get(metadata_url)
+
+        response.raise_for_status()
+        lines = response.text.splitlines()
+
+        reader = csv.DictReader(lines)
+        for row in reader:
+            dataset_number = row['dataset_number'].strip()
+            _metadata[dataset_number] = row
+
+        all_mc_ids = list(_metadata.keys())
+
+        if is_random:
+            random_mc_id = random.choice(all_mc_ids)
+            all_metadata = atom.get_metadata(random_mc_id)
+            print(all_metadata['process'], all_metadata['short_name'])
+            return random_mc_id
+
+        return all_mc_ids
+
+    #PARSING METHODS
+    def parse_files(self,
+                       files_ids: list = None,
+                       limit: int = 0,
+                       tracking_enabled: bool = True,
+                       save_statistics: bool = True):
+        '''
+            Parses the input files by their IDs, otherwise uses the member files_ids.
+            Yields chunks of events as awkward arrays each size from the input limit.
+        '''
+        if files_ids is None:
+            if self.files_ids is None:
+                raise ValueError("No files_ids provided and self.files_ids is None.")
+            files_ids = self.files_ids
+
+        if limit:
+            files_ids = files_ids[:limit]
+
+        successful_count = 0
+        self._initialize_statistics()
+        
+        tqdm.write(
+            f"Starting to parse {len(files_ids)} files with {self.max_threads} threads.")
+        
+        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
+            futures = {
+                executor.submit(ATLAS_Parser.parse_file, file_index): file_index
+                for file_index in files_ids
+            }
+        
+            with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
+
+                for future in as_completed(futures):
+                    file_index = futures[future]
+                    file_start_time = time.time()
+
+                    try:
+                        cur_file_data = future.result(timeout=10)
+                        
+                        if cur_file_data is not None:
+                            successful_count += 1
+
+                            self._save_parsed_file_metadata(cur_file_data)
+                            cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
+                            self._concatenate_events(cur_file_data)
+                            self.cur_files_ids.append(file_index)
+
+                            tqdm.write(f"{self._get_actual_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
+                            if self._chunk_size_enough():
+
+                                self._save_chunk_metadata()
+                                
+                                # Store chunk reference
+                                chunk_to_yield = self.events
+                                
+                                # CRITICAL: Clear reference BEFORE yielding
+                                self.events = None
+                                self.file_parsed_count = 0
+                                
+                                mem_before_yield = self._get_actual_memory_mb()
+                                self.max_memory_captured = max(self.max_memory_captured, mem_before_yield) #TODO doesnt work, check
+                                
+                                
+                                #TODO check this - Yield the chunk
+                                if chunk_to_yield is None:
+                                    pass
+                                yield chunk_to_yield
+                                
+                                # CRITICAL: delete local reference after yield
+                                del chunk_to_yield
+                                
+                                # Force aggressive cleanup after yield
+                                gc.collect()
+                                
+                                mem_after_yield = self._get_actual_memory_mb()
+                                mem_freed = mem_before_yield - mem_after_yield
+                                
+                                tqdm.write(
+                                    f"🧹 Memory before yield: {mem_before_yield:.1f} MB "
+                                    f"🧹 Memory after yield: {mem_after_yield:.1f} MB "
+                                    f"(freed: {mem_freed:.1f} MB)"
+                                )
+
+                    except Exception as e:
+                        file_processing_time = time.time() - file_start_time
+                        self._log_crash(file_index, e, file_processing_time)
+                        tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}")
+
+                    
+                    if tracking_enabled:
+                        status = self._get_parsing_status_for_pbar(successful_count)
+                        pbar.set_postfix_str(status)
+                        pbar.update(1)
+
+        if save_statistics:
+            stats = self._save_statistics(len(files_ids), successful_count)
+            self.print_statistics_summary(stats) 
+        
+        if self.events is not None:
+            self._save_chunk_metadata()
+            yield self.events
+            self.events = None
+    
+    @staticmethod
+    def parse_file(file_index, tree_name="CollectionTree", batch_size=40_000) -> ak.Array:
+        """
+        Parse an ATLAS DAOD file in batches if necessary.
+        Accumulates raw arrays and zips into vector objects only once per object.
+        """
+        with uproot.open({file_index: tree_name}) as tree:
+            all_keys = set(tree.keys())
+            n_entries = tree.num_entries
+            is_file_big = n_entries > batch_size  # flag large files
+
+            # 1. Precompute all fields to read
+            obj_branches: dict = ATLAS_Parser._extract_branches_for_inv_mass(all_keys, schema=schemas.INVARIANT_MASS_SCHEMA)
+
+            if not obj_branches.values():
+                return None
+            
+            all_branches = {branch for branches_list in obj_branches.values() for branch in branches_list}
+
+            # 2. Initialize storage for raw batches
+            all_events = {obj_name: [] for obj_name in obj_branches}
+
+            # 3. Define entry ranges
+            entry_ranges = []
+            parsing_label = ""
+            if is_file_big:
+                parsing_label = "Parsing file as batches"
+                entry_ranges = [
+                    (start, min(start + batch_size, n_entries)) 
+                    for start in range(0, n_entries, batch_size)
+                ]
+            else:
+                parsing_label = "Parsing file"
+                entry_ranges = [(0, n_entries)]
+
+            # 4. Read batches
+            for entry_start, entry_stop in tqdm(entry_ranges, desc=parsing_label, unit="batch"):
+                batch_data = tree.arrays(all_branches, entry_start=entry_start, entry_stop=entry_stop)
+
+                # Append raw arrays only
+                for obj_name, fields in obj_branches.items():
+                    subset = batch_data[fields]
+                    all_events[obj_name].append(subset)
+
+            for obj_name, chunks in all_events.items():
+                concatenated = ak.concatenate(chunks)
+                chunks.clear()
+                
+                # Keep as plain awkward array with proper field names
+                field_names = [f.split('.')[-1] for f in obj_branches[obj_name]]
+                all_events[obj_name] = ak.zip({
+                    name: concatenated[full] 
+                    for name, full in zip(field_names, obj_branches[obj_name])
+                })  # Plain ak.zip, not vector.zip
+
+            return ak.zip(all_events, depth_limit=1)
+
+    def _get_parsing_status_for_pbar(self, successful_count):
+        success_rate = (
+                        (successful_count / (successful_count + len(self.failed_files)) * 100)
+                        if (successful_count + len(self.failed_files)) > 0 else 0
+                    )
+        status = (
+                f"✅ {successful_count} | "
+                f"❌ {len(self.failed_files)} | "
+                f"✨ {success_rate:.1f}% | "
+                f"💾 {self.total_size_kb / (1024 * 1024):.1f} MB | "
+                f"🎯 {self.total_events_processed:,} events"
+            )
+        
+        return status
+
+    def _concatenate_events(self, cur_file_data):
+        chunk_size_kb = cur_file_data.layout.nbytes
+        self.total_size_kb += chunk_size_kb
+        
+        mem_before = self._get_actual_memory_mb()
+
+        if self.events is None:
+            self.events = cur_file_data
+        else:
+            old_events = self.events
+            self.events = ak.concatenate([old_events, cur_file_data], axis=0)
+        
+        mem_after = self._get_actual_memory_mb()
+        mem_delta = mem_after - mem_before
+        
+        # Log if memory grew unexpectedly
+        if mem_delta > chunk_size_kb / (1024 * 1024) * 3:  # More than 3x file size
+            tqdm.write(f"⚠️  High memory growth: {mem_delta:.1f} MB for {chunk_size_kb/(1024*1024):.1f} MB file")
+        
+        self.file_parsed_count += 1
+    
     #SAVING FILES
     def save_events_as_root(self, events, output_dir):
         os.makedirs(output_dir, exist_ok=True)
@@ -149,24 +393,29 @@ class ATLAS_Parser():
         
         
         return root_ready
-    
-    #PARSING METHODS
-    def fetch_records_ids(self, release_year):
-        '''
-            Fetches the real records IDs for a given release year.
-            Returns a list of file URIs.
-        '''
-        atom.set_release(consts.RELEASES_YEARS.get(release_year))
 
-        datasets_ids = atom.available_data()
-        release_files_uris = []
+    #MEMORY METHODS
+    def _get_actual_memory_mb(self):
+        """Get actual process memory usage"""
+        process = psutil.Process(os.getpid())
+        process_rss_bytes = process.memory_info().rss
+        return process_rss_bytes / (1024**2)
 
-        for dataset_id in datasets_ids:
-            release_files_uris.extend(atom.get_urls_data(dataset_id))
+    def _chunk_size_enough(self):
+        """Check if we should yield based on ACTUAL memory pressure"""
+        if self.events is None:
+            return False
+        
+        logical_size = self.events.layout.nbytes
+        actual_memory = self._get_actual_memory_mb() 
+        
+        if actual_memory >= self.max_process_memory_mb - 1000:
+            tqdm.write(f"⚠️High memory usage: {actual_memory:.1f} MB (limit: {self.max_process_memory_mb} MB)")
+            return True
 
-        self.files_ids = release_files_uris
-        return release_files_uris
+        return logical_size >= self.max_chunk_size_bytes
 
+    #LOGGING METHODS
     def _log_crash(self, file_index, exception, processing_time=None):
         """Enhanced thread-safe crash logging with statistics"""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -203,9 +452,32 @@ class ATLAS_Parser():
 
             data["failed_files"].append(file_index)
 
-            with open(self.crashed_files, 'w') as f:
+            with open(self.crashed_files, 'a') as f:
                 json.dump(data, f, indent=2)
 
+    def _save_parsed_file_metadata(self, cur_file_data):                    
+        file_size_mb = cur_file_data.layout.nbytes / (1024 * 1024)
+        self.max_file_size_mb = max(self.max_file_size_mb, file_size_mb)
+        self.min_file_size_mb = min(self.min_file_size_mb, file_size_mb)
+
+        events_in_file = len(cur_file_data)
+        self.total_events_processed += events_in_file
+        tqdm.write(
+            f"✅ File processed: {file_size_mb:.2f} MB logical size, " 
+            f"{events_in_file:,} events."
+        )
+    
+    def _save_chunk_metadata(self):
+        chunk_info = {
+            "chunk_id": self.cur_chunk,
+            "events": len(self.events),
+            "size_mb": self.events.layout.nbytes / (1024 * 1024),
+            "files_included": self.file_parsed_count
+        }
+        self.chunk_stats.append(chunk_info)
+        
+        self.cur_chunk += 1
+        
     def _save_statistics(self, total_files, successful_count):
         """Save comprehensive parsing statistics to JSON"""
         end_time = time.time()
@@ -226,7 +498,8 @@ class ATLAS_Parser():
                 "total_data_processed_mb": self.total_size_kb / (1024 * 1024),
                 "total_events_processed": self.total_events_processed,
                 "chunks_created": self.cur_chunk,
-                "avg_chunk_size_mb": (self.total_size_kb / (1024 * 1024)) / max(self.cur_chunk, 1)
+                "avg_chunk_size_mb": (self.total_size_kb / (1024 * 1024)) / max(self.cur_chunk, 1),
+                "max_memory_captured_mb": self.max_memory_captured
             },
             "errors": {
                 "timeout_count": self.timeout_count,
@@ -236,7 +509,7 @@ class ATLAS_Parser():
             "chunk_details": self.chunk_stats
         }
         
-        with open(self.stats_log, 'w') as f:
+        with open(self.stats_log, 'a') as f:
             json.dump(stats, f, indent=2)
         
         return stats
@@ -252,6 +525,7 @@ class ATLAS_Parser():
         tqdm.write(f"💾 Data Processed: {stats['performance']['total_data_processed_mb']:.1f} MB")
         tqdm.write(f"🎯 Events Processed: {stats['performance']['total_events_processed']:,}")
         tqdm.write(f"📦 Chunks Created: {stats['performance']['chunks_created']}")
+        tqdm.write(f"📊 Max memory captured: {stats['performance']['max_memory_captured_mb']:.1f} MB")
         
         if stats['errors']['error_types']:
             tqdm.write(f"⚠️  Error Breakdown:")
@@ -267,255 +541,15 @@ class ATLAS_Parser():
         self.parsing_start_time = time.time()
         if os.path.exists(self.crash_log):
             os.remove(self.crash_log) 
+        os.makedirs(os.path.dirname(self.crash_log), exist_ok=True)
         if os.path.exists(self.stats_log):
             os.remove(self.stats_log) 
+        os.makedirs(os.path.dirname(self.stats_log), exist_ok=True)
+        if os.path.exists(self.crashed_files):
+            os.remove(self.crashed_files)
+        os.makedirs(os.path.dirname(self.crashed_files), exist_ok=True)
 
-    def parse_files(self,
-                       files_ids: list = None,
-                       limit: int = 0,
-                       tracking_enabled: bool = True,
-                       save_statistics: bool = True):
-        '''
-            Parses the input files by their IDs, otherwise uses the member files_ids.
-            Yields chunks of events as awkward arrays each size from the input limit.
-        '''
-        if files_ids is None:
-            if self.files_ids is None:
-                raise ValueError("No files_ids provided and self.files_ids is None.")
-            files_ids = self.files_ids
-
-        if limit:
-            files_ids = files_ids[:limit]
-
-        successful_count = 0
-        self._initialize_statistics()
-        
-        tqdm.write(
-            f"Starting to parse {len(files_ids)} files with {self.max_threads} threads.")
-        
-        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
-            futures = {
-                executor.submit(ATLAS_Parser.parse_file, file_index): file_index
-                for file_index in files_ids
-            }
-        
-            with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
-
-                for future in as_completed(futures):
-                    file_index = futures[future]
-                    file_start_time = time.time()
-
-                    try:
-                        cur_file_data = future.result(timeout=10)
-                        
-                        if cur_file_data is not None:
-                            successful_count += 1
-
-                            self._log_file_metadata(cur_file_data)
-                            cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
-                            self._concatenate_events(cur_file_data)
-                            self.cur_files_ids.append(file_index)
-
-                            tqdm.write(f"{self._get_actual_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
-                            if self._chunk_size_enough():
-
-                                self._log_chunk()
-                                
-                                # Store chunk reference
-                                chunk_to_yield = self.events
-                                
-                                # CRITICAL: Clear reference BEFORE yielding
-                                self.events = None
-                                self.file_parsed_count = 0
-                                
-                                mem_before_yield = self._get_actual_memory_mb()
-                                # Force garbage collection BEFORE yield
-                                gc.collect()
-                                
-                                
-                                # Yield the chunk
-                                if chunk_to_yield is None:
-                                    pass
-                                yield chunk_to_yield
-                                
-                                # CRITICAL: Delete local reference after yield
-                                del chunk_to_yield
-                                
-                                # Force aggressive cleanup after yield
-                                gc.collect()
-                                
-                                mem_after_yield = self._get_actual_memory_mb()
-                                mem_freed = mem_before_yield - mem_after_yield
-                                
-                                tqdm.write(
-                                    f"🧹 Memory before yield: {mem_before_yield:.1f} MB "
-                                    f"🧹 Memory after yield: {mem_after_yield:.1f} MB "
-                                    f"(freed: {mem_freed:.1f} MB)"
-                                )
-                                # tqdm.write(str(self.list_top_variables_global(n=10)))
-
-                    except TimeoutError:
-                        file_processing_time = time.time() - file_start_time
-                        self._log_crash(file_index, TimeoutError(f"Parsing took longer than 10s"), file_processing_time)
-                        tqdm.write(f"⏱️ Timeout: {file_index} ({file_processing_time:.1f}s)")
-                        
-                    except Exception as e:
-                        file_processing_time = time.time() - file_start_time
-                        self._log_crash(file_index, e, file_processing_time)
-                        tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}")
-
-                    status = self._get_parsing_status(successful_count)
-                    if tracking_enabled:
-                        pbar.set_postfix_str(status)
-                        pbar.update(1)
-
-        if save_statistics:
-            stats = self._save_statistics(len(files_ids), successful_count)
-            self.print_statistics_summary(stats) 
-        
-        if self.events is not None:
-            self._log_chunk()
-            yield self.events
-            self.events = None
-
-    def _convert_to_vector_objects(self, plain_events):
-        """
-        Convert plain awkward arrays to vector objects in MAIN process.
-        This avoids pickling issues with lambda functions in vector objects.
-        """
-        vector_events = {}
-        
-        for obj_name in plain_events.fields:
-            obj_data = plain_events[obj_name]
-            
-            # Check if it's a record array with physics fields
-            if hasattr(obj_data, 'fields') and len(obj_data.fields) > 0:
-                fields = obj_data.fields
-                
-                # Check if we have vector-compatible fields
-                has_pt = 'pt' in fields or 'rho' in fields
-                has_eta = 'eta' in fields
-                has_phi = 'phi' in fields
-                
-                if has_pt and has_eta and has_phi:
-                    # Convert to vector object
-                    field_dict = {field: obj_data[field] for field in fields}
-                    vector_events[obj_name] = vector.zip(field_dict)
-                else:
-                    # Keep as plain awkward array
-                    vector_events[obj_name] = obj_data
-            else:
-                vector_events[obj_name] = obj_data
-        
-        return ak.zip(vector_events, depth_limit=1)
-    
-    def _get_actual_memory_mb(self):
-        """Get actual process memory usage"""
-        process = psutil.Process(os.getpid())
-        process_rss_bytes = process.memory_info().rss
-        return process_rss_bytes / (1024**2)
-
-    def _get_parsing_status(self, successful_count):
-        success_rate = (
-                        (successful_count / (successful_count + len(self.failed_files)) * 100)
-                        if (successful_count + len(self.failed_files)) > 0 else 0
-                    )
-        status = (
-                f"✅ {successful_count} | "
-                f"❌ {len(self.failed_files)} | "
-                f"✨ {success_rate:.1f}% | "
-                f"💾 {self.total_size_kb / (1024 * 1024):.1f} MB | "
-                f"🎯 {self.total_events_processed:,} events"
-            )
-        
-        return status
-
-    def _log_file_metadata(self, cur_file_data):                    
-        file_size_mb = cur_file_data.layout.nbytes / (1024 * 1024)
-        self.max_file_size_mb = max(self.max_file_size_mb, file_size_mb)
-        self.min_file_size_mb = min(self.min_file_size_mb, file_size_mb)
-
-        events_in_file = len(cur_file_data)
-        self.total_events_processed += events_in_file
-        tqdm.write(
-            f"✅ File processed: {file_size_mb:.2f} MB logical size, " 
-            f"{events_in_file:,} events."
-        )
-    
-    def _log_chunk(self):
-        chunk_info = {
-            "chunk_id": self.cur_chunk,
-            "events": len(self.events),
-            "size_mb": self.events.layout.nbytes / (1024 * 1024),
-            "files_included": self.file_parsed_count
-        }
-        self.chunk_stats.append(chunk_info)
-        
-        self.cur_chunk += 1
-        
-
-    @staticmethod
-    def parse_file(file_index, tree_name="CollectionTree", batch_size=40_000) -> ak.Array:
-        """
-        Parse an ATLAS DAOD file in batches if necessary.
-        Accumulates raw arrays and zips into vector objects only once per object.
-        """
-        with uproot.open({file_index: tree_name}) as tree:
-            all_keys = set(tree.keys())
-            n_entries = tree.num_entries
-            is_file_big = n_entries > batch_size  # flag large files
-
-            # 1. Precompute all fields to read
-            obj_branches: dict = ATLAS_Parser._extract_branches_for_inv_mass(all_keys, schema=schemas.INVARIANT_MASS_SCHEMA)
-
-            if not obj_branches.values():
-                return None
-            
-            all_branches = {branch for branches_list in obj_branches.values() for branch in branches_list}
-
-            # 2. Initialize storage for raw batches
-            all_events = {obj_name: [] for obj_name in obj_branches}
-
-            # 3. Define entry ranges
-            entry_ranges = []
-            parsing_label = ""
-            if is_file_big:
-                parsing_label = "Parsing file as batches"
-                entry_ranges = [
-                    (start, min(start + batch_size, n_entries)) 
-                    for start in range(0, n_entries, batch_size)
-                ]
-            else:
-                parsing_label = "Parsing file"
-                entry_ranges = [(0, n_entries)]
-
-            # 4. Read batches
-            for entry_start, entry_stop in tqdm(entry_ranges, desc=parsing_label, unit="batch"):
-                batch_data = tree.arrays(all_branches, entry_start=entry_start, entry_stop=entry_stop)
-
-                # Append raw arrays only
-                for obj_name, fields in obj_branches.items():
-                    subset = batch_data[fields]
-                    all_events[obj_name].append(subset)
-
-            for obj_name, chunks in all_events.items():
-                concatenated = ak.concatenate(chunks)
-                chunks.clear()
-                
-                # Keep as plain awkward array with proper field names
-                field_names = [f.split('.')[-1] for f in obj_branches[obj_name]]
-                all_events[obj_name] = ak.zip({
-                    name: concatenated[full] 
-                    for name, full in zip(field_names, obj_branches[obj_name])
-                })  # Plain ak.zip, not vector.zip
-                
-                del concatenated
-
-            # Force GC before returning
-            gc.collect()
-            
-            return ak.zip(all_events, depth_limit=1)
-
+    #STATIC METHODS
     @staticmethod
     def _extract_branches_for_inv_mass(all_keys, schema: dict):
         obj_branches = {}
@@ -531,76 +565,6 @@ class ATLAS_Parser():
 
         return obj_branches
 
-    def _concatenate_events(self, cur_file_data):
-        chunk_size_kb = cur_file_data.layout.nbytes
-        self.total_size_kb += chunk_size_kb
-        
-        mem_before = self._get_actual_memory_mb()
-
-        if self.events is None:
-            self.events = cur_file_data
-        else:
-            old_events = self.events
-            self.events = ak.concatenate([old_events, cur_file_data], axis=0)
-            del old_events
-            del cur_file_data
-            gc.collect()
-        
-        mem_after = self._get_actual_memory_mb()
-        mem_delta = mem_after - mem_before
-        
-        # Log if memory grew unexpectedly
-        if mem_delta > chunk_size_kb / (1024 * 1024) * 3:  # More than 3x file size
-            tqdm.write(f"⚠️  High memory growth: {mem_delta:.1f} MB for {chunk_size_kb/(1024*1024):.1f} MB file")
-        
-        self.file_parsed_count += 1
-    
-    def _chunk_size_enough(self):
-        """Check if we should yield based on ACTUAL memory pressure"""
-        if self.events is None:
-            return False
-        
-        logical_size = self.events.layout.nbytes
-        actual_memory = self._get_actual_memory_mb() 
-        
-        if actual_memory >= self.max_process_memory_mb - 1000:
-            tqdm.write(f"⚠️High memory usage: {actual_memory:.1f} MB (limit: {self.max_process_memory_mb} MB)")
-            return True
-
-        return logical_size >= self.max_chunk_size_bytes
-
-    #TESTING METHODS
-    def fetch_mc_files_ids(self, release_year, is_random=False, all=False):
-        '''
-            Fetches the Monte Carlo records IDs for a given release year.
-            Returns a list of file URIs.
-        '''
-        release = consts.RELEASES_YEARS[release_year]
-        metadata_url = consts.LIBRARY_RELEASES_METADATA[release]
-
-        _metadata = {}
-
-        response = requests.get(metadata_url)
-
-        response.raise_for_status()
-        lines = response.text.splitlines()
-
-        reader = csv.DictReader(lines)
-        for row in reader:
-            dataset_number = row['dataset_number'].strip()
-            _metadata[dataset_number] = row
-
-        all_mc_ids = list(_metadata.keys())
-
-        if is_random:
-            random_mc_id = random.choice(all_mc_ids)
-            all_metadata = atom.get_metadata(random_mc_id)
-            print(all_metadata['process'], all_metadata['short_name'])
-            return random_mc_id
-
-        return all_mc_ids
-
-    #STATIC METHODS
     @staticmethod
     def _can_calculate_inv_mass(available_fields):
         """
