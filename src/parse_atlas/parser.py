@@ -60,7 +60,7 @@ class ATLAS_Parser():
         _normalize_fields(ak_array):
             Normalizes fields in the awkward array to match schema.
     '''
-    def __init__(self, max_process_memory_mb, max_chunk_size_bytes, max_threads, logging_path):
+    def __init__(self, max_process_memory_mb, max_chunk_size_bytes, max_threads, logging_path, initialize_statistics=False):
         self.files_ids = None
         self.file_parsed_count = 0
         self.cur_chunk = 0
@@ -73,6 +73,7 @@ class ATLAS_Parser():
         self.max_process_memory_mb = max_process_memory_mb 
         
         # ===== Enhanced: Comprehensive crash and statistics tracking =====
+        self.is_initialize_statistics = initialize_statistics
         self.crash_log = logging_path + "atlas_crashes.log"
         self.stats_log = logging_path + "atlas_stats.json"
         self.crashed_files = logging_path + "crashed_files.json"
@@ -159,7 +160,8 @@ class ATLAS_Parser():
             files_ids = files_ids[:limit]
 
         successful_count = 0
-        self._initialize_statistics()
+        if self.is_initialize_statistics:
+            self._initialize_statistics()
         
         tqdm.write(
             f"Starting to parse {len(files_ids)} files with {self.max_threads} threads.")
@@ -452,7 +454,7 @@ class ATLAS_Parser():
 
             data["failed_files"].append(file_index)
 
-            with open(self.crashed_files, 'a') as f:
+            with open(self.crashed_files, 'w+') as f:
                 json.dump(data, f, indent=2)
 
     def _save_parsed_file_metadata(self, cur_file_data):                    

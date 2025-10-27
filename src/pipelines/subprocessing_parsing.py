@@ -116,7 +116,8 @@ def parse_with_per_chunk_subprocess(config):
         max_process_memory_mb=config["max_process_memory_mb"],
         max_chunk_size_bytes=config["max_chunk_size_bytes"],
         max_threads=config["max_threads"],
-        logging_path=config["logging_path"]
+        logging_path=config["logging_path"],
+        initialize_statistics=True
     )
     
     all_files = temp_parser.fetch_records_ids(

@@ -21,7 +21,8 @@ def parse(config):
         max_process_memory_mb=config["max_process_memory_mb"],
         max_chunk_size_bytes=config["max_chunk_size_bytes"],
         max_threads=config["max_threads"],
-        logging_path=config["logging_path"]
+        logging_path=config["logging_path"],
+        initialize_statistics=True
         )
 
     release_files_uris = atlasparser.fetch_records_ids(

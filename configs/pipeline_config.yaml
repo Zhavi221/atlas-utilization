@@ -6,7 +6,7 @@ parsing:
   parse_in_subprocess: false #important for cluster processing
   random_files: false #for testing
   release_year: '2024'
-  all_years: false #TODO implement 
+  all_years: false #TODO implement this maybe remove parameter from fetch records
   max_threads: 4
   max_process_memory_mb: 8192
   # max_chunk_size_bytes: 1000000000 #1GB 
