@@ -60,13 +60,6 @@ def mass_calculate(config):
                 
                 np.save(output_path, ak.to_numpy(inv_mass))
 
-def parse_file(file_path):
-    with uproot.open(file_path) as file:
-        tree = file["tree"]           
-        particle_arrays = tree.arrays(library="ak")
-
-        return particle_arrays
-
 def prepare_combination_name(combination: dict) -> str:
     combination_name = ''
     for object, amount in combination.items():

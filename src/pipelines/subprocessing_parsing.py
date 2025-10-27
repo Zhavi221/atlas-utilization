@@ -35,8 +35,7 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
         for events_chunk in atlasparser.parse_files(
             files_ids=files_to_parse,
             limit=config.get("file_limit", 0),
-            tracking_enabled=True, #FOR TESTING
-            save_statistics=True #FOR TESTING
+            save_statistics=True #FOR TESTING - statistics
         ):
 
             files_parsed = atlasparser.cur_files_ids.copy()

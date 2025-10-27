@@ -14,7 +14,7 @@ def main():
         main_logger.info("Starting parsing task")
         parsing_config = config["parsing"]
 
-        if parsing_config.get("parse_with_subprocess", True):
+        if parsing_config.get("parse_in_subprocess", True):
             main_logger.info("Parsing with a subprocess")
             from src.pipelines import subprocessing_parsing
             subprocessing_parsing.parse_with_per_chunk_subprocess(parsing_config)

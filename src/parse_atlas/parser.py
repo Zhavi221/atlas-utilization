@@ -145,7 +145,6 @@ class ATLAS_Parser():
     def parse_files(self,
                        files_ids: list = None,
                        limit: int = 0,
-                       tracking_enabled: bool = True,
                        save_statistics: bool = True):
         '''
             Parses the input files by their IDs, otherwise uses the member files_ids.
@@ -231,10 +230,9 @@ class ATLAS_Parser():
                         tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}")
 
                     
-                    if tracking_enabled:
-                        status = self._get_parsing_status_for_pbar(successful_count)
-                        pbar.set_postfix_str(status)
-                        pbar.update(1)
+                    status = self._get_parsing_status_for_pbar(successful_count)
+                    pbar.set_postfix_str(status)
+                    pbar.update(1)
 
         if save_statistics:
             stats = self._save_statistics(len(files_ids), successful_count)

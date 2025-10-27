@@ -1,17 +1,17 @@
 tasks:
   do_parsing: true
-  do_mass_calculating: false
+  do_mass_calculating: true
 
 parsing:
-  parse_in_subprocess: false #important for cluster processing
+  parse_in_subprocess: true #important for cluster processing
   random_files: false #for testing
   release_year: '2024'
   all_years: false #TODO implement this maybe remove parameter from fetch records
   max_threads: 4
   max_process_memory_mb: 8192
-  # max_chunk_size_bytes: 1000000000 #1GB 
-  max_chunk_size_bytes: 50000000 #50MB for testing
-  file_limit: 10
+  max_chunk_size_bytes: 1000000000 #1GB 
+  # max_chunk_size_bytes: 50000000 #50MB for testing
+  file_limit: 100
   output_path: 'data/root_files'
   logging_path: 'logs/'
   # crashed_files: 'crashed_files.json'
