@@ -1,18 +1,20 @@
 tasks:
   do_parsing: true
-  do_mass_calculating: false
+  do_mass_calculating: true
 
 parsing:
+  parse_in_subprocess: true #important for cluster processing
+  random_files: false #for testing
   release_year: '2024'
-  max_threads: 5
-  max_processes: 3
+  all_years: false #TODO implement this maybe remove parameter from fetch records
+  max_threads: 4
   max_process_memory_mb: 8192
-  # max_chunk_size_bytes: 1000000000 #5GB
-  # max_chunk_size_bytes: 1000000000 #1GB 
-  max_chunk_size_bytes: 1000000 #1MB
-  file_limit: 10
+  max_chunk_size_bytes: 1000000000 #1GB 
+  # max_chunk_size_bytes: 50000000 #50MB for testing
+  file_limit: 100
   output_path: 'data/root_files'
   logging_path: 'logs/'
+  # crashed_files: 'crashed_files.json'
 
   particle_counts:
     Electrons:
@@ -27,12 +29,9 @@ parsing:
     Photons:
       min: 0
       max: 5
-    Taus:
-      min: 0
-      max: 3
 
   kinematic_cuts:
-    rho:
+    pt:
       min: 0
     eta:
       min: -5
@@ -40,8 +39,6 @@ parsing:
     phi:
       min: -3.141592653589793
       max: 3.141592653589793
-    tau:
-      min: 0
 
 mass_calculate:
   input_dir: 'data/root_files'
@@ -51,3 +48,7 @@ mass_calculate:
       - Muons
       - Jets
       - Photons
+  min_particles: 2
+  max_particles: 4
+  min_count: 2
+  max_count: 4

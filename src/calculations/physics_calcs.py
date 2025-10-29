@@ -3,26 +3,30 @@ import numpy as np
 import vector
 import gc
 
+vector.register_awkward()
+
 PARTICLE_MASSES = {
     'Muons': 0.10566,
     'Electrons': 0.000511,
     'Tau': 1.777,
     'Jets': 0.0,
     'Photons': 0.0
-    # Add other particles as needed
 }
 
-#TODO: check if this works, prettify
-def calc_inv_mass_v2(particle_events: ak.Array) -> ak.Array:
+def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
     if len(particle_events) == 0:
         return ak.Array([])
 
     all_vectors = concat_events(particle_events)
     combined_vectors = ak.concatenate(all_vectors, axis=1)
 
+    # total_momentum = ak.sum(combined_vectors, axis=1)
     total_momentum = ak.sum(combined_vectors, axis=1)
     
-    inv_mass = total_momentum.mass
+    if hasattr(total_momentum, 'tau'):
+        inv_mass = total_momentum.tau
+    else:
+        inv_mass = total_momentum.mass
 
     return inv_mass
 
@@ -32,11 +36,10 @@ def concat_events(particle_events: ak.Array) -> ak.Array:
     for particle_type in particle_types:
         particle_array = particle_events[particle_type]
 
-        #TODO: make this more robust
-        mass = get_particle_mass(particle_type, particle_array)
+        mass = get_particle_known_mass(particle_type, particle_array)
         
         momentum_vector = vector.zip({
-            "rho": particle_array.rho,
+            "pt": particle_array.pt,
             "phi": particle_array.phi,
             "eta": particle_array.eta,
             "mass": mass  
@@ -46,11 +49,8 @@ def concat_events(particle_events: ak.Array) -> ak.Array:
 
     return all_vectors 
 
-def get_particle_mass(particle_type, particle_array):
-    # tau can refer to mass/energy
-    if 'tau' in particle_array.fields:
-        return particle_array.tau
-    elif 'm' in particle_array.fields:
+def get_particle_known_mass(particle_type, particle_array):
+    if 'm' in particle_array.fields:
         return particle_array.m
     else:
         return PARTICLE_MASSES.get(particle_type, 0.0) 
@@ -69,13 +69,14 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
     MEMORY OPTIMIZED VERSION: Builds combined mask first, applies once.
     This avoids creating intermediate filtered arrays.
     """
+
     if len(events) == 0:
         return events
     
     # Start with all events passing (True mask)
     combined_mask = ak.ones_like(ak.num(events[events.fields[0]]), dtype=bool)
     
-    for obj, range_dict in particle_counts.items():
+    for obj, value in particle_counts.items():
         actual_field = find_actual_field_name(events.fields, obj)
         if not actual_field:
             continue
@@ -85,19 +86,14 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
             continue
         
         # Count particles
-        print(obj_array.type)
-        if "Vector" in str(obj_array.type) or "Momentum" in str(obj_array.type):
-            print('counting vectors')
-            obj_count = ak.num(obj_array)
-        else:
-            print('lol')
-            print(obj_count)
-            obj_count = obj_array
+        obj_count = ak.num(obj_array)
         
         # Build mask for this particle type
         if not is_particle_counts_range:
-            particle_mask = (obj_count == range_dict)
+            count = value
+            particle_mask = (obj_count == count)
         else:
+            range_dict = value
             particle_mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
         
         # Combine with overall mask using logical AND
@@ -111,6 +107,43 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
     gc.collect()
     
     return ak.to_packed(filtered_events)
+
+def filter_events_by_kinematics(events, kinematic_cuts):
+    """
+    MEMORY OPTIMIZED: Build masks per particle type, apply once per type.
+    Avoids creating multiple intermediate filtered arrays.
+    """
+    filtered_events = {}
+    i = 0
+    for obj in events.fields:
+        particles = events[obj]
+
+        # Skip empty arrays
+        if len(particles.fields) == 0:
+            filtered_events[obj] = particles
+            continue
+
+        mask_by = None
+        if hasattr(particles, "pt"): 
+            mask_by = particles.pt 
+        mask = ak.ones_like(mask_by, dtype=bool)
+
+        if "pt" in kinematic_cuts and hasattr(particles, "pt"):
+            pt_vals = ak.values_astype(particles.pt, float)
+            mask = mask & (pt_vals >= kinematic_cuts["pt"]["min"])
+
+        if "eta" in kinematic_cuts and hasattr(particles, "eta"):
+            eta_vals = ak.values_astype(particles.eta, float)
+            mask = mask & (eta_vals >= kinematic_cuts["eta"]["min"]) & (eta_vals <= kinematic_cuts["eta"]["max"])
+
+        if "phi" in kinematic_cuts and hasattr(particles, "phi"):
+            phi_vals = ak.values_astype(particles.phi, float)
+            mask = mask & (phi_vals >= kinematic_cuts["phi"]["min"]) & (phi_vals <= kinematic_cuts["phi"]["max"])
+
+        # Apply mask once
+        filtered_events[obj] = ak.mask(particles, mask)
+
+    return ak.zip(filtered_events, depth_limit=1)
 
 def find_actual_field_name(fields, obj_name):
     '''
