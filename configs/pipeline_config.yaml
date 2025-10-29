@@ -48,3 +48,7 @@ mass_calculate:
       - Muons
       - Jets
       - Photons
+  min_particles: 2
+  max_particles: 4
+  min_count: 2
+  max_count: 4

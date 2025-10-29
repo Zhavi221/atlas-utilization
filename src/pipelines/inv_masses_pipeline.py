@@ -26,7 +26,13 @@ def mass_calculate(config):
     
     os.makedirs(config["output_dir"], exist_ok=True)
     
-    all_combinations = combinatorics.get_all_combinations(config["objects_to_calculate"])
+    all_combinations = combinatorics.get_all_combinations(
+        config["objects_to_calculate"],
+        min_particles=config["min_particles"],
+        max_particles=config["max_particles"],
+        min_count=config["min_count"],
+        max_count=config["max_count"],
+        limit=30) #FOR TESTING - limit
 
     for filename in os.listdir(config["input_dir"]):
         if filename.endswith(".root"):
@@ -35,8 +41,7 @@ def mass_calculate(config):
             
             particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
 
-            #FOR TESTING - limit
-            for combination in all_combinations[:30]:  # Limit to first 5 combinations for testing
+            for combination in all_combinations:
                 logger.info(f"Processing combination: {combination}")
                 filtered_events: ak.Array = physics_calcs.filter_events_by_particle_counts(
                     events=particle_arrays, 
