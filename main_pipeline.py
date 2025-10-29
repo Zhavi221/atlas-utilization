@@ -12,8 +12,16 @@ def main():
         
     if tasks["do_parsing"]:
         main_logger.info("Starting parsing task")
-        from src.pipelines import parsing_pipeline
-        parsing_pipeline.parse(config["parsing"])
+        parsing_config = config["parsing"]
+
+        if parsing_config.get("parse_in_subprocess", True):
+            main_logger.info("Parsing with a subprocess")
+            from src.pipelines import subprocessing_parsing
+            subprocessing_parsing.parse_with_per_chunk_subprocess(parsing_config)
+        else:
+            main_logger.info("Parsing without a subprocess")
+            from src.pipelines import parsing_pipeline
+            parsing_pipeline.parse(parsing_config)
     
     if tasks["do_mass_calculating"]:
         main_logger.info("Starting calculations task")
@@ -42,7 +50,7 @@ def load_config(config_path):
 
     return config
 
-            
+
 
 if __name__ == "__main__":
     main()

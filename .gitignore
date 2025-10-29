@@ -7,6 +7,7 @@ xrootd-5.5.4-py311h28ae080_0.conda
 *.pyc
 .idea
 
+tutorial/*
 BumpNet-main/*
 output_dir/*
 data/*
@@ -16,3 +17,7 @@ root_atom.sif
 atlas_crashes.log
 src/parse_atlas/parser.py
 atlas_stats.json
+test_main.ipynb
+test.py
+testing_scripts/*
+.devcontainer/devcontainer.json

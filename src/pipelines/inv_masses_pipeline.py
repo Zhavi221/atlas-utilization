@@ -24,34 +24,35 @@ def mass_calculate(config):
         logger.warning(f"Input directory '{config['input_dir']}' is empty.")
         return
     
-    os.makedirs(config["input_dir"], exist_ok=True)
+    os.makedirs(config["output_dir"], exist_ok=True)
     
-    all_combinations = combinatorics.get_all_combinations(config["objects_to_calculate"])
+    all_combinations = combinatorics.get_all_combinations(
+        config["objects_to_calculate"],
+        min_particles=config["min_particles"],
+        max_particles=config["max_particles"],
+        min_count=config["min_count"],
+        max_count=config["max_count"],
+        limit=30) #FOR TESTING - limit
 
-    for combination in all_combinations:    
-        logger.info(f"Processing combination: {combination}")
-        for filename in os.listdir(config["input_dir"]):
-            if filename.endswith(".root"):
-                logger.info(f"Processing file: {filename}")
-                file_path = os.path.join(config["input_dir"], filename)
-                
-                particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
-                
+    for filename in os.listdir(config["input_dir"]):
+        if filename.endswith(".root"):
+            logger.info(f"Processing file: {filename}")
+            file_path = os.path.join(config["input_dir"], filename)
+            
+            particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
+
+            for combination in all_combinations:
+                logger.info(f"Processing combination: {combination}")
                 filtered_events: ak.Array = physics_calcs.filter_events_by_particle_counts(
                     events=particle_arrays, 
                     particle_counts=combination, 
                     is_particle_counts_range=False
                 )    
-
+                
                 if len(filtered_events) == 0:
                     continue
                 
-                #TODO: make this robust and generic,
-                # DO TESTS TO MAKE SURE ERROR CATCHING 
-                # ALSO MAKE SURE UNDERSTAND WHY NEED FOR CONCATENAT AND ZIP
-                                
-                # inv_mass = physics_calcs.calc_events_mass(filtered_events) 
-                inv_mass: list = physics_calcs.calc_inv_mass_v2(filtered_events) 
+                inv_mass: list = physics_calcs.calc_inv_mass(filtered_events) 
                 
                 if not ak.any(inv_mass):
                     continue
@@ -63,13 +64,6 @@ def mass_calculate(config):
                     )
                 
                 np.save(output_path, ak.to_numpy(inv_mass))
-
-def parse_file(file_path):
-    with uproot.open(file_path) as file:
-        tree = file["tree"]           
-        particle_arrays = tree.arrays(library="ak")
-
-        return particle_arrays
 
 def prepare_combination_name(combination: dict) -> str:
     combination_name = ''
