@@ -20,3 +20,4 @@ atlas_stats.json
 test_main.ipynb
 test.py
 testing_scripts/*
+.devcontainer/devcontainer.json
