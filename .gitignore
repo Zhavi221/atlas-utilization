@@ -7,6 +7,7 @@ xrootd-5.5.4-py311h28ae080_0.conda
 *.pyc
 .idea
 
+.devcontainer/*
 tutorial/*
 BumpNet-main/*
 output_dir/*
@@ -20,3 +21,4 @@ atlas_stats.json
 test_main.ipynb
 test.py
 testing_scripts/*
+.devcontainer/devcontainer.json
