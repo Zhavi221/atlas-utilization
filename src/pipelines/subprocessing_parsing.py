@@ -116,12 +116,11 @@ def parse_with_per_chunk_subprocess(config):
         chunk_yield_threshold_bytes=config["chunk_yield_threshold_bytes"],
         max_threads=config["max_threads"],
         logging_path=config["logging_path"],
+        release_years=config["release_years"],
         initialize_statistics=True
     )
     
-    all_files = temp_parser.fetch_records_ids(
-        release_year=config["release_year"]
-    )
+    all_files = temp_parser.fetch_record_ids()
     
     if config.get("random_files", True):
         random.shuffle(all_files)

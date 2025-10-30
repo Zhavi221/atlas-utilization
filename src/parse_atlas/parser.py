@@ -187,35 +187,38 @@ class ATLAS_Parser():
 
     #PARSING METHODS
     def parse_files(self,
-                       files_ids: list = None,
-                       limit: int = 0,
+                       release_file_uris: dict = None,
+                       limit: int = None,
                        save_statistics: bool = True):
         '''
-            Parses the input files by their IDs, otherwise uses the member files_ids.
+            Parses the input files by their IDs, otherwise uses the member release_file_uris.
             Yields chunks of events as awkward arrays each size from the input limit.
         '''
-        if files_ids is None:
-            if self.files_ids is None:
-                raise ValueError("No files_ids provided and self.files_ids is None.")
-            files_ids = self.files_ids
+        if release_file_uris is None:
+            raise ValueError("No release_file_uris provided.")
 
         if limit:
-            files_ids = files_ids[:limit]
+            release_file_uris = release_file_uris[:limit]
 
         successful_count = 0
         if self.is_initialize_statistics:
             self._initialize_statistics()
+
+        logging.info(
+            f"Flag: is_initialize_statistics is {self.is_initialize_statistics}.")
+        logging.info(
+            f"Flag: limit is {limit}.")
         
         tqdm.write(
-            f"Starting to parse {len(files_ids)} files with {self.max_threads} threads.")
+            f"Starting to parse {len(release_file_uris)} files with {self.max_threads} threads.")
         
         with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
             futures = {
                 executor.submit(ATLAS_Parser.parse_file, file_index): file_index
-                for file_index in files_ids
+                for file_index in release_file_uris
             }
         
-            with tqdm(total=len(files_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
+            with tqdm(total=len(release_file_uris), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
 
                 for future in as_completed(futures):
                     file_index = futures[future]
@@ -230,7 +233,7 @@ class ATLAS_Parser():
                             self._save_parsed_file_metadata(cur_file_data)
                             cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
                             self._concatenate_events(cur_file_data)
-                            self.cur_files_ids.append(file_index)
+                            self.cur_release_file_uris.append(file_index)
 
                             tqdm.write(f"{self._get_actual_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
                             if self._chunk_size_enough():
@@ -279,7 +282,7 @@ class ATLAS_Parser():
                     pbar.update(1)
 
         if save_statistics:
-            stats = self._save_statistics(len(files_ids), successful_count)
+            stats = self._save_statistics(len(release_file_uris), successful_count)
             self.print_statistics_summary(stats) 
         
         if self.events is not None:
