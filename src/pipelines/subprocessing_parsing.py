@@ -24,8 +24,8 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
     
     try:
         atlasparser = parser.ATLAS_Parser(
-            max_process_memory_mb=config["max_process_memory_mb"],
-            max_chunk_size_bytes=config["max_chunk_size_bytes"],
+            max_environment_memory_mb=config["max_environment_memory_mb"],
+            chunk_yield_threshold_bytes=config["chunk_yield_threshold_bytes"],
             max_threads=config["max_threads"],
             logging_path=config["logging_path"]
         )
@@ -112,8 +112,8 @@ def parse_with_per_chunk_subprocess(config):
     
     # Get file list upfront (in main process)
     temp_parser = parser.ATLAS_Parser(
-        max_process_memory_mb=config["max_process_memory_mb"],
-        max_chunk_size_bytes=config["max_chunk_size_bytes"],
+        max_environment_memory_mb=config["max_environment_memory_mb"],
+        chunk_yield_threshold_bytes=config["chunk_yield_threshold_bytes"],
         max_threads=config["max_threads"],
         logging_path=config["logging_path"],
         initialize_statistics=True

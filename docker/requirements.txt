@@ -1,4 +1,4 @@
-atlasopenmagic==0.6.1
+atlasopenmagic
 cernopendata-client==1.0.0
 fqdn==1.5.1
 fsspec_xrootd==0.5.1

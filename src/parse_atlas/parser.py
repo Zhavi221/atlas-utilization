@@ -60,7 +60,13 @@ class ATLAS_Parser():
         _normalize_fields(ak_array):
             Normalizes fields in the awkward array to match schema.
     '''
-    def __init__(self, max_process_memory_mb, max_chunk_size_bytes, max_threads, logging_path, initialize_statistics=False):
+    def __init__(self, 
+                 chunk_yield_threshold_bytes, 
+                 max_threads, 
+                 logging_path, 
+                 initialize_statistics=False, 
+                 max_environment_memory_mb=None, 
+                 release_years=[]):
         self.files_ids = None
         self.file_parsed_count = 0
         self.cur_chunk = 0
@@ -69,8 +75,11 @@ class ATLAS_Parser():
         self.events = None
         self.total_size_kb = 0
 
-        self.max_chunk_size_bytes = max_chunk_size_bytes
-        self.max_process_memory_mb = max_process_memory_mb 
+        self.chunk_yield_threshold_bytes = chunk_yield_threshold_bytes
+        self.max_environment_memory_mb = max_environment_memory_mb 
+        
+        self.fetch_available_releases()
+        self._check_release_years(release_years)
         
         # ===== Enhanced: Comprehensive crash and statistics tracking =====
         self.is_initialize_statistics = initialize_statistics
@@ -94,22 +103,57 @@ class ATLAS_Parser():
         #PARALLELISM CONFIG
         self.max_threads = max_threads
 
+    
     #FETCHING FILE IDS
-    def fetch_records_ids(self, release_year):
+    def fetch_available_releases(self):
+        self.available_releases = atom.available_releases()
+
+    def _check_release_years(self, release_years):
+        invalid_releases = [year for year in release_years if year not in self.available_releases]
+        if invalid_releases:
+            raise ValueError(f"Release years {invalid_releases} are not recognized.")
+        
+        self.input_release_years = release_years
+
+    def fetch_record_ids(self):
         '''
             Fetches the real records IDs for a given release year.
             Returns a list of file URIs.
         '''
-        atom.set_release(consts.RELEASES_YEARS.get(release_year))
+        release_years = []
+        if self.input_release_years:
+            release_years = self.input_release_years
+        else:
+            release_years = self.available_releases
+        
+        release_files_uris: dict = self._fetch_record_ids_for_release_years(release_years)
 
-        datasets_ids = atom.available_data()
-        release_files_uris = []
-
-        for dataset_id in datasets_ids:
-            release_files_uris.extend(atom.get_urls_data(dataset_id))
-
-        self.files_ids = release_files_uris
         return release_files_uris
+    
+    def _fetch_record_ids_for_release_years(self, release_years):
+        release_file_uris = {}
+        for year in release_years:
+            if year not in release_file_uris.keys():
+                release_file_uris[year] = []
+            try:
+                atom.set_release(year)
+                datasets = atom.available_datasets()
+                for dataset_id in datasets:
+                    release_file_uris[year].extend(atom.get_urls(dataset_id))
+            except Exception as e:
+                print(f"Warning: Could not fetch datasets for release year {year}: {e}")
+        
+        return release_file_uris
+    
+    def _fetch_record_ids_for_datasets(self, year_dataset_ids):
+        release_file_uris = {}
+        for release_year, dataset_ids in year_dataset_ids.items():
+            try:
+                release_file_uris[release_year] = []
+            except Exception as e:
+                print(f"Warning: Could not fetch release files URIs for release year {release_year}: {e}")
+        
+        return release_file_uris
     
     def fetch_mc_files_ids(self, release_year, is_random=False, all=False):
         '''
@@ -409,11 +453,12 @@ class ATLAS_Parser():
         logical_size = self.events.layout.nbytes
         actual_memory = self._get_actual_memory_mb() 
         
-        if actual_memory >= self.max_process_memory_mb - 1000:
-            tqdm.write(f"⚠️High memory usage: {actual_memory:.1f} MB (limit: {self.max_process_memory_mb} MB)")
-            return True
+        if self.max_environment_memory_mb:
+            if (actual_memory + 1000) < self.max_environment_memory_mb:
+                tqdm.write(f"High memory usage: {actual_memory:.1f} MB (limit: {self.max_environment_memory_mb} MB)")
+                return True
 
-        return logical_size >= self.max_chunk_size_bytes
+        return logical_size >= self.chunk_yield_threshold_bytes
 
     #LOGGING METHODS
     def _log_crash(self, file_index, exception, processing_time=None):

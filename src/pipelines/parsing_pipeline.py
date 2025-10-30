@@ -18,8 +18,8 @@ def parse(config):
     logger = init_logging()
 
     atlasparser = parser.ATLAS_Parser(
-        max_process_memory_mb=config["max_process_memory_mb"],
-        max_chunk_size_bytes=config["max_chunk_size_bytes"],
+        max_environment_memory_mb=config["max_environment_memory_mb"],
+        chunk_yield_threshold_bytes=config["chunk_yield_threshold_bytes"],
         max_threads=config["max_threads"],
         logging_path=config["logging_path"],
         initialize_statistics=True
