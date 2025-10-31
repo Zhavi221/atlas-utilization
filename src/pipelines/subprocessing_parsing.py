@@ -125,8 +125,8 @@ def parse_with_per_chunk_subprocess(config):
     if config.get("random_files", True):
         random.shuffle(all_files)
 
-    if config.get("file_limit"):
-        all_files = all_files[:config["file_limit"]]
+    if config.get("limit_files_per_year"):
+        all_files = {year: files[:config["limit_files_per_year"]] for year, files in all_files.items()}
     
     logger.info(f"Found {len(all_files)} files to process")
     
@@ -221,7 +221,6 @@ def parse_with_per_chunk_subprocess(config):
         f"Parsing complete! Processed {chunk_count} chunks, "
         f"{total_events:,} total events"
     )
-
 
 
 def init_logging():
