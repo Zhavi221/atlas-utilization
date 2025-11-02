@@ -5,13 +5,13 @@ tasks:
 parsing:
   parse_in_subprocess: true #important for cluster processing
   random_files: false #for testing
-  release_years: ["2016e-8tev", "2017-13tev", "2018-13tev", "2024r-pp"]
+  release_years: ["2016e-8tev", "2024r-pp"]
   all_years: false #TODO implement this maybe remove parameter from fetch records
   max_threads: 4
   max_environment_memory_mb: 8192
   chunk_yield_threshold_bytes: 1000000000 #1GB 
   # chunk_yield_threshold_bytes: 50000000 #50MB for testing
-  file_limit: 100
+  limit_files_per_year: 100
   output_path: "data/root_files"
   logging_path: "logs/"
   # crashed_files: "crashed_files.json"

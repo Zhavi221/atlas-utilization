@@ -34,7 +34,7 @@ def parse(config):
 
     for events_chunk in atlasparser.parse_files(
         files_ids=release_files_uris, 
-        limit=config["file_limit"]
+        limit=config["limit_files_per_year"]
     ):
         
         logger.info("Cutting events")

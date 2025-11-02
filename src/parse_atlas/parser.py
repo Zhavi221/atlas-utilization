@@ -78,6 +78,7 @@ class ATLAS_Parser():
         self.chunk_yield_threshold_bytes = chunk_yield_threshold_bytes
         self.max_environment_memory_mb = max_environment_memory_mb 
         
+        #SET UP RELEASES VARIABLES
         self.fetch_available_releases()
         self._check_release_years(release_years)
         
@@ -97,7 +98,7 @@ class ATLAS_Parser():
         self.max_file_size_mb = 0
         self.min_file_size_mb = float('inf')
         self.total_events_processed = 0
-        self.max_memory_captured = 0
+        self.max_memory_captured = 0 #TODO check if works
         # ================================================================
 
         #PARALLELISM CONFIG
@@ -111,7 +112,8 @@ class ATLAS_Parser():
     def _check_release_years(self, release_years):
         invalid_releases = [year for year in release_years if year not in self.available_releases]
         if invalid_releases:
-            raise ValueError(f"Release years {invalid_releases} are not recognized.")
+            formatted_releases = list(self.available_releases.keys())
+            raise ValueError(f"Release years {invalid_releases} are not recognized. Available releases: {formatted_releases}")
         
         self.input_release_years = release_years
 
@@ -197,18 +199,19 @@ class ATLAS_Parser():
         if release_file_uris is None:
             raise ValueError("No release_file_uris provided.")
 
-        if limit:
+        #TODO get this limit and initailize statistics out of this function, follow SRP
+        if limit: 
             release_file_uris = release_file_uris[:limit]
 
-        successful_count = 0
-        if self.is_initialize_statistics:
-            self._initialize_statistics()
-
-        logging.info(
-            f"Flag: is_initialize_statistics is {self.is_initialize_statistics}.")
         logging.info(
             f"Flag: limit is {limit}.")
+        if self.is_initialize_statistics:
+            self._initialize_statistics()
+        logging.info(
+            f"Flag: is_initialize_statistics is {self.is_initialize_statistics}.")
+        #######
         
+        successful_count = 0
         tqdm.write(
             f"Starting to parse {len(release_file_uris)} files with {self.max_threads} threads.")
         
