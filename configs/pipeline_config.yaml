@@ -15,6 +15,7 @@ parsing:
   output_path: "data/root_files"
   logging_path: "logs/"
   # crashed_files: "crashed_files.json"
+  is_initialize_statistics: true
 
   particle_counts:
     Electrons:
