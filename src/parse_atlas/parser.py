@@ -125,7 +125,7 @@ class ATLAS_Parser():
         
         self.input_release_years = release_years
 
-    def fetch_record_ids(self):
+    def fetch_record_ids(self, timeout=60):
         '''
             Fetches the real records IDs for a given release year.
             Returns a list of file URIs.
@@ -136,22 +136,28 @@ class ATLAS_Parser():
         else:
             release_years = self.available_releases
         
-        release_files_uris: dict = self._fetch_record_ids_for_release_years(release_years)
+        release_files_uris: dict = self._fetch_record_ids_for_release_years(
+            release_years,
+            timeout=timeout)
 
         return release_files_uris
     
-    def _fetch_record_ids_for_release_years(self, release_years):
+    def _fetch_record_ids_for_release_years(self, release_years, timeout=60):
         release_years_file_ids = {}
-        for year in release_years:
-            if year not in release_years_file_ids.keys():
-                release_years_file_ids[year] = []
-            try:
-                atom.set_release(year)
-                datasets = atom.available_datasets()
-                for dataset_id in datasets:
-                    release_years_file_ids[year].extend(atom.get_urls(dataset_id))
-            except Exception as e:
-                print(f"Warning: Could not fetch datasets for release year {year}: {e}")
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            for year in release_years:
+                if year not in release_years_file_ids.keys():
+                    release_years_file_ids[year] = []
+                try:
+                    atom.set_release(year)
+                    datasets = atom.available_datasets()
+                    for dataset_id in datasets:
+                        future = executor.submit(atom.get_urls, dataset_id)
+                        urls = future.result(timeout=timeout)
+                        if urls:
+                            release_years_file_ids[year].extend(urls)
+                except Exception as e:
+                    print(f"Warning: Could not fetch datasets for release year {year}: {e}")
         
         return release_years_file_ids
     
