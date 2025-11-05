@@ -5,17 +5,19 @@ tasks:
 parsing:
   parse_in_subprocess: true #important for cluster processing
   random_files: false #for testing
-  release_years: ["2016e-8tev", "2024r-pp"]
-  all_years: false #TODO implement this maybe remove parameter from fetch records
+  release_years: [] #when empty will parse all available years
+  retry_failed_files: true #TODO implement this
   max_threads: 4
   max_environment_memory_mb: 8192
   chunk_yield_threshold_bytes: 1000000000 #1GB 
-  # chunk_yield_threshold_bytes: 50000000 #50MB for testing
-  limit_files_per_year: 100
+  # chunk_yield_threshold_bytes: 50000000 #FOR TESTING - 50MB for testing
+  limit_files_per_year: 5 #FOR TESTING - limit number of files per year, set to -1 to parse all files
   output_path: "data/root_files"
   logging_path: "logs/"
   # crashed_files: "crashed_files.json"
-  is_initialize_statistics: true
+  is_reinitialize_statistics: true
+  possible_tree_names: ["CollectionTree", "mini", "analysis"] #TODO explain this paramter here or in docs,
+  fetching_metadata_timeout: 10
 
   particle_counts:
     Electrons:

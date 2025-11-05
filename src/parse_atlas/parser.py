@@ -64,7 +64,8 @@ class ATLAS_Parser():
                  chunk_yield_threshold_bytes, 
                  max_threads, 
                  logging_path, 
-                 is_initialize_statistics=False, 
+                 possible_tree_names=["CollectionTree"],
+                 recreate_dirs=False, 
                  max_environment_memory_mb=None, 
                  release_years=[]):
         self.files_ids = None
@@ -74,26 +75,22 @@ class ATLAS_Parser():
         
         self.events = None
         self.total_size_kb = 0
-
-        self.chunk_yield_threshold_bytes = chunk_yield_threshold_bytes
-        self.max_environment_memory_mb = max_environment_memory_mb 
         
         #SET UP RELEASES VARIABLES
-        self.fetch_available_releases()
+        self._fetch_available_releases()
         self._setup_release_years(release_years)
         
-        # ===== Enhanced: Comprehensive crash and statistics tracking =====
-        self.crash_log = logging_path + "atlas_crashes.log"
-        self.stats_log = logging_path + "atlas_stats.json"
-        self.crashed_files = logging_path + "crashed_files.json"
-        self.crash_lock = threading.Lock()
-        self.failed_files = []
-        
         self._initialize_flags(
-            is_initialize_statistics
+            recreate_dirs,
+            possible_tree_names,
+            chunk_yield_threshold_bytes,
+            max_environment_memory_mb,
+            logging_path
             )
         
         # New statistics tracking
+        self.crash_lock = threading.Lock()
+        self.failed_files = []
         self.parsing_start_time = None
         self.chunk_stats = []
         self.error_types = {}
@@ -101,22 +98,50 @@ class ATLAS_Parser():
         self.max_file_size_mb = 0
         self.min_file_size_mb = float('inf')
         self.total_events_processed = 0
-        self.max_memory_captured = 0 #TODO check if works
+        self.max_memory_captured = 0
         # ================================================================
 
         #PARALLELISM CONFIG
         self.max_threads = max_threads
 
-    def _initialize_flags(self, is_initialize_statistics):
-        if is_initialize_statistics:
+    def _initialize_flags(self, 
+                          recreate_dirs, 
+                          possible_tree_names, 
+                          chunk_yield_threshold_bytes, 
+                          max_environment_memory_mb,
+                          logging_path):
+        if possible_tree_names:
+            self.possible_tree_names = possible_tree_names
+            logging.info(
+                f"Possible tree names set to: {self.possible_tree_names}.")
+        
+        if chunk_yield_threshold_bytes:
+            self.chunk_yield_threshold_bytes = chunk_yield_threshold_bytes
+            logging.info(
+                f"Chunk yield threshold set to: {self.chunk_yield_threshold_bytes} bytes.")
+        
+        if max_environment_memory_mb:
+            self.max_environment_memory_mb = max_environment_memory_mb
+            logging.info(
+                f"Max environment memory set to: {self.max_environment_memory_mb} MB.")
+
+        if logging_path:
+            self.crash_log = logging_path + "atlas_crashes.log"
+            self.stats_log = logging_path + "atlas_stats.json"
+            self.crashed_files = logging_path + "crashed_files.json"
+        
+            logging.info(
+                f"Logging paths set to: {self.crash_log}, {self.stats_log}, {self.crashed_files}.")
+            
+        if recreate_dirs:
             self._initialize_statistics()
-        logging.info(
-            f"Flag: is_initialize_statistics is {is_initialize_statistics}.")
+            logging.info(
+                f"Recreated dirs")
         
     #FETCHING FILE IDS
-    def fetch_available_releases(self):
+    def _fetch_available_releases(self):
         self.available_releases = atom.available_releases()
-
+        
     def _setup_release_years(self, release_years):
         invalid_releases = [year for year in release_years if year not in self.available_releases]
         if invalid_releases:
@@ -149,15 +174,21 @@ class ATLAS_Parser():
                 if year not in release_years_file_ids.keys():
                     release_years_file_ids[year] = []
                 try:
-                    atom.set_release(year)
+                    future = executor.submit(atom.set_release, year)
+                    future.result(timeout=timeout)
+                    
                     datasets = atom.available_datasets()
+
                     for dataset_id in datasets:
-                        future = executor.submit(atom.get_urls, dataset_id)
+                        future = executor.submit(atom.get_urls, dataset_id) #TODO handle 'noskim' absence
                         urls = future.result(timeout=timeout)
                         if urls:
                             release_years_file_ids[year].extend(urls)
+                except TimeoutError:
+                    logging.warning(f"Timeout while fetching metadata for release year {year}")
+
                 except Exception as e:
-                    print(f"Warning: Could not fetch datasets for release year {year}: {e}")
+                    logging.warning(f"Could not fetch metadata for release year {year}: {e}")
         
         return release_years_file_ids
     
@@ -192,24 +223,6 @@ class ATLAS_Parser():
         return all_mc_ids
 
     #PARSING METHODS
-    @staticmethod
-    def limit_files_per_year(years_record_ids, limit_files_per_year):
-        '''
-            Limits the number of files per year to the specified limit.
-        '''
-        if limit_files_per_year is None:
-            logging.warning("No limit_files_per_year provided.") 
-            return
-        
-        for release_year, files_ids in years_record_ids.items():
-            cur_files = files_ids[:limit_files_per_year]
-            if len(cur_files) > 0:
-                years_record_ids[release_year] = files_ids[:limit_files_per_year]
-
-        logging.info(
-            f"Limited files to given limit: {limit_files_per_year}.")
-        
-
     def parse_files(self,
                        release_years_file_ids: dict = None,
                        save_statistics: bool = True):
@@ -224,13 +237,21 @@ class ATLAS_Parser():
         tqdm.write(
             f"Starting to parse {len(release_years_file_ids)} files with {self.max_threads} threads.")
         
-        for release_year, file_ids in release_years_file_ids.items():
-            with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
-                futures = {
-                    executor.submit(ATLAS_Parser.parse_file, file_index): file_index
-                    for file_index in file_ids
-                }
-            
+        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
+            for release_year, file_ids in release_years_file_ids.items():
+                futures = {}
+                for file_index in file_ids:
+                    try:
+                        tree_name = self._get_tree_name_for_file(file_index) 
+                    except:
+                        pass #FOR TESTING - to catch weird bug where file name is HEX
+                    future = executor.submit(
+                        ATLAS_Parser.parse_file, 
+                        file_index,
+                        tree_name)
+                    
+                    futures[future] = file_index
+                
                 with tqdm(total=len(file_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
 
                     for future in as_completed(futures):
@@ -261,7 +282,7 @@ class ATLAS_Parser():
                                     self.file_parsed_count = 0
                                     
                                     mem_before_yield = self._get_actual_memory_mb()
-                                    self.max_memory_captured = max(self.max_memory_captured, mem_before_yield) #TODO doesnt work, check
+                                    self.max_memory_captured = max(self.max_memory_captured, mem_before_yield) #TODO doesnt work, check max_memory_captured
                                     
                                     #TODO check this - Yield the chunk
                                     if chunk_to_yield is None:
@@ -301,7 +322,20 @@ class ATLAS_Parser():
                 self._save_chunk_metadata()
                 yield self.events
                 self.events = None
-    
+
+    def _get_tree_name_for_file(self, file_index):
+        if not self.possible_tree_names:
+            logging.warning("No possible_tree_names provided, defaulting to 'CollectionTree'.")
+            return "CollectionTree"
+        
+        with uproot.open(file_index) as file:
+            available_trees = [key[:-2] for key in file.keys()] # Remove trailing ';1'
+            for tree_name in self.possible_tree_names:
+                if tree_name in available_trees:
+                    return tree_name
+        
+        return "CollectionTree" 
+        
     #TODO go over this method, make sure to understand all parts
     @staticmethod
     def parse_file(file_index, tree_name="CollectionTree", batch_size=40_000) -> ak.Array:
@@ -400,7 +434,7 @@ class ATLAS_Parser():
     def save_events_as_root(self, events, output_dir):
         os.makedirs(output_dir, exist_ok=True)
         
-        file_name = self.cur_release_year + list_to_filename_hash(self.cur_file_ids)
+        file_name = f"{self.cur_release_year}_{list_to_filename_hash(self.cur_file_ids)}"
 
         output_path = os.path.join(output_dir, f"{file_name}.root")
         with uproot.recreate(output_path) as file:
@@ -469,7 +503,7 @@ class ATLAS_Parser():
         logical_size = self.events.layout.nbytes
         actual_memory = self._get_actual_memory_mb() 
         
-        if self.max_environment_memory_mb:
+        if hasattr(self, 'max_environment_memory_mb'):
             if (actual_memory + 1000) < self.max_environment_memory_mb:
                 tqdm.write(f"High memory usage: {actual_memory:.1f} MB (limit: {self.max_environment_memory_mb} MB)")
                 return True
@@ -606,9 +640,11 @@ class ATLAS_Parser():
         if os.path.exists(self.crash_log):
             os.remove(self.crash_log) 
         os.makedirs(os.path.dirname(self.crash_log), exist_ok=True)
+
         if os.path.exists(self.stats_log):
             os.remove(self.stats_log) 
         os.makedirs(os.path.dirname(self.stats_log), exist_ok=True)
+
         if os.path.exists(self.crashed_files):
             os.remove(self.crashed_files)
         os.makedirs(os.path.dirname(self.crashed_files), exist_ok=True)
@@ -661,6 +697,23 @@ class ATLAS_Parser():
                 )
         return ak_array
     
+    @staticmethod
+    def limit_files_per_year(years_record_ids, limit_files_per_year):
+        '''
+            Limits the number of files per year to the specified limit.
+        '''
+        if limit_files_per_year is None:
+            logging.warning("No limit_files_per_year provided.") 
+            return
+        
+        for release_year, files_ids in years_record_ids.items():
+            cur_files = files_ids[:limit_files_per_year]
+            if len(cur_files) > 0:
+                years_record_ids[release_year] = files_ids[:limit_files_per_year]
+
+        logging.info(
+            f"Limited files to given limit: {limit_files_per_year}.")
+        
 
 def list_to_filename_hash(strings):
     combined = "|".join(strings)  # delimiter avoids ambiguity
