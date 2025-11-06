@@ -56,7 +56,8 @@ def mass_calculate(config):
                 
                 if not ak.any(inv_mass):
                     continue
-
+                
+                #TODO add year, final state and combination to filename
                 combination_name = prepare_combination_name(combination)
                 output_path = os.path.join(
                     config["output_dir"], 

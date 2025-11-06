@@ -1,11 +1,12 @@
 {
 	"name": "ROOT Data Analysis",
-	"image": "rootproject/root:custom_config_v7",
+	"image": "rootproject/custom_config_latest",
 	"customizations": {
 	  "vscode": {
 		"extensions": [
-		  "ms-python.python",
-		  "ms-toolsai.jupyter"
+			"ms-python.python",
+			"ms-toolsai.jupyter",
+			"Gruntfuggly.todo-tree"
 		]
 	  }
 	}
