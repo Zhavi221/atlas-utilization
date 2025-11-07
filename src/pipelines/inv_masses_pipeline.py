@@ -26,6 +26,7 @@ def mass_calculate(config):
     
     os.makedirs(config["output_dir"], exist_ok=True)
     
+    #TODO check if combinations method adhere to new logic
     all_combinations = combinatorics.get_all_combinations(
         config["objects_to_calculate"],
         min_particles=config["min_particles"],
@@ -41,30 +42,30 @@ def mass_calculate(config):
             
             particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
 
-            for combination in all_combinations:
-                logger.info(f"Processing combination: {combination}")
-                filtered_events: ak.Array = physics_calcs.filter_events_by_particle_counts(
-                    events=particle_arrays, 
-                    particle_counts=combination, 
-                    is_particle_counts_range=False
-                )    
-                
-                if len(filtered_events) == 0:
-                    continue
-                
-                inv_mass: list = physics_calcs.calc_inv_mass(filtered_events) 
-                
-                if not ak.any(inv_mass):
-                    continue
-                
-                #TODO add year, final state and combination to filename
-                combination_name = prepare_combination_name(combination)
-                output_path = os.path.join(
-                    config["output_dir"], 
-                    f"{filename}_{combination_name}_inv_mass.npy" 
-                    )
-                
-                np.save(output_path, ak.to_numpy(inv_mass))
+            for grouped_fs in physics_calcs.group_by_final_state(particle_arrays):
+                for combination in all_combinations:
+                    logger.info(f"Processing combination: {combination}")
+                    filtered_events: ak.Array = physics_calcs.filter_events_by_particle_counts(
+                        events=grouped_fs, 
+                        particle_counts=combination
+                    )    
+                    
+                    if len(filtered_events) == 0:
+                        continue
+                    
+                    inv_mass: list = physics_calcs.calc_inv_mass(filtered_events, combination, by_highest_pt=True) 
+                    
+                    if not ak.any(inv_mass):
+                        continue
+                    
+                    #TODO add year, final state and combination to filename
+                    combination_name = prepare_combination_name(combination)
+                    output_path = os.path.join(
+                        config["output_dir"], 
+                        f"{filename}_{combination_name}_inv_mass.npy" 
+                        )
+                    
+                    np.save(output_path, ak.to_numpy(inv_mass))
 
 def prepare_combination_name(combination: dict) -> str:
     combination_name = ''

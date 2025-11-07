@@ -13,14 +13,16 @@ PARTICLE_MASSES = {
     'Photons': 0.0
 }
 
-def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
+def calc_inv_mass(particle_events: ak.Array, combination: dict={}, by_highest_pt=False) -> ak.Array:
     if len(particle_events) == 0:
         return ak.Array([])
 
+    if by_highest_pt:
+        #TODO sort by pT and slice by counts from combination
+        pass
     all_vectors = concat_events(particle_events)
     combined_vectors = ak.concatenate(all_vectors, axis=1)
 
-    # total_momentum = ak.sum(combined_vectors, axis=1)
     total_momentum = ak.sum(combined_vectors, axis=1)
     
     if hasattr(total_momentum, 'tau'):
@@ -64,7 +66,22 @@ def extract_object_types(fields: list) -> set:
 
     return particle_types
 
-def filter_events_by_particle_counts(events, particle_counts, is_particle_counts_range=True):
+def group_by_final_state(events: ak.Array) -> ak.Array:
+    particle_counts = ak.num(events)
+    e = particle_counts.Electrons
+    m = particle_counts.Muons
+    j = particle_counts.Jets
+    p = particle_counts.Photons
+    all_events_fs = [f"{e}{m}{j}{p}" for e, m, j, p in zip(e, m, j, p)]
+
+    unique_fs = set(all_events_fs)
+    
+    for fs in unique_fs:
+        mask = (ak.Array(all_events_fs) == fs)
+        events_matching_fs = events[mask]
+        yield events_matching_fs
+
+def filter_events_by_particle_counts(events, particle_counts, is_exact_count=False, is_particle_counts_range=False):
     """
     MEMORY OPTIMIZED VERSION: Builds combined mask first, applies once.
     This avoids creating intermediate filtered arrays.
@@ -89,12 +106,15 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
         obj_count = ak.num(obj_array)
         
         # Build mask for this particle type
-        if not is_particle_counts_range:
+        if is_particle_counts_range:
+            range_dict = value
+            particle_mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
+        elif is_exact_count:
             count = value
             particle_mask = (obj_count == count)
         else:
-            range_dict = value
-            particle_mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
+            count = value
+            particle_mask = (obj_count >= count)
         
         # Combine with overall mask using logical AND
         combined_mask = combined_mask & particle_mask
