@@ -41,19 +41,21 @@ def mass_calculate(config):
             file_path = os.path.join(config["input_dir"], filename)
             
             particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
-
+            fs_im_mapping = {}
             for grouped_fs in physics_calcs.group_by_final_state(particle_arrays):
+                #TODO implement skipping certain combos because fs doesnt contain enough particles
                 for combination in all_combinations:
                     logger.info(f"Processing combination: {combination}")
                     filtered_events: ak.Array = physics_calcs.filter_events_by_particle_counts(
                         events=grouped_fs, 
-                        particle_counts=combination
+                        particle_counts=combination,
+                        by_highest_pt=True
                     )    
                     
                     if len(filtered_events) == 0:
                         continue
                     
-                    inv_mass: list = physics_calcs.calc_inv_mass(filtered_events, combination, by_highest_pt=True) 
+                    inv_mass: list = physics_calcs.calc_inv_mass(filtered_events) 
                     
                     if not ak.any(inv_mass):
                         continue

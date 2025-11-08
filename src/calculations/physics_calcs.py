@@ -13,13 +13,10 @@ PARTICLE_MASSES = {
     'Photons': 0.0
 }
 
-def calc_inv_mass(particle_events: ak.Array, combination: dict={}, by_highest_pt=False) -> ak.Array:
+def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
     if len(particle_events) == 0:
         return ak.Array([])
 
-    if by_highest_pt:
-        #TODO sort by pT and slice by counts from combination
-        pass
     all_vectors = concat_events(particle_events)
     combined_vectors = ak.concatenate(all_vectors, axis=1)
 
@@ -81,7 +78,7 @@ def group_by_final_state(events: ak.Array) -> ak.Array:
         events_matching_fs = events[mask]
         yield events_matching_fs
 
-def filter_events_by_particle_counts(events, particle_counts, is_exact_count=False, is_particle_counts_range=False):
+def filter_events_by_particle_counts(events, particle_counts, is_exact_count=False, is_particle_counts_range=False, by_highest_pt=False):
     """
     MEMORY OPTIMIZED VERSION: Builds combined mask first, applies once.
     This avoids creating intermediate filtered arrays.
@@ -116,13 +113,20 @@ def filter_events_by_particle_counts(events, particle_counts, is_exact_count=Fal
             count = value
             particle_mask = (obj_count >= count)
         
-        # Combine with overall mask using logical AND
         combined_mask = combined_mask & particle_mask
+        
     
     # Apply filter only ONCE at the end
     filtered_events = events[combined_mask]
     
-    # Clean up intermediate variables
+    if by_highest_pt:
+        for obj, count in particle_counts.items():
+            obj_array = filtered_events[obj]
+            sorted_obj_array = obj_array[ak.argsort(obj_array.pt, ascending=False)]
+            sliced_obj_array = sorted_obj_array[:, :count]
+    
+            filtered_events[obj] = sliced_obj_array
+
     del combined_mask
     gc.collect()
     
