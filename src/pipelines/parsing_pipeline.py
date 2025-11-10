@@ -22,29 +22,30 @@ def parse(config):
         chunk_yield_threshold_bytes=config["chunk_yield_threshold_bytes"],
         max_threads=config["max_threads"],
         logging_path=config["logging_path"],
-        initialize_statistics=True
+        release_years=config["release_years"],
+        recreate_dirs=True
         )
 
-    release_files_uris = atlasparser.fetch_records_ids(
-        release_year=config["release_year"]
-    )
+    release_years_file_ids = atlasparser.fetch_record_ids(config["fetching_metadata_timeout"])
 
+    if config.get("limit_files_per_year"):
+        parser.ATLAS_Parser.limit_files_per_year(release_years_file_ids, config["limit_files_per_year"])
+    
     if config.get("random_files", True):
-        random.shuffle(release_files_uris)
+        random.shuffle(release_years_file_ids)
 
     for events_chunk in atlasparser.parse_files(
-        files_ids=release_files_uris, 
-        limit=config["limit_files_per_year"]
+        release_years_file_ids=release_years_file_ids
     ):
         
         logger.info("Cutting events")
-        cut_events = physic_calcs.filter_events_by_kinematics(
+        cut_events = physics_calcs.filter_events_by_kinematics(
             events_chunk, config["kinematic_cuts"]
         )
         #del events_chunk  
 
         logger.info("Filtering events")
-        filtered_events = physic_calcs.filter_events_by_particle_counts(
+        filtered_events = physics_calcs.filter_events_by_particle_counts(
             events=cut_events, 
             particle_counts=config["particle_counts"], 
             is_particle_counts_range=True

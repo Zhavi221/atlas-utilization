@@ -1,17 +1,17 @@
 tasks:
-  do_parsing: false
-  do_mass_calculating: true
+  do_parsing: true
+  do_mass_calculating: false
 
 parsing:
-  parse_in_subprocess: true #important for cluster processing
-  random_files: false #for testing
-  release_years: [] #when empty will parse all available years
+  parse_in_subprocess: false #important for cluster processing
+  random_files: false #FEATURE reimplement
+  release_years: ["2024r-pp"] #when empty will parse all available years
   retry_failed_files: true #FEATURE implement this
   max_threads: 4
   max_environment_memory_mb: 8192
   chunk_yield_threshold_bytes: 1000000000 #1GB 
   # chunk_yield_threshold_bytes: 50000000 #FOR TESTING - 50MB for testing
-  limit_files_per_year: 50 #FOR TESTING - limit number of files per year, set to -1 to parse all files
+  limit_files_per_year: 100 #FOR TESTING - limit number of files per year, set to -1 to parse all files
   output_path: "data/root_files"
   logging_path: "logs/"
   # crashed_files: "crashed_files.json"

@@ -35,7 +35,7 @@ def subprocess_parse_and_process_one_chunk(config, release_years_file_ids, statu
         chunk_received = False
         for events_chunk in atlasparser.parse_files(
             release_years_file_ids=release_years_file_ids,
-            save_statistics=True #FOR TESTING - statistics
+            save_statistics=True #FOR TESTING - statistics, weird behavior consider removing
         ):
 
             files_parsed = atlasparser.cur_file_ids.copy()
@@ -146,17 +146,20 @@ def parse_with_per_chunk_subprocess(config):
             status_queue = Queue()
             
             # Spawn subprocess
-            worker_process = Process(
-                target=subprocess_parse_and_process_one_chunk,
-                args=(config, {release_year: files_remaining}, status_queue),
-                daemon=False
-            )
-            
-            worker_process.start()
+            #FEATURE maybe add here multiprocessing to speed up processing
+            with mp.Pool(processes=num_workers) as pool:
+                results = pool.starmap(process_files_batch, worker_args)
+                worker_process = Process(
+                    target=subprocess_parse_and_process_one_chunk,
+                    args=(config, {release_year: files_remaining}, status_queue),
+                    daemon=False
+                )
+                
+                worker_process.start()
             
             # Wait for subprocess to complete
             try:
-                #FOR TESTING - timeout
+                #FOR TESTING - no timeout
                 status = status_queue.get(timeout=None) 
                 
                 if status["status"] == "chunk_complete":
@@ -212,7 +215,6 @@ def parse_with_per_chunk_subprocess(config):
                 logger.info("Subprocess terminated, memory freed to OS")
                 logger.info("Sleeping 10 seconds to allow OS to reclaim memory...")
                 
-                #FOR TESTING - sleep 
                 time.sleep(10)
                 logger.info("10 seconds passed")
     

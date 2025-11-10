@@ -91,7 +91,7 @@ class ATLAS_Parser():
         # New statistics tracking
         self.crash_lock = threading.Lock()
         self.failed_files = []
-        self.parsing_start_time = None
+        self.parsing_start_time = time.time()
         self.chunk_stats = []
         self.error_types = {}
         self.timeout_count = 0
@@ -136,7 +136,7 @@ class ATLAS_Parser():
         if recreate_dirs:
             self._initialize_statistics()
             logging.info(
-                f"Recreated dirs")
+                f"Recreated directories...")
         
     #FETCHING FILE IDS
     def _fetch_available_releases(self):
@@ -234,26 +234,21 @@ class ATLAS_Parser():
             raise ValueError("No release_years_file_ids provided.")
         
         successful_count = 0
-        tqdm.write(
-            f"Starting to parse {len(release_years_file_ids)} files with {self.max_threads} threads.")
-        
         with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
             for release_year, file_ids in release_years_file_ids.items():
-                futures = {}
-                for file_index in file_ids:
-                    try:
-                        tree_name = self._get_tree_name_for_file(file_index) 
-                    except:
-                        pass #FOR TESTING - to catch weird bug where file name is HEX
-                    future = executor.submit(
-                        ATLAS_Parser.parse_file, 
-                        file_index,
-                        tree_name)
-                    
-                    futures[future] = file_index
-                
+                logging.info(f"Starting to parse year {release_year}'s {len(file_ids)} files with {self.max_threads} threads.")
                 with tqdm(total=len(file_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
+                    futures = {}
+                    for file_index in file_ids:
+                        tree_name = self._get_tree_name_for_file(file_index) 
 
+                        future = executor.submit(
+                            ATLAS_Parser.parse_file, 
+                            file_index,
+                            tree_name)
+                        
+                        futures[future] = file_index
+                
                     for future in as_completed(futures):
                         file_index = futures[future]
                         file_start_time = time.time()
@@ -268,10 +263,8 @@ class ATLAS_Parser():
                                 cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
                                 self._concatenate_events(cur_file_data)
                                 
-
                                 tqdm.write(f"{self._get_process_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
-                                if self._chunk_size_enough():
-
+                                if self._chunk_exceed_threshold():
                                     self._save_chunk_metadata()
                                     
                                     # Store chunk reference
@@ -282,11 +275,8 @@ class ATLAS_Parser():
                                     self.file_parsed_count = 0
                                     
                                     mem_before_yield = self._get_process_memory_mb()
-                                    self.max_memory_captured = max(self.max_memory_captured, mem_before_yield) #CHECK doesnt work, check max_memory_captured
+                                    self.max_memory_captured = max(self.max_memory_captured, mem_before_yield)
                                     
-                                    #CHECK this - Yield the chunk
-                                    if chunk_to_yield is None:
-                                        pass
                                     yield chunk_to_yield
                                     
                                     # CRITICAL: delete local reference after yield
@@ -303,6 +293,7 @@ class ATLAS_Parser():
                                         f"🧹 Memory after yield: {mem_after_yield:.1f} MB "
                                         f"(freed: {mem_freed:.1f} MB)"
                                     )
+                                    self._save_statistics(len(file_ids), successful_count) #TEMP
 
                         except Exception as e:
                             file_processing_time = time.time() - file_start_time
@@ -316,7 +307,9 @@ class ATLAS_Parser():
 
             if save_statistics:
                 stats = self._save_statistics(len(file_ids), successful_count)
-                self.print_statistics_summary(stats) 
+                self.print_statistics_summary(stats)
+                #FEATURE add time measurment displaying how much days would it take to parse 
+                # the entire atlas open data, maybe even fetch metadata about it 
             
             if self.events is not None:
                 self._save_chunk_metadata()
@@ -373,13 +366,21 @@ class ATLAS_Parser():
                 entry_ranges = [(0, n_entries)]
 
             # 4. Read batches
-            for entry_start, entry_stop in tqdm(entry_ranges, desc=parsing_label, unit="batch"):
+            #TEMP commented out the tqdm which was in the loop before
+            # with tqdm(total=len(entry_ranges), desc=parsing_label, unit="batch") as pbar:
+            for entry_start, entry_stop in entry_ranges: #tqdm(entry_ranges, desc=parsing_label, unit="batch")
                 batch_data = tree.arrays(all_branches, entry_start=entry_start, entry_stop=entry_stop)
 
                 # Append raw arrays only
                 for obj_name, fields in obj_branches.items():
                     subset = batch_data[fields]
+                    if len(subset) == 0:
+                        continue
+
                     all_events[obj_name].append(subset)
+                    
+                    # pbar.update(1)
+
 
             for obj_name, chunks in all_events.items():
                 concatenated = ak.concatenate(chunks)
@@ -495,7 +496,7 @@ class ATLAS_Parser():
         process_rss_bytes = process.memory_info().rss
         return process_rss_bytes / (1024**2)
 
-    def _chunk_size_enough(self):
+    def _chunk_exceed_threshold(self):
         """Check if we should yield based on ACTUAL memory pressure"""
         if self.events is None:
             return False
@@ -504,7 +505,7 @@ class ATLAS_Parser():
         actual_memory = self._get_process_memory_mb() 
         
         if hasattr(self, 'max_environment_memory_mb'):
-            if (actual_memory + 1000) < self.max_environment_memory_mb:
+            if (actual_memory + 1000) > self.max_environment_memory_mb:
                 tqdm.write(f"High memory usage: {actual_memory:.1f} MB (limit: {self.max_environment_memory_mb} MB)")
                 return True
 
@@ -636,7 +637,6 @@ class ATLAS_Parser():
         tqdm.write(f"="*60)
    
     def _initialize_statistics(self):
-        self.parsing_start_time = time.time()
         if os.path.exists(self.crash_log):
             os.remove(self.crash_log) 
         os.makedirs(os.path.dirname(self.crash_log), exist_ok=True)
