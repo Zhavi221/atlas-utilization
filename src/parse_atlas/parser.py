@@ -180,7 +180,7 @@ class ATLAS_Parser():
                     datasets = atom.available_datasets()
 
                     for dataset_id in datasets:
-                        future = executor.submit(atom.get_urls, dataset_id) #TODO handle 'noskim' absence
+                        future = executor.submit(atom.get_urls, dataset_id) #FEATURE handle 'noskim' absence
                         urls = future.result(timeout=timeout)
                         if urls:
                             release_years_file_ids[year].extend(urls)
@@ -269,7 +269,7 @@ class ATLAS_Parser():
                                 self._concatenate_events(cur_file_data)
                                 
 
-                                tqdm.write(f"{self._get_actual_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
+                                tqdm.write(f"{self._get_process_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
                                 if self._chunk_size_enough():
 
                                     self._save_chunk_metadata()
@@ -281,10 +281,10 @@ class ATLAS_Parser():
                                     self.events = None
                                     self.file_parsed_count = 0
                                     
-                                    mem_before_yield = self._get_actual_memory_mb()
-                                    self.max_memory_captured = max(self.max_memory_captured, mem_before_yield) #TODO doesnt work, check max_memory_captured
+                                    mem_before_yield = self._get_process_memory_mb()
+                                    self.max_memory_captured = max(self.max_memory_captured, mem_before_yield) #CHECK doesnt work, check max_memory_captured
                                     
-                                    #TODO check this - Yield the chunk
+                                    #CHECK this - Yield the chunk
                                     if chunk_to_yield is None:
                                         pass
                                     yield chunk_to_yield
@@ -295,7 +295,7 @@ class ATLAS_Parser():
                                     # Force aggressive cleanup after yield
                                     gc.collect()
                                     
-                                    mem_after_yield = self._get_actual_memory_mb()
+                                    mem_after_yield = self._get_process_memory_mb()
                                     mem_freed = mem_before_yield - mem_after_yield
                                     
                                     tqdm.write(
@@ -336,7 +336,7 @@ class ATLAS_Parser():
         
         return "CollectionTree" 
         
-    #TODO go over this method, make sure to understand all parts
+    #GO OVER go over this method, make sure to understand all parts
     @staticmethod
     def parse_file(file_index, tree_name="CollectionTree", batch_size=40_000) -> ak.Array:
         """
@@ -413,7 +413,7 @@ class ATLAS_Parser():
         chunk_size_kb = cur_file_data.layout.nbytes
         self.total_size_kb += chunk_size_kb
         
-        mem_before = self._get_actual_memory_mb()
+        mem_before = self._get_process_memory_mb()
 
         if self.events is None:
             self.events = cur_file_data
@@ -421,7 +421,7 @@ class ATLAS_Parser():
             old_events = self.events
             self.events = ak.concatenate([old_events, cur_file_data], axis=0)
         
-        mem_after = self._get_actual_memory_mb()
+        mem_after = self._get_process_memory_mb()
         mem_delta = mem_after - mem_before
         
         # Log if memory grew unexpectedly
@@ -489,7 +489,7 @@ class ATLAS_Parser():
         return root_ready
 
     #MEMORY METHODS
-    def _get_actual_memory_mb(self):
+    def _get_process_memory_mb(self):
         """Get actual process memory usage"""
         process = psutil.Process(os.getpid())
         process_rss_bytes = process.memory_info().rss
@@ -501,7 +501,7 @@ class ATLAS_Parser():
             return False
         
         logical_size = self.events.layout.nbytes
-        actual_memory = self._get_actual_memory_mb() 
+        actual_memory = self._get_process_memory_mb() 
         
         if hasattr(self, 'max_environment_memory_mb'):
             if (actual_memory + 1000) < self.max_environment_memory_mb:
