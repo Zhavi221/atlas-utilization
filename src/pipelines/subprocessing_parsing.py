@@ -217,7 +217,7 @@ def parse_with_per_chunk_subprocess(config):
                 
                 time.sleep(10)
                 logger.info("10 seconds passed")
-    
+                
     pbar.close()
     logger.info(
         f"Parsing complete! Processed {chunk_count} chunks, "
