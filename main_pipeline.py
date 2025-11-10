@@ -25,8 +25,8 @@ def main():
     
     if tasks["do_mass_calculating"]:
         main_logger.info("Starting calculations task")
-        from src.pipelines import inv_masses_pipeline
-        inv_masses_pipeline.mass_calculate(config["mass_calculate"])
+        from src.pipelines import im_pipeline
+        im_pipeline.mass_calculate(config["mass_calculate"])
     
 
 def init_logging():

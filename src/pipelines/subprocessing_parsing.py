@@ -3,7 +3,7 @@ import sys
 import time
 import multiprocessing as mp
 from multiprocessing import Process, Queue
-from src.parse_atlas import parser, consts, schemas
+from src.parse_atlas import parser, schemas
 from src.calculations import combinatorics, physics_calcs
 import awkward as ak
 from tqdm import tqdm
@@ -13,7 +13,7 @@ import gc
 import random
 import json
 
-def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue):
+def subprocess_parse_and_process_one_chunk(config, release_years_file_ids, status_queue):
     """
     Runs in a separate process.
     Parses files, processes (filter/flatten), and saves ONE chunk.
@@ -24,21 +24,21 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
     
     try:
         atlasparser = parser.ATLAS_Parser(
-            max_process_memory_mb=config["max_process_memory_mb"],
-            max_chunk_size_bytes=config["max_chunk_size_bytes"],
+            max_environment_memory_mb=config["max_environment_memory_mb"],
+            chunk_yield_threshold_bytes=config["chunk_yield_threshold_bytes"],
             max_threads=config["max_threads"],
-            logging_path=config["logging_path"]
+            logging_path=config["logging_path"],
+            possible_tree_names=config.get("possible_tree_names", None),
         )
         
         # Parse until we get ONE chunk
         chunk_received = False
         for events_chunk in atlasparser.parse_files(
-            files_ids=files_to_parse,
-            limit=config.get("file_limit", 0),
+            release_years_file_ids=release_years_file_ids,
             save_statistics=True #FOR TESTING - statistics
         ):
 
-            files_parsed = atlasparser.cur_files_ids.copy()
+            files_parsed = atlasparser.cur_file_ids.copy()
             chunk_size_before = events_chunk.layout.nbytes / (1024**2)
             num_events = len(events_chunk)
             
@@ -65,7 +65,7 @@ def subprocess_parse_and_process_one_chunk(config, files_to_parse, status_queue)
             del filtered_events
             
             logger.info("Saving events to disk")
-            atlasparser.cur_files_ids = files_parsed
+            atlasparser.cur_file_ids = files_parsed
             atlasparser.save_events_as_root(root_ready, config["output_path"])
             
             # Send status back to main
@@ -112,117 +112,115 @@ def parse_with_per_chunk_subprocess(config):
     
     # Get file list upfront (in main process)
     temp_parser = parser.ATLAS_Parser(
-        max_process_memory_mb=config["max_process_memory_mb"],
-        max_chunk_size_bytes=config["max_chunk_size_bytes"],
+        max_environment_memory_mb=config["max_environment_memory_mb"],
+        chunk_yield_threshold_bytes=config["chunk_yield_threshold_bytes"],
         max_threads=config["max_threads"],
         logging_path=config["logging_path"],
-        initialize_statistics=True
+        release_years=config["release_years"],
+        recreate_dirs=True
     )
     
-    all_files = temp_parser.fetch_records_ids(
-        release_year=config["release_year"]
-    )
+    release_years_file_ids = temp_parser.fetch_record_ids(timeout=config.get("fetching_metadata_timeout", None))
     
     if config.get("random_files", True):
-        random.shuffle(all_files)
+        random.shuffle(release_years_file_ids)
 
-    if config.get("file_limit"):
-        all_files = all_files[:config["file_limit"]]
+    if config.get("limit_files_per_year"):
+        parser.ATLAS_Parser.limit_files_per_year(release_years_file_ids, config["limit_files_per_year"])
     
-    logger.info(f"Found {len(all_files)} files to process")
-    
-    files_remaining = list(all_files)
     chunk_count = 0
     total_events = 0
-    
-    # Progress bar
-    pbar = tqdm(total=len(all_files), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=3)
-    
-    # Loop: spawn subprocess for each chunk
-    while files_remaining:
+    for release_year, file_ids in release_years_file_ids.items():
+        logger.info(f"Found {len(file_ids)} files to process")
         
-        logger.info(f"Files remaining: {len(files_remaining)}, spawning subprocess for next chunk...")
+        # Progress bar
+        pbar = tqdm(total=len(file_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=3)
         
-        # Create queue for status updates only
-        status_queue = Queue()
-        
-        # Spawn subprocess
-        worker_process = Process(
-            target=subprocess_parse_and_process_one_chunk,
-            args=(config, files_remaining, status_queue),
-            daemon=False
-        )
-        
-        worker_process.start()
-        
-        # Wait for subprocess to complete
-        try:
-            #FOR TESTING - timeout
-            status = status_queue.get(timeout=None) 
+        # Loop: spawn subprocess for each chunk
+        files_remaining = file_ids
+        while files_remaining:
             
-            if status["status"] == "chunk_complete":
-                files_parsed = status["files_parsed"]
-                num_events = status["num_events"]
-                chunk_size_mb = status["chunk_size_mb"]
+            logger.info(f"Files remaining: {len(files_remaining)}, spawning subprocess for next chunk...")
+            
+            # Create queue for status updates only
+            status_queue = Queue()
+            
+            # Spawn subprocess
+            worker_process = Process(
+                target=subprocess_parse_and_process_one_chunk,
+                args=(config, {release_year: files_remaining}, status_queue),
+                daemon=False
+            )
+            
+            worker_process.start()
+            
+            # Wait for subprocess to complete
+            try:
+                #FOR TESTING - timeout
+                status = status_queue.get(timeout=None) 
                 
-                logger.info(
-                    f"Chunk {chunk_count + 1} complete: "
-                    f"{len(files_parsed)} files, {num_events} events, {chunk_size_mb:.1f} MB"
-                )
-                
-                # Update tracking
-                for f in files_parsed:
-                    if f in files_remaining:
-                        files_remaining.remove(f)
-                
-                chunk_count += 1
-                total_events += num_events
-                pbar.update(len(files_parsed))
-                
-                if not files_remaining:
-                    crashed_files_path = config["logging_path"] + "crashed_files.json"
-                    if os.path.exists(crashed_files_path):
-                        with open(crashed_files_path, "r") as f:
-                            data = json.load(f)
-                            files_remaining = data.get("failed_files", [])
+                if status["status"] == "chunk_complete":
+                    files_parsed = status["files_parsed"]
+                    num_events = status["num_events"]
+                    chunk_size_mb = status["chunk_size_mb"]
+                    
+                    logger.info(
+                        f"Chunk {chunk_count + 1} complete: "
+                        f"{len(files_parsed)} files, {num_events} events, {chunk_size_mb:.1f} MB"
+                    )
+                    
+                    # Update tracking
+                    for f in files_parsed:
+                        if f in files_remaining:
+                            files_remaining.remove(f)
+                    
+                    chunk_count += 1
+                    total_events += num_events
+                    pbar.update(len(files_parsed))
+                    
+                    if not files_remaining:
+                        crashed_files_path = config["logging_path"] + "crashed_files.json"
+                        if os.path.exists(crashed_files_path):
+                            with open(crashed_files_path, "r") as f:
+                                data = json.load(f)
+                                files_remaining = data.get("failed_files", [])
 
-            elif status["status"] == "no_chunks":
-                logger.info("No more chunks to process")
-                break
-            
-            elif status["status"] == "error":
-                logger.error(f"Subprocess error: {status['message']}")
-                raise RuntimeError(f"Subprocess failed: {status['message']}")
-        
-        except mp.TimeoutError:
-            logger.error("Subprocess timeout")
-            raise
-        
-        finally:
-            # Ensure subprocess is fully terminated
-            if worker_process.is_alive():
-                logger.warning("Subprocess still alive, terminating...")
-                worker_process.terminate()
-                worker_process.join(timeout=10)
+                elif status["status"] == "no_chunks":
+                    logger.info("No more chunks to process")
+                    break
                 
+                elif status["status"] == "error":
+                    logger.error(f"Subprocess error: {status['message']}")
+                    raise RuntimeError(f"Subprocess failed: {status['message']}")
+            
+            except mp.TimeoutError:
+                logger.error("Subprocess timeout")
+                raise
+            
+            finally:
+                # Ensure subprocess is fully terminated
                 if worker_process.is_alive():
-                    logger.warning("Subprocess did not terminate, killing...")
-                    worker_process.kill()
-            
-            worker_process.join()
-            logger.info("Subprocess terminated, memory freed to OS")
-            logger.info("Sleeping 10 seconds to allow OS to reclaim memory...")
-            
-            #FOR TESTING - sleep 
-            time.sleep(10)
-            logger.info("10 seconds passed")
+                    logger.warning("Subprocess still alive, terminating...")
+                    worker_process.terminate()
+                    worker_process.join(timeout=10)
+                    
+                    if worker_process.is_alive():
+                        logger.warning("Subprocess did not terminate, killing...")
+                        worker_process.kill()
+                
+                worker_process.join()
+                logger.info("Subprocess terminated, memory freed to OS")
+                logger.info("Sleeping 10 seconds to allow OS to reclaim memory...")
+                
+                #FOR TESTING - sleep 
+                time.sleep(10)
+                logger.info("10 seconds passed")
     
     pbar.close()
     logger.info(
         f"Parsing complete! Processed {chunk_count} chunks, "
         f"{total_events:,} total events"
     )
-
 
 
 def init_logging():

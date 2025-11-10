@@ -2,16 +2,9 @@ import awkward as ak
 import numpy as np
 import vector
 import gc
+from src.calculations import consts
 
 vector.register_awkward()
-
-PARTICLE_MASSES = {
-    'Muons': 0.10566,
-    'Electrons': 0.000511,
-    'Tau': 1.777,
-    'Jets': 0.0,
-    'Photons': 0.0
-}
 
 def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
     if len(particle_events) == 0:
@@ -20,7 +13,6 @@ def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
     all_vectors = concat_events(particle_events)
     combined_vectors = ak.concatenate(all_vectors, axis=1)
 
-    # total_momentum = ak.sum(combined_vectors, axis=1)
     total_momentum = ak.sum(combined_vectors, axis=1)
     
     if hasattr(total_momentum, 'tau'):
@@ -53,7 +45,7 @@ def get_particle_known_mass(particle_type, particle_array):
     if 'm' in particle_array.fields:
         return particle_array.m
     else:
-        return PARTICLE_MASSES.get(particle_type, 0.0) 
+        return consts.KNOWN_MASSES.get(particle_type, 0.0) 
 
 def extract_object_types(fields: list) -> set:
     particle_types = set()
@@ -64,7 +56,38 @@ def extract_object_types(fields: list) -> set:
 
     return particle_types
 
-def filter_events_by_particle_counts(events, particle_counts, is_particle_counts_range=True):
+def group_by_final_state(events: ak.Array):
+    particle_counts = ak.num(events)
+    e = particle_counts.Electrons
+    m = particle_counts.Muons
+    j = particle_counts.Jets
+    p = particle_counts.Photons
+    all_events_fs = [f"{e}e_{m}m_{j}j_{p}p" for e, m, j, p in zip(e, m, j, p)]
+
+    unique_fs = set(all_events_fs)
+    
+    for fs in unique_fs:
+        mask = (ak.Array(all_events_fs) == fs)
+        events_matching_fs = events[mask]
+        yield (fs, events_matching_fs)
+
+def is_finalstate_contain_combination(final_state, combination):
+    fs_particles = final_state.split('_')
+    for str_amount_particle in fs_particles:
+        amount_to_calc = str_amount_particle[0]
+        particle_letter = str_amount_particle[1]
+        particle = consts.LETTER_PARTICLE_MAPPING[particle_letter]
+
+        if particle not in combination or not amount_to_calc.isdigit():
+            continue
+        
+        fs_particle_amount = combination[particle]
+        if int(amount_to_calc) > fs_particle_amount:
+            return False
+        
+    return True
+
+def filter_events_by_particle_counts(events, particle_counts, is_exact_count=False, is_particle_counts_range=False):
     """
     MEMORY OPTIMIZED VERSION: Builds combined mask first, applies once.
     This avoids creating intermediate filtered arrays.
@@ -89,24 +112,36 @@ def filter_events_by_particle_counts(events, particle_counts, is_particle_counts
         obj_count = ak.num(obj_array)
         
         # Build mask for this particle type
-        if not is_particle_counts_range:
+        if is_particle_counts_range:
+            range_dict = value
+            particle_mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
+        elif is_exact_count:
             count = value
             particle_mask = (obj_count == count)
         else:
-            range_dict = value
-            particle_mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
+            count = value
+            particle_mask = (obj_count >= count)
         
-        # Combine with overall mask using logical AND
         combined_mask = combined_mask & particle_mask
+        
     
     # Apply filter only ONCE at the end
     filtered_events = events[combined_mask]
-    
-    # Clean up intermediate variables
+
     del combined_mask
     gc.collect()
     
     return ak.to_packed(filtered_events)
+
+def slice_events_by_field(events, particle_counts, slice_by_field):
+    for obj, count in particle_counts.items():
+        obj_array = events[obj]
+        sorted_obj_array = obj_array[ak.argsort(obj_array[slice_by_field], ascending=False)]
+        sliced_obj_array = sorted_obj_array[:, :count]
+
+        events[obj] = sliced_obj_array
+
+    return events
 
 def filter_events_by_kinematics(events, kinematic_cuts):
     """
