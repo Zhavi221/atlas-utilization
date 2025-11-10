@@ -1,6 +1,6 @@
 {
 	"name": "ROOT Data Analysis",
-	"image": "rootproject/custom_config_latest",
+	"image": "rootproject/root:custom_config_v8",
 	"customizations": {
 	  "vscode": {
 		"extensions": [

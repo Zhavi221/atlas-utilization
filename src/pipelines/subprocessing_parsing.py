@@ -3,7 +3,7 @@ import sys
 import time
 import multiprocessing as mp
 from multiprocessing import Process, Queue
-from src.parse_atlas import parser, consts, schemas
+from src.parse_atlas import parser, schemas
 from src.calculations import combinatorics, physics_calcs
 import awkward as ak
 from tqdm import tqdm

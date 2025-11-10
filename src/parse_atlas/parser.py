@@ -24,7 +24,7 @@ import gc
 import tracemalloc
 import hashlib
 
-from . import schemas, consts
+from . import schemas
 
 class ATLAS_Parser():
     '''

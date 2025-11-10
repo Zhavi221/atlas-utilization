@@ -9,6 +9,7 @@ import uproot
 import awkward as ak
 import os
 import vector
+import psutil
 
 from src.calculations import combinatorics, physics_calcs
 from src.parse_atlas import parser
@@ -27,7 +28,7 @@ def mass_calculate(config):
     os.makedirs(config["output_dir"], exist_ok=True)
     
     #TODO check if combinations method adhere to new logic
-    all_combinations = combinatorics.get_all_combinations(
+    all_combinations: list = combinatorics.get_all_combinations(
         config["objects_to_calculate"],
         min_particles=config["min_particles"],
         max_particles=config["max_particles"],
@@ -42,38 +43,80 @@ def mass_calculate(config):
             
             particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
             fs_im_mapping = {}
-            for grouped_fs in physics_calcs.group_by_final_state(particle_arrays):
-                #TODO implement skipping certain combos because fs doesnt contain enough particles
+            for cur_fs, fs_events in physics_calcs.group_by_final_state(particle_arrays):
+                if cur_fs not in fs_im_mapping:
+                    fs_im_mapping[cur_fs] = {}
                 for combination in all_combinations:
+                    if not physics_calcs.is_finalstate_contain_combination(cur_fs, combination):
+                        continue
+
                     logger.info(f"Processing combination: {combination}")
                     filtered_events: ak.Array = physics_calcs.filter_events_by_particle_counts(
-                        events=grouped_fs, 
-                        particle_counts=combination,
-                        by_highest_pt=True
+                        events=fs_events, 
+                        particle_counts=combination
                     )    
-                    
-                    if len(filtered_events) == 0:
+
+                    sliced_events_by_pt: ak.Array = physics_calcs.slice_events_by_field(
+                        events=filtered_events, 
+                        particle_counts=combination,
+                        slice_by_field="pt"
+                    )
+
+                    if len(sliced_events_by_pt) == 0:
                         continue
                     
-                    inv_mass: list = physics_calcs.calc_inv_mass(filtered_events) 
+                    inv_mass: list = physics_calcs.calc_inv_mass(sliced_events_by_pt) 
                     
                     if not ak.any(inv_mass):
                         continue
                     
                     #TODO add year, final state and combination to filename
-                    combination_name = prepare_combination_name(combination)
-                    output_path = os.path.join(
-                        config["output_dir"], 
-                        f"{filename}_{combination_name}_inv_mass.npy" 
-                        )
+                    combination_name = prepare_combination_name(filename, cur_fs, combination)
                     
-                    np.save(output_path, ak.to_numpy(inv_mass))
+                    if combination_name not in fs_im_mapping[cur_fs]:
+                        fs_im_mapping[cur_fs][combination_name] = inv_mass
+                    else:
+                        combination_im = fs_im_mapping[cur_fs][combination_name]
+                        fs_im_mapping[cur_fs][combination_name] = combination_im.extend(inv_mass)
+                    
+                    
+                    #TODO check for size of each "final state list", or just output all of it once chunk size enough
+                    if chunk_size_enough(config, fs_im_mapping):
+                        #FOR TESTING commented saving files mechanism
+                        
+                        # for fs, combinations in fs_im_mapping.items():
+                        #     for combination_im in combinations:
+                                
+                        output_path = os.path.join(
+                            config["output_dir"], 
+                            f"{combination_name}.npy" 
+                            )
+                        
+                        np.save(output_path, ak.to_numpy(fs_im_mapping[cur_fs][combination_name]))
+                        break
 
-def prepare_combination_name(combination: dict) -> str:
+def get_actual_memory_mb():
+    """Get actual process memory usage"""
+    process = psutil.Process(os.getpid())
+    process_rss_bytes = process.memory_info().rss
+    return process_rss_bytes / (1024**2)
+
+def chunk_size_enough(config, fs_im_mapping):
+    """Check if we should yield based on ACTUAL memory pressure"""
+    logical_size = sys.getsizeof(fs_im_mapping)
+    actual_memory = get_actual_memory_mb() 
+    
+    if (actual_memory + 1000) < 8192:
+        return True
+
+    return logical_size >= 50000000
+
+def prepare_combination_name(filename, final_state, combination: dict) -> str:
     combination_name = ''
+    combination_name += f"{filename}_FS_{final_state}_IM_"
+
     for object, amount in combination.items():
-        combination_name += str(amount)
-        combination_name += object[0].lower()
+        combination_name += f"{amount}{object[0].lower()}_"
 
     return combination_name
 

@@ -1,6 +1,6 @@
 import logging
 import sys
-from src.parse_atlas import parser, consts, schemas
+from src.parse_atlas import parser, schemas
 from src.calculations import combinatorics, physics_calcs
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 import matplotlib.pyplot as plt # plotting
@@ -38,13 +38,13 @@ def parse(config):
     ):
         
         logger.info("Cutting events")
-        cut_events = physics_calcs.filter_events_by_kinematics(
+        cut_events = physic_calcs.filter_events_by_kinematics(
             events_chunk, config["kinematic_cuts"]
         )
         #del events_chunk  
 
         logger.info("Filtering events")
-        filtered_events = physics_calcs.filter_events_by_particle_counts(
+        filtered_events = physic_calcs.filter_events_by_particle_counts(
             events=cut_events, 
             particle_counts=config["particle_counts"], 
             is_particle_counts_range=True

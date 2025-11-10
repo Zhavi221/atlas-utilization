@@ -1,5 +1,5 @@
 tasks:
-  do_parsing: true
+  do_parsing: false
   do_mass_calculating: true
 
 parsing:
@@ -11,13 +11,13 @@ parsing:
   max_environment_memory_mb: 8192
   chunk_yield_threshold_bytes: 1000000000 #1GB 
   # chunk_yield_threshold_bytes: 50000000 #FOR TESTING - 50MB for testing
-  limit_files_per_year: 5 #FOR TESTING - limit number of files per year, set to -1 to parse all files
+  limit_files_per_year: 50 #FOR TESTING - limit number of files per year, set to -1 to parse all files
   output_path: "data/root_files"
   logging_path: "logs/"
   # crashed_files: "crashed_files.json"
   is_reinitialize_statistics: true
   possible_tree_names: ["CollectionTree", "mini", "analysis"] #TODO explain this paramter here or in docs,
-  fetching_metadata_timeout: 10
+  fetching_metadata_timeout: 30
 
   particle_counts:
     Electrons:
