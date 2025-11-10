@@ -296,6 +296,7 @@ class ATLAS_Parser():
                                         f"🧹 Memory after yield: {mem_after_yield:.1f} MB "
                                         f"(freed: {mem_freed:.1f} MB)"
                                     )
+                                    self._save_statistics(len(file_ids), successful_count) #TEMP
 
                         except Exception as e:
                             file_processing_time = time.time() - file_start_time
