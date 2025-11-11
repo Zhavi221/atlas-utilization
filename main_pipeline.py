@@ -12,12 +12,13 @@ def main():
         
     if tasks["do_parsing"]:
         main_logger.info("Starting parsing task")
-        parsing_config = config["parsing"]
+        parsing_config = config["parsing_config"]
+        pipeline_config = parsing_config["pipeline_config"]
 
-        if parsing_config.get("parse_in_subprocess", True):
+        if pipeline_config["parse_in_multiprocessing"]:
             main_logger.info("Parsing with a subprocess")
-            from src.pipelines import subprocessing_parsing
-            subprocessing_parsing.parse_with_per_chunk_subprocess(parsing_config)
+            from src.pipelines import multiprocessing_pipeline
+            multiprocessing_pipeline.parse_with_per_chunk_subprocess(parsing_config)
         else:
             main_logger.info("Parsing without a subprocess")
             from src.pipelines import parsing_pipeline

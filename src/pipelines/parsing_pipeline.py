@@ -16,28 +16,31 @@ import random
 
 def parse(config):
     logger = init_logging()
+    pipeline_config = config["pipeline_config"]
+    parser_config = config["parser_config"]
 
     atlasparser = parser.ATLAS_Parser(
-        max_environment_memory_mb=config["max_environment_memory_mb"],
-        chunk_yield_threshold_bytes=config["chunk_yield_threshold_bytes"],
-        max_threads=config["max_threads"],
-        logging_path=config["logging_path"],
-        release_years=config["release_years"],
-        recreate_dirs=True
+        max_environment_memory_mb=parser_config["max_environment_memory_mb"],
+        chunk_yield_threshold_bytes=parser_config["chunk_yield_threshold_bytes"],
+        max_threads=parser_config["max_threads"],
+        logging_path=parser_config["logging_path"],
+        release_years=parser_config["release_years"],
+        create_dirs=parser_config["create_dirs"],
+        possible_tree_names=parser_config["possible_tree_names"]
         )
 
-    release_years_file_ids = atlasparser.fetch_record_ids(config["fetching_metadata_timeout"])
+    release_years_file_ids = atlasparser.fetch_record_ids(pipeline_config["fetching_metadata_timeout"])
 
-    if config.get("limit_files_per_year"):
-        parser.ATLAS_Parser.limit_files_per_year(release_years_file_ids, config["limit_files_per_year"])
+    if pipeline_config["limit_files_per_year"]:
+        parser.ATLAS_Parser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
     
-    if config.get("random_files", True):
+    if pipeline_config["random_files"]:
         random.shuffle(release_years_file_ids)
 
     for events_chunk in atlasparser.parse_files(
-        release_years_file_ids=release_years_file_ids
+        release_years_file_ids=release_years_file_ids,
+        save_statistics=True
     ):
-        
         logger.info("Cutting events")
         cut_events = physics_calcs.filter_events_by_kinematics(
             events_chunk, config["kinematic_cuts"]
@@ -57,7 +60,7 @@ def parse(config):
         #del filtered_events
 
         logger.info("Saving events")
-        atlasparser.save_events_as_root(root_ready, config["output_path"])        
+        atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])        
         #del root_ready
 
         #gc.collect()  
