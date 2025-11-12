@@ -65,7 +65,7 @@ class ATLAS_Parser():
                  max_threads, 
                  logging_path, 
                  possible_tree_names=["CollectionTree"],
-                 recreate_dirs=False, 
+                 create_dirs=False, 
                  max_environment_memory_mb=None, 
                  release_years=[]):
         self.files_ids = None
@@ -81,13 +81,13 @@ class ATLAS_Parser():
         self._setup_release_years(release_years)
         
         self._initialize_flags(
-            recreate_dirs,
+            create_dirs,
             possible_tree_names,
             chunk_yield_threshold_bytes,
             max_environment_memory_mb,
             logging_path
             )
-        
+
         # New statistics tracking
         self.crash_lock = threading.Lock()
         self.failed_files = []
@@ -106,7 +106,7 @@ class ATLAS_Parser():
         self.max_threads = max_threads
 
     def _initialize_flags(self, 
-                          recreate_dirs, 
+                          create_dirs, 
                           possible_tree_names, 
                           chunk_yield_threshold_bytes, 
                           max_environment_memory_mb,
@@ -134,7 +134,7 @@ class ATLAS_Parser():
             logging.info(
                 f"Logging paths set to: {self.crash_log}, {self.stats_log}, {self.crashed_files}.")
             
-        if recreate_dirs:
+        if create_dirs:
             self._initialize_statistics()
             logging.info(
                 f"Recreated directories...")
@@ -226,7 +226,7 @@ class ATLAS_Parser():
     #PARSING METHODS
     def parse_files(self,
                        release_years_file_ids: dict = None,
-                       save_statistics: bool = True):
+                       save_statistics: bool = False):
         '''
             Parses the input files by their IDs, otherwise uses the member release_years_file_ids.
             Yields chunks of events as awkward arrays each size from the input limit.
@@ -271,7 +271,7 @@ class ATLAS_Parser():
                                     # Store chunk reference
                                     chunk_to_yield = self.events
                                     
-                                    # CRITICAL: Clear reference BEFORE yielding
+                                    # CRITICAL: Clear r`eference BEFORE yielding
                                     self.events = None
                                     self.file_parsed_count = 0
                                     self.total_chunks += 1
@@ -296,7 +296,6 @@ class ATLAS_Parser():
                                         f"🧹 Memory after yield: {mem_after_yield:.1f} MB "
                                         f"(freed: {mem_freed:.1f} MB)"
                                     )
-                                    self._save_statistics(len(file_ids), successful_count) #TEMP
 
                         except Exception as e:
                             file_processing_time = time.time() - file_start_time
@@ -308,17 +307,25 @@ class ATLAS_Parser():
                         pbar.set_postfix_str(status)
                         pbar.update(1)
 
+
+            #TEMP for when the subprocess eliminates the generator and never returns so yielding has to be last
+            if self.events is not None:
+                self.total_chunks += 1
+                self._save_chunk_metadata()
+                
             if save_statistics:
-                stats = self._save_statistics(len(file_ids), successful_count)
+                logging.info(f"Saving statistics to {self.stats_log}")
+                total_files = [file_id for file_id in file_ids for file_ids in release_years_file_ids.values()]
+                stats = self._save_statistics(len(total_files), successful_count)
                 self.print_statistics_summary(stats)
                 #FEATURE add time measurment displaying how much days would it take to parse 
                 # the entire atlas open data, maybe even fetch metadata about it 
-            
+
             if self.events is not None:
-                self._save_chunk_metadata()
                 yield self.events
                 self.events = None
-
+            #TEMP until here
+            
     def _get_tree_name_for_file(self, file_index):
         if not self.possible_tree_names:
             logging.warning("No possible_tree_names provided, defaulting to 'CollectionTree'.")
