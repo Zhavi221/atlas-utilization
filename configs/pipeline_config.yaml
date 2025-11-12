@@ -4,25 +4,39 @@ tasks:
 
 parsing_config:
   pipeline_config:
+    # ===USE A MULTIPROCESSING WHILE PARSING
     parse_in_multiprocessing: true #important for cluster processing
+    # ===SHUFFLE THE FILES FOR RANDOMNESS===
     random_files: false #FEATURE reimplement
-    retry_failed_files: true #FEATURE implement this
+    # ===ADD FAILED FILES TO QUEUE OF FILES===
+    retry_failed_files: true #FEATURE implement 
+    # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
-    limit_files_per_year: 10 #FOR TESTING - limit number of files per year, set to -1 to parse all files
+    # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
+    limit_files_per_year: 10 #FOR TESTING - limit number of files per year
+    # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 30
+    # ===PATH FOR OUTPUTTING THE DATA===
     output_path: "data/root_files"
   
   parser_config:
     # max_environment_memory_mb: 8192
+      # ===RELEVANT WHEN USED IN A RESTRICTED MEMORY ENV (A CLUSTER)===
     max_environment_memory_mb: 15000
-    release_years: ["2024r-pp"] #when empty will parse all available years
+    # ===RELEASE YEARS TO PARSE THE FILES FROM (CAN BE EMPTY)===  
+    release_years: ["2024r-pp"]
+    # ===AMOUNT OF THREADS TO USE MULTITHREADING WITH, 4 IS A STABLE AMOUNT===
     max_threads: 4
+    # ===A THRESHOLD FOR PREVENTING MEMORY OVERLOAD===
     # chunk_yield_threshold_bytes: 3000000000 #1GB 
     chunk_yield_threshold_bytes: 50000000 #FOR TESTING - 50MB for testing
+    # ===PATH FOR OUTPUTTING THE LOGS===
     logging_path: "logs/"
+    # ===SHOULD CREATE LOGGING AND DATA DIRECTORIES===
     create_dirs: true
-    possible_tree_names: ["CollectionTree", "mini", "analysis"] #TODO explain this paramter here or in docs,
-  
+    # ===THE NAMES FOR THE DATA TREES INSIDE THE ROOT FILES, IT VARIES BY RELEASE YEAR===
+    possible_tree_names: ["CollectionTree", "mini", "analysis"]
+
   particle_counts:
     Electrons:
       min: 1
@@ -48,17 +62,25 @@ parsing_config:
       max: 3.141592653589793
 
 mass_calculate:
+  # ===SELECT HIGHEST PT PARTICLES FOR THE CALCULATION===
+  by_highest_pt: false #FEATURE implement?
+  # ===THRESHOLD FOR EMPTYING THE FS MAPPING===
   # fs_mapping_threshold_bytes: 1000000000 #1GB 
-  by_highest_pt: false #FEATURE 
   fs_mapping_threshold_bytes: 3000 #FOR TESTING - 500MB for testing
+  # ===INPUT DIRECTORY FOR THE ROOT FILES TO CALCULATE FROM===
   input_dir: "data/root_files"
+  # ===OUTPUT DIRECTORY FOR THE INVARIANT MASS ARRAYS===
   output_dir: "data/inv_masses"
+  # ===PARTICLES TO CALCULATE INVARIANT MASS OUT OF===
   objects_to_calculate:
       - Electrons
       - Muons
       - Jets
       - Photons
+  # ===COMBINATORICS===
+  # ===MINIMUM AND MAXIUM PARTICLES IN A COMBINATION===
   min_particles: 2
   max_particles: 4
+  # ===COUNT FOR EACH PARTICLE IN A COMBINATION=== 
   min_count: 2
   max_count: 4
