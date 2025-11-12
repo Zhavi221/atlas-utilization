@@ -12,6 +12,7 @@ import os
 import gc
 import random
 import json
+from datetime import datetime
 
 def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_ids):
     """
@@ -245,14 +246,19 @@ def aggregate_statistics(stats_list, output_path):
         all_failed_files.extend(s["errors"].get("failed_file_list", []))
     
     # Build consolidated statistics
+    
+    #TIME STATISTICS
+    start_timestamp = datetime.fromisoformat(stats_list[0]["parsing_session"]["timestamp"])
+    last_timestamp = datetime.fromisoformat(stats_list[-1]["parsing_session"]["timestamp"])
     consolidated = {
         "parsing_session": {
-            "timestamp": stats_list[0]["parsing_session"]["timestamp"],  # First chunk timestamp
-            "end_timestamp": stats_list[-1]["parsing_session"]["timestamp"],  # Last chunk timestamp
-            "total_time_seconds": sum(chunk_times),
-            "avg_chunk_time": sum(chunk_times) / total_chunks,
-            "min_chunk_time": min(chunk_times),
-            "max_chunk_time": max(chunk_times),
+            "start_timestamp": start_timestamp,  
+            "last_timestamp": last_timestamp,  
+            "last_to_first_timestamp_diff_minutes": (last_timestamp - start_timestamp).seconds / 60,
+            "total_processing_time_minutes": sum(chunk_times) / 60,
+            "avg_chunk_time_minutes": (sum(chunk_times) / total_chunks) / 60,
+            "min_chunk_time_minutes": min(chunk_times) / 60,
+            "max_chunk_time_minutes": max(chunk_times) / 60,
             "total_files": all_files,
             "successful_files": successful_files,
             "failed_files": failed_files,
