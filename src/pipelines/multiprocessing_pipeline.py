@@ -39,7 +39,7 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             release_years_file_ids=release_years_file_ids,
             # save_statistics=True #FOR TESTING - statistics, weird behavior consider removing
         ):
-
+            #FEATURE asdasda
             files_parsed = atlasparser.cur_file_ids.copy()
             chunk_size_before = events_chunk.layout.nbytes / (1024**2)
             num_events = len(events_chunk)
@@ -273,7 +273,8 @@ def aggregate_statistics(stats_list, output_path):
             "max_chunk_size_mb": max(all_chunk_sizes),
             "events_per_second": total_events / sum(chunk_times) if sum(chunk_times) > 0 else 0,
             "mb_per_second": total_data_mb / sum(chunk_times) if sum(chunk_times) > 0 else 0,
-            "max_process_memory_captured": max(all_memory_captures)
+            "max_process_memory_captured": max(all_memory_captures),
+            
         },
         "errors": {
             "timeout_count": total_timeouts,
