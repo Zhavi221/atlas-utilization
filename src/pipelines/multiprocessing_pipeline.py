@@ -4,7 +4,7 @@ import time
 import multiprocessing as mp
 from multiprocessing import Process, Queue
 from src.parse_atlas import parser, schemas
-from src.calculations import combinatorics, physics_calcs
+from src.calculations import combinatorics, physics_calcs, math_utils, consts
 import awkward as ak
 from tqdm import tqdm
 import yaml
@@ -39,7 +39,6 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             release_years_file_ids=release_years_file_ids,
             # save_statistics=True #FOR TESTING - statistics, weird behavior consider removing
         ):
-            #FEATURE asdasda
             files_parsed = atlasparser.cur_file_ids.copy()
             chunk_size_before = events_chunk.layout.nbytes / (1024**2)
             num_events = len(events_chunk)
@@ -70,10 +69,9 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             atlasparser.cur_file_ids = files_parsed
             atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])
 
-            #CHECK make it public?
-            stats = atlasparser._save_statistics(
+            stats = atlasparser.get_statistics(
                 total_files=len(files_parsed),
-                successful_count=len(files_parsed)
+                successful_count=len(files_parsed),
             )
             
             logger.info("Subprocess exiting")
@@ -90,7 +88,6 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             "status": "error",
             "message": str(e)
         }
-
 
 def parse_with_per_chunk_subprocess(config):
     """
@@ -195,7 +192,7 @@ def parse_with_per_chunk_subprocess(config):
                     if files_remaining:
                         logger.info(f"Retrying {len(files_remaining)} crashed files...")
         if all_stats:
-            aggregate_statistics(all_stats, parser_config["logging_path"])    
+            aggregate_statistics(all_stats, parser_config["logging_path"], pipeline_config, parser_config)    
 
         pbar.close()
     
@@ -209,7 +206,7 @@ def chunk_list(lst, n):
     k, m = divmod(len(lst), n)
     return [lst[i*k+min(i,m):(i+1)*k+min(i+1,m)] for i in range(n)]
 
-def aggregate_statistics(stats_list, output_path):
+def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config):
     """Combine statistics from all worker chunks into consolidated metrics"""
     if not stats_list:
         return
@@ -247,18 +244,36 @@ def aggregate_statistics(stats_list, output_path):
     
     # Build consolidated statistics
     
+    #TREND STATISTICS
+    timestamps = [s["parsing_session"]["timestamp"] for s in stats_list]
+    max_mem_captures = [s["performance"]["max_memory_captured_mb"] for s in stats_list]
+    chunks_sizes = [s["performance"]["avg_chunk_size_mb"] for s in stats_list]
+    mem_first_deriv_avg, mem_second_deriv_avg = math_utils.calc_n_derivs_avg(
+        timestamps, 
+        max_mem_captures,
+        n_derivs=2)
+    chunk_first_deriv_avg, chunk_second_deriv_avg = math_utils.calc_n_derivs_avg(
+        timestamps, 
+        chunks_sizes,
+        n_derivs=2)
+    
     #TIME STATISTICS
     start_timestamp = datetime.fromisoformat(stats_list[0]["parsing_session"]["timestamp"])
     last_timestamp = datetime.fromisoformat(stats_list[-1]["parsing_session"]["timestamp"])
+    avg_chunk_parsing_mins = (sum(chunk_times) / total_chunks) / 60
+
+    #CONFIG VARIABLES
+    config_yield_threshold_mb = parser_config["chunk_yield_threshold_bytes"] / 1024**2
+
     consolidated = {
         "parsing_session": {
             "start_timestamp": start_timestamp,  
             "last_timestamp": last_timestamp,  
             "last_to_first_timestamp_diff_minutes": (last_timestamp - start_timestamp).seconds / 60,
             "total_processing_time_minutes": sum(chunk_times) / 60,
-            "avg_chunk_time_minutes": (sum(chunk_times) / total_chunks) / 60,
-            "min_chunk_time_minutes": min(chunk_times) / 60,
-            "max_chunk_time_minutes": max(chunk_times) / 60,
+            "avg_chunk_parsing_mins": avg_chunk_parsing_mins,
+            "min_chunk_parsing_mins": min(chunk_times) / 60,
+            "max_chunk_parsing_mins": max(chunk_times) / 60,
             "total_files": all_files,
             "successful_files": successful_files,
             "failed_files": failed_files,
@@ -276,10 +291,27 @@ def aggregate_statistics(stats_list, output_path):
             "max_process_memory_captured": max(all_memory_captures),
             
         },
+        "advanced_stats" :{
+            "mem_first_deriv_avg":mem_first_deriv_avg,
+            "mem_second_deriv_avg":mem_second_deriv_avg,
+            "chunk_first_deriv_avg":chunk_first_deriv_avg,
+            "chunk_second_deriv_avg":chunk_second_deriv_avg
+        },
+        "for_all_data":{
+            "days_to_parse":
+                ((consts.OPEN_DATA_SIZE_MB/
+                config_yield_threshold_mb) * 
+                avg_chunk_parsing_mins)/consts.MINS_IN_DAY,
+        },
         "errors": {
             "timeout_count": total_timeouts,
             "error_types": all_error_types,
             "failed_file_list": list(set(all_failed_files))  # Deduplicate
+        },
+        "raw_data":{
+            "timestamps":timestamps,
+            "avg_chunks_sizes":chunks_sizes,
+            "max_memory_captures":max_mem_captures
         },
         "chunk_details": all_chunk_details
     }
