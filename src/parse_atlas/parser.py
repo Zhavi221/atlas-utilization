@@ -119,7 +119,7 @@ class ATLAS_Parser():
         if chunk_yield_threshold_bytes:
             self.chunk_yield_threshold_bytes = chunk_yield_threshold_bytes
             logging.info(
-                f"Chunk yield threshold set to: {self.chunk_yield_threshold_bytes} bytes.")
+                f"Chunk yield threshold set to: {self.chunk_yield_threshold_bytes//1024**2} MB.")
         
         if max_environment_memory_mb:
             self.max_environment_memory_mb = max_environment_memory_mb
@@ -316,10 +316,12 @@ class ATLAS_Parser():
             if save_statistics:
                 logging.info(f"Saving statistics to {self.stats_log}")
                 total_files = [file_id for file_id in file_ids for file_ids in release_years_file_ids.values()]
-                stats = self._save_statistics(len(total_files), successful_count)
+                stats = self.get_statistics(len(total_files), successful_count)
+                
+                with open(self.stats_log, 'a') as f:
+                    json.dump(stats, f, indent=2)
+
                 self.print_statistics_summary(stats)
-                #FEATURE add time measurment displaying how much days would it take to parse 
-                # the entire atlas open data, maybe even fetch metadata about it 
 
             if self.events is not None:
                 yield self.events
@@ -586,8 +588,8 @@ class ATLAS_Parser():
         self.chunk_stats.append(chunk_info)
         
         self.cur_chunk += 1
-        
-    def _save_statistics(self, total_files, successful_count):
+    
+    def get_statistics(self, total_files, successful_count):
         """Save comprehensive parsing statistics to JSON"""
         end_time = time.time()
         total_time = end_time - self.parsing_start_time if self.parsing_start_time else 0
@@ -619,9 +621,6 @@ class ATLAS_Parser():
             },
             "chunk_details": self.chunk_stats
         }
-        
-        with open(self.stats_log, 'a') as f:
-            json.dump(stats, f, indent=2)
         
         return stats
 

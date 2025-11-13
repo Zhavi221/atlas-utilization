@@ -22,3 +22,4 @@ testing_scripts/*
 .devcontainer/devcontainer.json
 AVAILABLE_NOTATIONS.txt
 rootproject_latest.sif
+logs/*
