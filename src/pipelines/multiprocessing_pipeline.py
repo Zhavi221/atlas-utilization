@@ -245,9 +245,14 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config
     # Build consolidated statistics
     
     #TREND STATISTICS
-    timestamps = [s["parsing_session"]["timestamp"] for s in stats_list]
+    #TODO correctly attach a data point to a time point, sort and then output the two arrays
+    timestamps = [datetime.fromisoformat(s["parsing_session"]["timestamp"]).second for s in stats_list]
     max_mem_captures = [s["performance"]["max_memory_captured_mb"] for s in stats_list]
     chunks_sizes = [s["performance"]["avg_chunk_size_mb"] for s in stats_list]
+    zipped_data = list(zip(timestamps, max_mem_captures, chunks_sizes))
+    zipped_data.sort(key=lambda tuple: tuple[0])
+    timestamps, max_mem_captures, chunks_sizes = zip(*zipped_data)
+    
     mem_first_deriv_avg, mem_second_deriv_avg = math_utils.calc_n_derivs_avg(
         timestamps, 
         max_mem_captures,
@@ -267,8 +272,8 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config
 
     consolidated = {
         "parsing_session": {
-            "start_timestamp": start_timestamp,  
-            "last_timestamp": last_timestamp,  
+            "start_timestamp": str(start_timestamp),  
+            "last_timestamp": str(last_timestamp),  
             "last_to_first_timestamp_diff_minutes": (last_timestamp - start_timestamp).seconds / 60,
             "total_processing_time_minutes": sum(chunk_times) / 60,
             "avg_chunk_parsing_mins": avg_chunk_parsing_mins,
