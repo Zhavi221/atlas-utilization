@@ -217,23 +217,8 @@ def comprehensive_memory_report(top_n=10):
     force_garbage_collection()
     print_process_memory()
 
-# Example usage
-if __name__ == "__main__":
-    # Create some test data
-    large_list = [i for i in range(1000000)]
-    large_dict = {i: i**2 for i in range(100000)}
-    large_string = "x" * 10000000
-    
-    # Run comprehensive report
-    comprehensive_memory_report(top_n=10)
-    
-    # Example with decorator
-    @track_memory_growth
-    def process_data():
-        temp_data = [i**2 for i in range(1000000)]
-        return sum(temp_data)
-    
-    result = process_data()
-    
-    # Check specific variables
-    print_top_memory_variables(n=5)
+def get_process_mem_usage_mb():
+    """Get actual process memory usage"""
+    process = psutil.Process(os.getpid())
+    process_rss_bytes = process.memory_info().rss
+    return process_rss_bytes / (1024**2)

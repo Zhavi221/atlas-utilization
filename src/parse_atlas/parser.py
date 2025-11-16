@@ -2,6 +2,7 @@ import awkward as ak
 import numpy as np
 import vector
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+import itertools
 
 import uproot
 import requests
@@ -58,7 +59,7 @@ class ATLAS_Parser():
             Fetches Monte Carlo records IDs for a given release year.
         log_cur_size():
             Logs the current size of accumulated events.
-        _prepare_obj_name(obj_name):
+        _prepare_obj_branch_name(obj_name):
             Prepares object name and zip function for parsing.
         _normalize_fields(ak_array):
             Normalizes fields in the awkward array to match schema.
@@ -272,8 +273,7 @@ class ATLAS_Parser():
                                 cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
                                 self._concatenate_events(cur_file_data)
                                 
-                                #TEMP
-                                # tqdm.write(f"{self._get_process_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
+                                tqdm.write(f"{memory_utils.get_process_mem_usage_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
                                 if self._chunk_exceed_threshold():
                                     self._save_chunk_metadata()
                                     
@@ -285,7 +285,7 @@ class ATLAS_Parser():
                                     self.file_parsed_count = 0
                                     self.total_chunks += 1
                                     
-                                    mem_before_yield = self._get_process_memory_mb()
+                                    mem_before_yield = memory_utils.get_process_mem_usage_mb()
                                     self.max_memory_captured = max(self.max_memory_captured, mem_before_yield)
                                     
                                     yield chunk_to_yield
@@ -298,7 +298,7 @@ class ATLAS_Parser():
                                     memory_utils.print_gc_stats()
                                     memory_utils.print_top_memory_variables(n=10)
                                     
-                                    mem_after_yield = self._get_process_memory_mb()
+                                    mem_after_yield = memory_utils.get_process_mem_usage_mb()
                                     mem_freed = mem_before_yield - mem_after_yield
                                     
 
@@ -341,7 +341,7 @@ class ATLAS_Parser():
                 self.print_statistics_summary(stats)
 
             if self.events is not None:
-                self.max_memory_captured = self._get_process_memory_mb()
+                self.max_memory_captured = memory_utils.get_process_mem_usage_mb()
                 yield self.events
                 self.events = None
             #TEMP until here
@@ -367,20 +367,21 @@ class ATLAS_Parser():
         Accumulates raw arrays and zips into vector objects only once per object.
         """
         with uproot.open({file_index: tree_name}) as tree:
-            all_keys = set(tree.keys())
+            all_tree_branches = set(tree.keys())
             n_entries = tree.num_entries
             is_file_big = n_entries > batch_size  # flag large files
 
             # 1. Precompute all fields to read
-            obj_branches: dict = ATLAS_Parser._extract_branches_for_inv_mass(all_keys, schema=schemas.INVARIANT_MASS_SCHEMA)
+            branches_by_obj_in_schema: dict = ATLAS_Parser._extract_branches_by_obj_in_schema(
+                all_tree_branches, schema=schemas.INVARIANT_MASS_SCHEMA)
 
-            if not obj_branches.values():
+            if not branches_by_obj_in_schema.values():
                 return None
             
-            all_branches = {branch for branches_list in obj_branches.values() for branch in branches_list}
+            all_branches = set(itertools.chain.from_iterable(branches_by_obj_in_schema.values()))
 
             # 2. Initialize storage for raw batches
-            all_events = {obj_name: [] for obj_name in obj_branches}
+            all_events = {obj_name: [] for obj_name in branches_by_obj_in_schema.keys()}
 
             # 3. Define entry ranges
             entry_ranges = []
@@ -391,36 +392,31 @@ class ATLAS_Parser():
                     (start, min(start + batch_size, n_entries)) 
                     for start in range(0, n_entries, batch_size)
                 ]
-            else:
+            else: #If file not big entry_ranges is the entire file
                 parsing_label = "Parsing file"
                 entry_ranges = [(0, n_entries)]
 
             # 4. Read batches
-            #TEMP commented out the tqdm which was in the loop before
-            # with tqdm(total=len(entry_ranges), desc=parsing_label, unit="batch") as pbar:
-            for entry_start, entry_stop in entry_ranges: #tqdm(entry_ranges, desc=parsing_label, unit="batch")
+            for entry_start, entry_stop in entry_ranges:
                 batch_data = tree.arrays(all_branches, entry_start=entry_start, entry_stop=entry_stop)
 
-                # Append raw arrays only
-                for obj_name, fields in obj_branches.items():
+                for obj_name, fields in branches_by_obj_in_schema.items():
                     subset = batch_data[fields]
                     if len(subset) == 0:
                         continue
 
                     all_events[obj_name].append(subset)
                     
-                    # pbar.update(1)
 
 
             for obj_name, chunks in all_events.items():
                 concatenated = ak.concatenate(chunks)
-                chunks.clear()
                 
                 # Keep as plain awkward array with proper field names
-                field_names = [f.split('.')[-1] for f in obj_branches[obj_name]]
+                field_names = [f.split('.')[-1] for f in branches_by_obj_in_schema[obj_name]]
                 all_events[obj_name] = ak.zip({
                     name: concatenated[full] 
-                    for name, full in zip(field_names, obj_branches[obj_name])
+                    for name, full in zip(field_names, branches_by_obj_in_schema[obj_name])
                 })  # Plain ak.zip, not vector.zip
 
                 # del concatenated  #CHECK
@@ -446,7 +442,7 @@ class ATLAS_Parser():
         chunk_size_kb = cur_file_data.layout.nbytes
         self.total_size_kb += chunk_size_kb
         
-        mem_before = self._get_process_memory_mb()
+        mem_before = memory_utils.get_process_mem_usage_mb()
 
         if self.events is None:
             self.events = cur_file_data
@@ -457,7 +453,7 @@ class ATLAS_Parser():
         
         # del cur_file_data  #CHECK
         
-        mem_after = self._get_process_memory_mb()
+        mem_after = memory_utils.get_process_mem_usage_mb()
         mem_delta = mem_after - mem_before
         
         # Log if memory grew unexpectedly
@@ -495,10 +491,10 @@ class ATLAS_Parser():
             obj = awk_arr[obj_name]
 
             # e.g., obj_name = "Jets"  -> cur_obj_name = "AnalysisJets"
-            cur_obj_name = ATLAS_Parser._prepare_obj_name(obj_name)
+            cur_obj_branch_name = ATLAS_Parser._prepare_obj_branch_name(obj_name)
 
-            if cur_obj_name is None:
-                cur_obj_name = obj_name
+            if cur_obj_branch_name is None:
+                cur_obj_branch_name = obj_name
 
             try:
                 # If obj is a record array, iterate over its fields
@@ -509,7 +505,7 @@ class ATLAS_Parser():
 
                     # IMPORTANT: match the structure used by _parse_file
                     # e.g., "AnalysisJetsAuxDyn.pt"
-                    branch_name = f"{cur_obj_name}AuxDyn.{field}"
+                    branch_name = f"{cur_obj_branch_name}AuxDyn.{field}"
                     root_ready[branch_name] = filled_branch
 
             except AttributeError:
@@ -524,20 +520,13 @@ class ATLAS_Parser():
         
         return root_ready
 
-    #MEMORY METHODS
-    def _get_process_memory_mb(self):
-        """Get actual process memory usage"""
-        process = psutil.Process(os.getpid())
-        process_rss_bytes = process.memory_info().rss
-        return process_rss_bytes / (1024**2)
-
     def _chunk_exceed_threshold(self):
         """Check if we should yield based on ACTUAL memory pressure"""
         if self.events is None:
             return False
         
         logical_size = self.events.layout.nbytes
-        actual_memory = self._get_process_memory_mb() 
+        actual_memory = memory_utils.get_process_mem_usage_mb() 
         
         if hasattr(self, 'max_environment_memory_mb'):
             if (actual_memory + 1000) > self.max_environment_memory_mb:
@@ -685,37 +674,32 @@ class ATLAS_Parser():
 
     #STATIC METHODS
     @staticmethod
-    def _extract_branches_for_inv_mass(all_keys, schema: dict):
+    def _extract_branches_by_schema(tree_branches, schema: dict):
         obj_branches = {}
         for obj_name, fields in schema.items():
-            cur_obj_name = ATLAS_Parser._prepare_obj_name(obj_name)
-            physical_quantities = [
-                    f for f in fields if f"{cur_obj_name}AuxDyn.{f}" in all_keys
+            cur_obj_branch_name = ATLAS_Parser._prepare_obj_branch_name(obj_name, schema)
+            obj_available_physical_quantities = [
+                    f for f in fields if f"{cur_obj_branch_name}.{f}" in tree_branches
                 ]
 
-            if ATLAS_Parser._can_calculate_inv_mass(physical_quantities):
-                full_branches = [f"{cur_obj_name}AuxDyn.{f}" for f in physical_quantities]
+            if ATLAS_Parser._can_calculate_inv_mass(obj_available_physical_quantities):
+                full_branches = [f"{cur_obj_branch_name}.{f}" for f in obj_available_physical_quantities]
                 obj_branches[obj_name] = full_branches
 
         return obj_branches
 
     @staticmethod
-    def _can_calculate_inv_mass(available_fields):
+    def _can_calculate_inv_mass(available_fields, ref_system={'phi', 'eta', 'pt'}):
         """
         Check if we have the minimum fields needed to calculate invariant mass.
         """
-        available = set(available_fields)
-        
-        cartesian_required = {'phi', 'eta', 'pt'}
-        
-        has_cartesian = cartesian_required.issubset(available)
-
-        return has_cartesian
+        available_fields = set(available_fields)
+        return ref_system.issubset(available_fields)
     
     @staticmethod
-    def _prepare_obj_name(obj_name):
-        if obj_name in schemas.PARTICLE_LIST:
-            return "Analysis" + obj_name
+    def _prepare_obj_branch_name(obj_name, schema: dict):
+        if obj_name in schema.keys():
+            return "Analysis" + obj_name + "AuxDyn"
         else:
             return obj_name
 

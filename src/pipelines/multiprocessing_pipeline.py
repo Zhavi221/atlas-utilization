@@ -208,10 +208,8 @@ def parse_with_per_chunk_subprocess(config):
                 all_workers_end_timestamp = datetime.now()
                 logger.info(f"All workers completed at: {all_workers_end_timestamp}")
             
-            logger.info("All workers completed, sleeping for memory reclaim...")
-            #TEMP time.sleep(2) 
         
-        # Handle crashed files
+        #CHECK this mechanism Handle crashed files
         if not files_remaining:
             crashed_files_path = atlasparser_config["logging_path"] + "crashed_files.json"
             if os.path.exists(crashed_files_path):
@@ -220,8 +218,12 @@ def parse_with_per_chunk_subprocess(config):
                     files_remaining = data.get("failed_files", [])
                     if files_remaining:
                         logger.info(f"Retrying {len(files_remaining)} crashed files...")
-        if all_stats:
-            aggregate_statistics(all_stats, atlasparser_config["logging_path"], pipeline_config, atlasparser_config, run_metadata)    
+        
+    if all_stats:
+        logging.info(f"Aggregating stats at {run_metadata["run_name"]}")
+        aggregate_statistics(all_stats, atlasparser_config["logging_path"], pipeline_config, atlasparser_config, run_metadata)    
+    else:
+        logging.info(f"No stats to aggregate at {run_metadata["run_name"]}")
 
         pbar.close()
     
@@ -236,10 +238,7 @@ def chunk_list(lst, n):
     return [lst[i*k+min(i,m):(i+1)*k+min(i+1,m)] for i in range(n)]
 
 def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_config, run_metadata):
-    """Combine statistics from all worker chunks into consolidated metrics"""
-    if not stats_list:
-        return
-    
+    """Combine statistics from all worker chunks into consolidated metrics"""   
     total_chunks = len(stats_list)
     
     # Aggregate parsing session metrics
@@ -274,7 +273,6 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_c
     # Build consolidated statistics
     
     #TREND STATISTICS
-    #TODO correctly attach a data point to a time point, sort and then output the two arrays
     timestamps = [datetime.fromisoformat(s["parsing_session"]["timestamp"]).second for s in stats_list]
     max_mem_captures = [s["performance"]["max_memory_captured_mb"] for s in stats_list]
     chunks_sizes = [s["performance"]["avg_chunk_size_mb"] for s in stats_list]
