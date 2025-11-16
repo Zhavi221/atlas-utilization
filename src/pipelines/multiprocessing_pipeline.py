@@ -23,15 +23,15 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
     """
     logger = init_logging(worker_num)
     pipeline_config = config["pipeline_config"]
-    parser_config = config["parser_config"]
+    atlasparser_config = config["atlasparser_config"]
     
     try:
         atlasparser = parser.ATLAS_Parser(
-            max_environment_memory_mb=parser_config["max_environment_memory_mb"],
-            chunk_yield_threshold_bytes=parser_config["chunk_yield_threshold_bytes"],
-            max_threads=parser_config["max_threads"],
-            logging_path=parser_config["logging_path"],
-            possible_tree_names=parser_config["possible_tree_names"]
+            max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
+            chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
+            max_threads=atlasparser_config["max_threads"],
+            logging_path=atlasparser_config["logging_path"],
+            possible_tree_names=atlasparser_config["possible_tree_names"]
         )
         
         # Parse until we get ONE chunk
@@ -100,17 +100,18 @@ def parse_with_per_chunk_subprocess(config):
     """
     logger = init_logging()
     pipeline_config = config["pipeline_config"]
-    parser_config = config["parser_config"]
+    atlasparser_config = config["atlasparser_config"]
+    run_metadata = config["run_metadata"]
 
     # Get file list upfront (in main process)
     temp_parser = parser.ATLAS_Parser(
-        max_environment_memory_mb=parser_config["max_environment_memory_mb"],
-        chunk_yield_threshold_bytes=parser_config["chunk_yield_threshold_bytes"],
-        max_threads=parser_config["max_threads"],
-        logging_path=parser_config["logging_path"],
-        release_years=parser_config["release_years"],
-        create_dirs=parser_config["create_dirs"],
-        possible_tree_names=parser_config["possible_tree_names"]
+        max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
+        chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
+        max_threads=atlasparser_config["max_threads"],
+        logging_path=atlasparser_config["logging_path"],
+        release_years=atlasparser_config["release_years"],
+        create_dirs=atlasparser_config["create_dirs"],
+        possible_tree_names=atlasparser_config["possible_tree_names"]
     )
     
     release_years_file_ids = temp_parser.fetch_record_ids(timeout=pipeline_config["fetching_metadata_timeout"])
@@ -153,38 +154,66 @@ def parse_with_per_chunk_subprocess(config):
             
             # Launch workers in parallel using Pool
             with mp.Pool(processes=num_workers) as pool:
-                # Use starmap to launch all workers and wait for results
-                results = pool.starmap(worker_parse_and_process_one_chunk, worker_args)
+                # Launch all workers asynchronously
+                async_results = []
+                for args in worker_args:
+                    async_result = pool.apply_async(
+                        worker_parse_and_process_one_chunk, 
+                        args=args
+                    )
+                    async_results.append(async_result)
                 
-                # Process results from all workers
-                for i, result in enumerate(results):
-                    if result["status"] == "chunk_complete":
-                        all_stats.append(result["stats"])
-                        files_parsed = result["files_parsed"]
-                        
-                        # Update tracking
-                        for f in files_parsed:
-                            if f in files_remaining:
-                                files_remaining.remove(f)
-                        
-                        chunk_count += 1
-                        total_events += result["num_events"]
-                        pbar.update(len(files_parsed))
-                        
-                        logger.info(f"Worker {i+1} completed: {len(files_parsed)} files, {result['num_events']} events")
+                # Process results as they become available (not in order)
+                results = [None] * len(async_results)  # Pre-allocate to maintain order
+                completed_count = 0
+                
+                while completed_count < len(async_results):
+                    for i, async_result in enumerate(async_results):
+                        if results[i] is None and async_result.ready():
+                            try:
+                                result = async_result.get(timeout=0.1)
+                                results[i] = result
+                                completed_count += 1
+                                
+                                if result["status"] == "chunk_complete":
+                                    all_stats.append(result["stats"])
+                                    files_parsed = result["files_parsed"]
+                                    
+                                    # Update tracking
+                                    for f in files_parsed:
+                                        if f in files_remaining:
+                                            files_remaining.remove(f)
+                                    
+                                    chunk_count += 1
+                                    total_events += result["num_events"]
+                                    pbar.update(len(files_parsed))
+                                    
+                                    logger.info(f"Worker {i+1} completed: {len(files_parsed)} files, {result['num_events']} events")
+                                
+                                elif result["status"] == "error":
+                                    logger.error(f"Worker {i+1} failed: {result['message']}")
+                                
+                                elif result["status"] == "no_chunks":
+                                    logger.info(f"Worker {i+1}: No chunks to process")
+                            except Exception as e:
+                                logger.error(f"Error getting result from worker {i+1}: {e}")
+                                results[i] = {"status": "error", "message": str(e)}
+                                completed_count += 1
                     
-                    elif result["status"] == "error":
-                        logger.error(f"Worker {i+1} failed: {result['message']}")
-                    
-                    elif result["status"] == "no_chunks":
-                        logger.info(f"Worker {i+1}: No chunks to process")
+                    # Small sleep to avoid busy-waiting
+                    if completed_count < len(async_results):
+                        time.sleep(0.01)
+                
+                # Get timestamp when all workers are done
+                all_workers_end_timestamp = datetime.now()
+                logger.info(f"All workers completed at: {all_workers_end_timestamp}")
             
             logger.info("All workers completed, sleeping for memory reclaim...")
             #TEMP time.sleep(2) 
         
         # Handle crashed files
         if not files_remaining:
-            crashed_files_path = parser_config["logging_path"] + "crashed_files.json"
+            crashed_files_path = atlasparser_config["logging_path"] + "crashed_files.json"
             if os.path.exists(crashed_files_path):
                 with open(crashed_files_path, "r") as f:
                     data = json.load(f)
@@ -192,7 +221,7 @@ def parse_with_per_chunk_subprocess(config):
                     if files_remaining:
                         logger.info(f"Retrying {len(files_remaining)} crashed files...")
         if all_stats:
-            aggregate_statistics(all_stats, parser_config["logging_path"], pipeline_config, parser_config)    
+            aggregate_statistics(all_stats, atlasparser_config["logging_path"], pipeline_config, atlasparser_config, run_metadata)    
 
         pbar.close()
     
@@ -206,7 +235,7 @@ def chunk_list(lst, n):
     k, m = divmod(len(lst), n)
     return [lst[i*k+min(i,m):(i+1)*k+min(i+1,m)] for i in range(n)]
 
-def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config):
+def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_config, run_metadata):
     """Combine statistics from all worker chunks into consolidated metrics"""
     if not stats_list:
         return
@@ -270,7 +299,7 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config
     avg_chunk_parsing_mins = (sum(chunk_times) / total_chunks) / 60
     mb_per_second = total_data_mb / sum(chunk_times) if sum(chunk_times) > 0 else 0
     #CONFIG VARIABLES
-    config_yield_threshold_mb = parser_config["chunk_yield_threshold_bytes"] / 1024**2
+    config_yield_threshold_mb = atlasparser_config["chunk_yield_threshold_bytes"] / 1024**2
 
     consolidated = {
         "parsing_session": {
@@ -305,6 +334,12 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config
             "chunk_first_deriv_avg":chunk_first_deriv_avg,
             "chunk_second_deriv_avg":chunk_second_deriv_avg
         },
+        "config_variables":{
+            "config_yield_threshold_mb": config_yield_threshold_mb,
+            "max_parallel_workers": pipeline_config["max_parallel_workers"],
+            "limit_files_per_year": pipeline_config["limit_files_per_year"],
+            "max_threads": atlasparser_config["max_threads"],
+        },
         "for_all_data":{
             "days_to_parse":
                 (consts.OPEN_DATA_SIZE_MB/mb_per_second)/
@@ -324,7 +359,7 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config
     }
     
     # Save consolidated statistics
-    output_file = os.path.join(output_path, "consolidated_statistics.json")
+    output_file = os.path.join(output_path, run_metadata["stats_output_name"])
     with open(output_file, "w") as f:
         json.dump(consolidated, f, indent=2)
     

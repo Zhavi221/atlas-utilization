@@ -1,0 +1,210 @@
+[
+    {
+      "run_metadata": {
+        "name": "baseline",
+        "description": "Baseline configuration for comparison",
+        "stats_output_name": "baseline.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 4,
+        "limit_files_per_year": 100
+      },
+      "atlasparser_config": {
+        "max_threads": 4,
+        "chunk_yield_threshold_bytes": 100000000,
+        "max_environment_memory_mb": 15000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "low_workers_low_threads",
+        "description": "Minimal parallelism - 2 workers, 2 threads",
+        "stats_output_name": "low_workers_low_threads.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 2,
+        "limit_files_per_year": 100
+      },
+      "atlasparser_config": {
+        "max_threads": 2,
+        "chunk_yield_threshold_bytes": 100000000,
+        "max_environment_memory_mb": 15000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "high_workers_low_threads",
+        "description": "More processes, fewer threads per process",
+        "stats_output_name": "high_workers_low_threads.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 8,
+        "limit_files_per_year": 100
+      },
+      "atlasparser_config": {
+        "max_threads": 2,
+        "chunk_yield_threshold_bytes": 100000000,
+        "max_environment_memory_mb": 15000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "low_workers_high_threads",
+        "description": "Fewer processes, more threads per process",
+        "stats_output_name": "low_workers_high_threads.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 2,
+        "limit_files_per_year": 100
+      },
+      "atlasparser_config": {
+        "max_threads": 8,
+        "chunk_yield_threshold_bytes": 100000000,
+        "max_environment_memory_mb": 15000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "high_workers_high_threads",
+        "description": "Maximum parallelism - 8 workers, 8 threads",
+        "stats_output_name": "high_workers_high_threads.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 8,
+        "limit_files_per_year": 100
+      },
+      "atlasparser_config": {
+        "max_threads": 8,
+        "chunk_yield_threshold_bytes": 100000000,
+        "max_environment_memory_mb": 15000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "small_chunks",
+        "description": "Smaller chunk size for lower memory usage",
+        "stats_output_name": "small_chunks.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 4,
+        "limit_files_per_year": 100
+      },
+      "atlasparser_config": {
+        "max_threads": 4,
+        "chunk_yield_threshold_bytes": 50000000,
+        "max_environment_memory_mb": 15000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "large_chunks",
+        "description": "Larger chunk size for better throughput",
+        "stats_output_name": "large_chunks.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 4,
+        "limit_files_per_year": 100
+      },
+      "atlasparser_config": {
+        "max_threads": 4,
+        "chunk_yield_threshold_bytes": 200000000,
+        "max_environment_memory_mb": 15000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "low_memory",
+        "description": "Lower memory limit for constrained environments",
+        "stats_output_name": "low_memory.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 4,
+        "limit_files_per_year": 100
+      },
+      "atlasparser_config": {
+        "max_threads": 4,
+        "chunk_yield_threshold_bytes": 100000000,
+        "max_environment_memory_mb": 8192
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "high_memory",
+        "description": "Higher memory limit for better performance",
+        "stats_output_name": "high_memory.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 4,
+        "limit_files_per_year": 100
+      },
+      "atlasparser_config": {
+        "max_threads": 4,
+        "chunk_yield_threshold_bytes": 100000000,
+        "max_environment_memory_mb": 20000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "scaling_test_small",
+        "description": "Small file count for quick scaling tests",
+        "stats_output_name": "scaling_test_small.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 4,
+        "limit_files_per_year": 50
+      },
+      "atlasparser_config": {
+        "max_threads": 4,
+        "chunk_yield_threshold_bytes": 100000000,
+        "max_environment_memory_mb": 15000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "scaling_test_medium",
+        "description": "Medium file count for scaling tests",
+        "stats_output_name": "scaling_test_medium.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 4,
+        "limit_files_per_year": 200
+      },
+      "atlasparser_config": {
+        "max_threads": 4,
+        "chunk_yield_threshold_bytes": 100000000,
+        "max_environment_memory_mb": 15000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "scaling_test_large",
+        "description": "Large file count for scaling tests",
+        "stats_output_name": "scaling_test_large.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 4,
+        "limit_files_per_year": 500
+      },
+      "atlasparser_config": {
+        "max_threads": 4,
+        "chunk_yield_threshold_bytes": 100000000,
+        "max_environment_memory_mb": 15000
+      }
+    },
+    {
+      "run_metadata": {
+        "name": "balanced_optimal",
+        "description": "Balanced configuration - 6 workers, 4 threads",
+        "stats_output_name": "balanced_optimal.json"
+      },
+      "pipeline_config": {
+        "max_parallel_workers": 6,
+        "limit_files_per_year": 100
+      },
+      "atlasparser_config": {
+        "max_threads": 4,
+        "chunk_yield_threshold_bytes": 150000000,
+        "max_environment_memory_mb": 15000
+      }
+    }
+  ]

@@ -1,0 +1,15 @@
+#!/bin/bash
+#BSUB -J TestRuns[1-13]
+#BSUB -o logs/testing_run_%I.out
+#BSUB -e logs/testing_run_%I.err
+#BSUB -m "cn650"
+#BSUB -n 4
+#BSUB -R "rusage[mem=14GB]"
+#BSUB -R "affinity[thread]"
+#BSUB -R "span[hosts=1]"
+
+CONFIG_INDEX=$((LSB_JOBINDEX-1))
+CONFIG_NAME=$(jq -r ".[$CONFIG_INDEX].name" testing_runs.json)
+
+ml Singularity
+singularity exec rootproject_latest.sif python main_pipeline.py --config "configs/pipeline_config.yaml" --test_run_index "$((LSB_JOBINDEX))"
