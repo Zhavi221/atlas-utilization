@@ -15,6 +15,8 @@ import psutil
 import traceback
 import logging
 import sys
+import io
+from contextlib import redirect_stdout
 
 import threading
 import datetime
@@ -68,7 +70,8 @@ class ATLAS_Parser():
                  possible_tree_names=["CollectionTree"],
                  create_dirs=False, 
                  max_environment_memory_mb=None, 
-                 release_years=[]):
+                 release_years=[],
+                show_available_releases=False):
         self.files_ids = None
         self.file_parsed_count = 0
         self.cur_chunk = 0
@@ -78,7 +81,7 @@ class ATLAS_Parser():
         self.total_size_kb = 0
         
         #SET UP RELEASES VARIABLES
-        self._fetch_available_releases()
+        self._fetch_available_releases(show_available_releases)
         self._setup_release_years(release_years)
         
         self._initialize_flags(
@@ -141,9 +144,13 @@ class ATLAS_Parser():
                 f"Recreated directories...")
         
     #FETCHING FILE IDS
-    def _fetch_available_releases(self):
-        self.available_releases = atom.available_releases() #TODO add a flag whether print available releases from this atom.func
-        
+    def _fetch_available_releases(self, show_available_releases):
+        if show_available_releases:
+            self.available_releases = atom.available_releases() 
+        else:
+            with redirect_stdout(io.StringIO()):
+                self.available_releases = atom.available_releases()
+                
     def _setup_release_years(self, release_years):
         invalid_releases = [year for year in release_years if year not in self.available_releases]
         if invalid_releases:

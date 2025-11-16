@@ -283,7 +283,6 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_c
     zipped_data.sort(key=lambda tuple: tuple[0])
     timestamps, max_mem_captures, chunks_sizes = zip(*zipped_data)
     
-    logging.info(f"CHUNK TIMESTAMPS: {timestamps}")
     mem_first_deriv_avg, mem_second_deriv_avg = math_utils.calc_n_derivs_avg(
         timestamps, 
         max_mem_captures,
@@ -359,9 +358,10 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_c
     }
     
     # Save consolidated statistics
-    output_file = os.path.join(output_path, run_metadata["stats_output_name"])
+    output_file = os.path.join(output_path, run_metadata["run_name"])
     with open(output_file, "w") as f:
         json.dump(consolidated, f, indent=2)
+        logging.info(f"Succesfully aggregated and saved all statistics under the name {output_file}")
     
     return consolidated
 

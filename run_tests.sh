@@ -1,5 +1,5 @@
 #!/bin/bash
-#BSUB -J TestRuns[1-13]
+#BSUB -J TestRuns[1-12]
 #BSUB -o logs/testing_run_%I.out
 #BSUB -e logs/testing_run_%I.err
 #BSUB -m "cn650"

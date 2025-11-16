@@ -16,7 +16,7 @@ parsing_config:
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
-    limit_files_per_year: 100 #FOR TESTING - limit number of files per year
+    limit_files_per_year: 500 #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
     # ===PATH FOR OUTPUTTING THE DATA===
@@ -31,8 +31,8 @@ parsing_config:
     # ===AMOUNT OF THREADS TO USE MULTITHREADING WITH, 4 IS A STABLE AMOUNT===
     max_threads: 4
     # ===A THRESHOLD FOR PREVENTING MEMORY OVERLOAD===
-    # chunk_yield_threshold_bytes: 5000000000 #?1GB 
-    chunk_yield_threshold_bytes: 100000000 #FOR TESTING - 50MB for testing
+    chunk_yield_threshold_bytes: 1000000000 #?1GB 
+    # chunk_yield_threshold_bytes: 100000000 #FOR TESTING - 50MB for testing
     # ===PATH FOR OUTPUTTING THE LOGS===
     logging_path: "logs/"
     # ===SHOULD CREATE LOGGING AND DATA DIRECTORIES===
