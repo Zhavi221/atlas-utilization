@@ -334,6 +334,7 @@ class ATLAS_Parser():
                 self.print_statistics_summary(stats)
 
             if self.events is not None:
+                self.max_memory_captured = self._get_process_memory_mb()
                 yield self.events
                 self.events = None
             #TEMP until here

@@ -17,16 +17,16 @@ import random
 def parse(config):
     logger = init_logging()
     pipeline_config = config["pipeline_config"]
-    parser_config = config["parser_config"]
+    atlasparser_config = config["atlasparser_config"]
 
     atlasparser = parser.ATLAS_Parser(
-        max_environment_memory_mb=parser_config["max_environment_memory_mb"],
-        chunk_yield_threshold_bytes=parser_config["chunk_yield_threshold_bytes"],
-        max_threads=parser_config["max_threads"],
-        logging_path=parser_config["logging_path"],
-        release_years=parser_config["release_years"],
-        create_dirs=parser_config["create_dirs"],
-        possible_tree_names=parser_config["possible_tree_names"]
+        max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
+        chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
+        max_threads=atlasparser_config["max_threads"],
+        logging_path=atlasparser_config["logging_path"],
+        release_years=atlasparser_config["release_years"],
+        create_dirs=atlasparser_config["create_dirs"],
+        possible_tree_names=atlasparser_config["possible_tree_names"]
         )
 
     release_years_file_ids = atlasparser.fetch_record_ids(pipeline_config["fetching_metadata_timeout"])
