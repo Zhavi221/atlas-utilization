@@ -23,3 +23,4 @@ testing_scripts/*
 AVAILABLE_NOTATIONS.txt
 rootproject_latest.sif
 logs/*
+atlas_cluster_setup/*
