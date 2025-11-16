@@ -25,6 +25,7 @@ import tracemalloc
 import hashlib
 
 from . import schemas
+from src.utils import memory_utils
 
 class ATLAS_Parser():
     '''
@@ -141,7 +142,7 @@ class ATLAS_Parser():
         
     #FETCHING FILE IDS
     def _fetch_available_releases(self):
-        self.available_releases = atom.available_releases()
+        self.available_releases = atom.available_releases() #TODO add a flag whether print available releases from this atom.func
         
     def _setup_release_years(self, release_years):
         invalid_releases = [year for year in release_years if year not in self.available_releases]
@@ -264,7 +265,8 @@ class ATLAS_Parser():
                                 cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
                                 self._concatenate_events(cur_file_data)
                                 
-                                tqdm.write(f"{self._get_process_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
+                                #TEMP
+                                # tqdm.write(f"{self._get_process_memory_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
                                 if self._chunk_exceed_threshold():
                                     self._save_chunk_metadata()
                                     
@@ -286,6 +288,8 @@ class ATLAS_Parser():
                                     
                                     # Force aggressive cleanup after yield
                                     gc.collect()
+                                    memory_utils.print_gc_stats()
+                                    memory_utils.print_top_memory_variables(n=10)
                                     
                                     mem_after_yield = self._get_process_memory_mb()
                                     mem_freed = mem_before_yield - mem_after_yield
@@ -306,6 +310,12 @@ class ATLAS_Parser():
                         status = self._get_parsing_status_for_pbar(successful_count)
                         pbar.set_postfix_str(status)
                         pbar.update(1)
+
+                        # del futures[future]#CHECK  # Remove completed future
+    
+                        # # Periodic cleanup #CHECK
+                        # if len(futures) > 100:#CHECK
+                        #     gc.collect()#CHECK
 
 
             #TEMP for when the subprocess eliminates the generator and never returns so yielding has to be last
@@ -405,6 +415,8 @@ class ATLAS_Parser():
                     for name, full in zip(field_names, obj_branches[obj_name])
                 })  # Plain ak.zip, not vector.zip
 
+                # del concatenated  #CHECK
+
             return ak.zip(all_events, depth_limit=1)
 
     def _get_parsing_status_for_pbar(self, successful_count):
@@ -433,6 +445,9 @@ class ATLAS_Parser():
         else:
             old_events = self.events
             self.events = ak.concatenate([old_events, cur_file_data], axis=0)
+            # del old_events  #CHECK
+        
+        # del cur_file_data  #CHECK
         
         mem_after = self._get_process_memory_mb()
         mem_delta = mem_after - mem_before
@@ -457,7 +472,7 @@ class ATLAS_Parser():
                 'n_files': ak.Array([len(self.cur_file_ids)])
             }
 
-        self.cur_file_ids = []
+        self.cur_file_ids = [] #CHECK add .clear()
     
     def flatten_for_root(self, awk_arr):
         """

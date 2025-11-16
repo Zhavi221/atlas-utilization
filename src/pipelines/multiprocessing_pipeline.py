@@ -245,9 +245,16 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config
     # Build consolidated statistics
     
     #TREND STATISTICS
-    timestamps = [s["parsing_session"]["timestamp"] for s in stats_list]
+    #TODO correctly attach a data point to a time point, sort and then output the two arrays
+    timestamps = [datetime.fromisoformat(s["parsing_session"]["timestamp"]).second for s in stats_list]
     max_mem_captures = [s["performance"]["max_memory_captured_mb"] for s in stats_list]
     chunks_sizes = [s["performance"]["avg_chunk_size_mb"] for s in stats_list]
+    
+    zipped_data = list(zip(timestamps, max_mem_captures, chunks_sizes))
+    zipped_data.sort(key=lambda tuple: tuple[0])
+    timestamps, max_mem_captures, chunks_sizes = zip(*zipped_data)
+    
+    logging.info(f"CHUNK TIMESTAMPS: {timestamps}")
     mem_first_deriv_avg, mem_second_deriv_avg = math_utils.calc_n_derivs_avg(
         timestamps, 
         max_mem_captures,
@@ -261,14 +268,14 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config
     start_timestamp = datetime.fromisoformat(stats_list[0]["parsing_session"]["timestamp"])
     last_timestamp = datetime.fromisoformat(stats_list[-1]["parsing_session"]["timestamp"])
     avg_chunk_parsing_mins = (sum(chunk_times) / total_chunks) / 60
-
+    mb_per_second = total_data_mb / sum(chunk_times) if sum(chunk_times) > 0 else 0
     #CONFIG VARIABLES
     config_yield_threshold_mb = parser_config["chunk_yield_threshold_bytes"] / 1024**2
 
     consolidated = {
         "parsing_session": {
-            "start_timestamp": start_timestamp,  
-            "last_timestamp": last_timestamp,  
+            "start_timestamp": str(start_timestamp),  
+            "last_timestamp": str(last_timestamp),  
             "last_to_first_timestamp_diff_minutes": (last_timestamp - start_timestamp).seconds / 60,
             "total_processing_time_minutes": sum(chunk_times) / 60,
             "avg_chunk_parsing_mins": avg_chunk_parsing_mins,
@@ -278,6 +285,7 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config
             "successful_files": successful_files,
             "failed_files": failed_files,
             "success_rate": (successful_files / all_files * 100) if all_files > 0 else 0
+            #FEATURE add a measurment for time between first worker to finish and it's current iteration parsing 
         },
         "performance": {
             "total_data_processed_mb": total_data_mb,
@@ -287,7 +295,7 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config
             "min_chunk_size_mb": min(all_chunk_sizes),
             "max_chunk_size_mb": max(all_chunk_sizes),
             "events_per_second": total_events / sum(chunk_times) if sum(chunk_times) > 0 else 0,
-            "mb_per_second": total_data_mb / sum(chunk_times) if sum(chunk_times) > 0 else 0,
+            "mb_per_second": mb_per_second,
             "max_process_memory_captured": max(all_memory_captures),
             
         },
@@ -299,9 +307,8 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, parser_config
         },
         "for_all_data":{
             "days_to_parse":
-                ((consts.OPEN_DATA_SIZE_MB/
-                config_yield_threshold_mb) * 
-                avg_chunk_parsing_mins)/consts.MINS_IN_DAY,
+                (consts.OPEN_DATA_SIZE_MB/mb_per_second)/
+                (60*60*24),
         },
         "errors": {
             "timeout_count": total_timeouts,
