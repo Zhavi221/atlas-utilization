@@ -21,6 +21,7 @@ def main():
             main_logger.info("Parsing with multiprocessing")
             from src.pipelines import multiprocessing_pipeline
             multiprocessing_pipeline.parse_with_per_chunk_subprocess(parsing_config)
+            
         else:
             main_logger.info("Parsing without a subprocess")
             from src.pipelines import parsing_pipeline

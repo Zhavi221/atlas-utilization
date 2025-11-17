@@ -36,8 +36,7 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
         
         # Parse until we get ONE chunk
         for events_chunk in atlasparser.parse_files(
-            release_years_file_ids=release_years_file_ids,
-            # save_statistics=True #FOR TESTING - statistics, weird behavior consider removing
+            release_years_file_ids=release_years_file_ids
         ):
             files_parsed = atlasparser.cur_file_ids.copy()
             chunk_size_before = events_chunk.layout.nbytes / (1024**2)
