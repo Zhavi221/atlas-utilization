@@ -341,7 +341,6 @@ class ATLAS_Parser():
                 self.max_memory_captured = memory_utils.get_process_mem_usage_mb()
                 yield self.events
                 self.events = None
-            #TEMP until here
             
     def _get_tree_name_for_file(self, file_index):
         if not self.possible_tree_names:
@@ -356,7 +355,6 @@ class ATLAS_Parser():
         
         return "CollectionTree" 
         
-    #GO OVER go over this method, make sure to understand all parts
     @staticmethod
     def parse_file(file_index, tree_name="CollectionTree", batch_size=40_000) -> ak.Array:
         """
@@ -366,7 +364,7 @@ class ATLAS_Parser():
         with uproot.open({file_index: tree_name}) as tree:
             all_tree_branches = set(tree.keys())
             n_entries = tree.num_entries
-            is_file_big = n_entries > batch_size  # flag large files
+            is_file_big = n_entries > batch_size 
 
             # 1. Precompute all fields to read
             branches_by_obj_in_schema: dict = ATLAS_Parser._extract_branches_by_obj_in_schema(
@@ -382,15 +380,12 @@ class ATLAS_Parser():
 
             # 3. Define entry ranges
             entry_ranges = []
-            parsing_label = ""
             if is_file_big:
-                parsing_label = "Parsing file as batches"
                 entry_ranges = [
                     (start, min(start + batch_size, n_entries)) 
                     for start in range(0, n_entries, batch_size)
                 ]
             else: #If file not big entry_ranges is the entire file
-                parsing_label = "Parsing file"
                 entry_ranges = [(0, n_entries)]
 
             # 4. Read batches
@@ -405,7 +400,7 @@ class ATLAS_Parser():
                     all_events[obj_name].append(subset)
                     
 
-
+            #GO OVER last part to go over
             for obj_name, chunks in all_events.items():
                 concatenated = ak.concatenate(chunks)
                 
@@ -415,8 +410,6 @@ class ATLAS_Parser():
                     name: concatenated[full] 
                     for name, full in zip(field_names, branches_by_obj_in_schema[obj_name])
                 })  # Plain ak.zip, not vector.zip
-
-                # del concatenated  #CHECK
 
             return ak.zip(all_events, depth_limit=1)
 
@@ -470,7 +463,7 @@ class ATLAS_Parser():
                 'n_files': ak.Array([len(self.cur_file_ids)])
             }
 
-        self.cur_file_ids = [] #CHECK add .clear()
+        self.cur_file_ids.clear()
     
     def flatten_for_root(self, awk_arr):
         """
@@ -732,4 +725,4 @@ def list_to_filename_hash(strings):
     digest = hashlib.sha1(combined.encode('utf-8')).hexdigest()
     return digest[:16]  # shorten to 16 chars if desired
     
-    
+ 

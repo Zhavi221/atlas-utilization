@@ -5,7 +5,7 @@ import os
 from collections import defaultdict
 import tracemalloc
 
-def get_size(obj, seen=None):
+def _get_size(obj, seen=None):
     """Recursively calculate size of objects"""
     size = sys.getsizeof(obj)
     if seen is None:
@@ -18,19 +18,19 @@ def get_size(obj, seen=None):
     seen.add(obj_id)
     
     if isinstance(obj, dict):
-        size += sum([get_size(v, seen) for v in obj.values()])
-        size += sum([get_size(k, seen) for k in obj.keys()])
+        size += sum([_get_size(v, seen) for v in obj.values()])
+        size += sum([_get_size(k, seen) for k in obj.keys()])
     elif hasattr(obj, '__dict__'):
-        size += get_size(obj.__dict__, seen)
+        size += _get_size(obj.__dict__, seen)
     elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
         try:
-            size += sum([get_size(i, seen) for i in obj])
+            size += sum([_get_size(i, seen) for i in obj])
         except:
             pass
     
     return size
 
-def format_bytes(bytes_size):
+def _format_bytes(bytes_size):
     """Convert bytes to human readable format"""
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if bytes_size < 1024.0:
@@ -63,7 +63,7 @@ def print_top_memory_variables(n=10, frame=None):
     for name, obj in all_vars.items():
         if not name.startswith('_'):  # Skip private variables
             try:
-                size = get_size(obj)
+                size = _get_size(obj)
                 var_sizes.append((name, obj, size))
             except:
                 pass
@@ -83,11 +83,11 @@ def print_top_memory_variables(n=10, frame=None):
             except:
                 pass
         
-        print(f"{i:<6} {name[:29]:<30} {obj_type[:24]:<25} {format_bytes(size):<15}")
+        print(f"{i:<6} {name[:29]:<30} {obj_type[:24]:<25} {_format_bytes(size):<15}")
     
     total_size = sum(size for _, _, size in var_sizes[:n])
     print(f"{'-'*70}")
-    print(f"Total for top {n}: {format_bytes(total_size)}")
+    print(f"Total for top {n}: {_format_bytes(total_size)}")
     print(f"{'='*70}\n")
     
     return var_sizes[:n]
@@ -127,29 +127,8 @@ def print_gc_stats():
     print(f"{'-'*70}")
     for obj_type, count in top_types:
         size = type_sizes.get(obj_type, 0)
-        print(f"{obj_type[:29]:<30} {count:<15,} {format_bytes(size):<15}")
+        print(f"{obj_type[:29]:<30} {count:<15,} {_format_bytes(size):<15}")
     
-    print(f"{'='*70}\n")
-
-def print_process_memory():
-    """Print current process memory usage"""
-    process = psutil.Process(os.getpid())
-    mem_info = process.memory_info()
-    mem_percent = process.memory_percent()
-    
-    print(f"\n{'='*70}")
-    print(f"💾 PROCESS MEMORY USAGE")
-    print(f"{'='*70}")
-    print(f"RSS (Resident Set Size):  {format_bytes(mem_info.rss)}")
-    print(f"VMS (Virtual Memory):     {format_bytes(mem_info.vms)}")
-    print(f"Memory Percent:           {mem_percent:.2f}%")
-    
-    # System memory
-    sys_mem = psutil.virtual_memory()
-    print(f"\nSystem Memory:")
-    print(f"  Total:      {format_bytes(sys_mem.total)}")
-    print(f"  Available:  {format_bytes(sys_mem.available)}")
-    print(f"  Used:       {format_bytes(sys_mem.used)} ({sys_mem.percent}%)")
     print(f"{'='*70}\n")
 
 def force_garbage_collection():
@@ -175,47 +154,6 @@ def force_garbage_collection():
     print(f"{'='*70}\n")
     
     return collected
-
-def track_memory_growth(func):
-    """Decorator to track memory growth during function execution"""
-    def wrapper(*args, **kwargs):
-        gc.collect()
-        
-        process = psutil.Process(os.getpid())
-        mem_before = process.memory_info().rss
-        
-        print(f"\n🏁 Starting {func.__name__}")
-        print(f"Memory before: {format_bytes(mem_before)}")
-        
-        result = func(*args, **kwargs)
-        
-        gc.collect()
-        mem_after = process.memory_info().rss
-        mem_diff = mem_after - mem_before
-        
-        print(f"Memory after:  {format_bytes(mem_after)}")
-        print(f"Memory delta:  {format_bytes(mem_diff)}")
-        
-        if mem_diff > 0:
-            print(f"⚠️  Memory increased by {format_bytes(mem_diff)}")
-        else:
-            print(f"✅ Memory decreased by {format_bytes(-mem_diff)}")
-        
-        return result
-    
-    return wrapper
-
-def comprehensive_memory_report(top_n=10):
-    """Print a comprehensive memory report"""
-    print("\n" + "="*70)
-    print("📊 COMPREHENSIVE MEMORY REPORT")
-    print("="*70 + "\n")
-    
-    print_process_memory()
-    print_gc_stats()
-    print_top_memory_variables(n=top_n)
-    force_garbage_collection()
-    print_process_memory()
 
 def get_process_mem_usage_mb():
     """Get actual process memory usage"""
