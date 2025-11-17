@@ -8,13 +8,14 @@ testing_config:
 parsing_config:
   run_metadata:
     temp: false
+
   pipeline_config:
     # ===USE A MULTIPROCESSING WHILE PARSING
     parse_in_multiprocessing: false #important for cluster processing
+    # ===ADD FAILED FILES TO QUEUE OF FILES===
+    count_retries_failed_files: 1 #FEATURE times to try failed files 
     # ===SHUFFLE THE FILES FOR RANDOMNESS===
     random_files: false #FEATURE random_files
-    # ===ADD FAILED FILES TO QUEUE OF FILES===
-    retry_failed_files: true #FEATURE retry_failed_files 
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===

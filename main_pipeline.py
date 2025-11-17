@@ -7,6 +7,7 @@ import json
 CONFIG_PATH = "configs/pipeline_config.yaml"
 
 def main():
+    global main_logger
     main_logger = init_logging()
     config = load_config(CONFIG_PATH)
     tasks = config["tasks"]
@@ -16,22 +17,25 @@ def main():
         main_logger.info("Starting parsing task")
         parsing_config = config["parsing_config"]
         pipeline_config = parsing_config["pipeline_config"]
-
-        if pipeline_config["parse_in_multiprocessing"]:
-            main_logger.info("Parsing with multiprocessing")
-            from src.pipelines import multiprocessing_pipeline
-            multiprocessing_pipeline.parse_with_per_chunk_subprocess(parsing_config)
+        count_retries = pipeline_config["count_retries_failed_files"]
+        
+        while count_retries:
+            pipeline_chooser(parsing_config, pipeline_config)
             
-        else:
-            main_logger.info("Parsing without a subprocess")
-            from src.pipelines import parsing_pipeline
-            parsing_pipeline.parse(parsing_config)
-    
     if tasks["do_mass_calculating"]:
         main_logger.info("Starting calculations task")
         from src.pipelines import im_pipeline
         im_pipeline.mass_calculate(config["mass_calculate"])
-    
+
+def pipeline_chooser(parsing_config, pipeline_config):
+    if pipeline_config["parse_in_multiprocessing"]:
+        main_logger.info("Parsing with multiprocessing")
+        from src.pipelines import multiprocessing_pipeline
+        multiprocessing_pipeline.parse_with_per_chunk_subprocess(parsing_config)   
+    else:
+        main_logger.info("Parsing without a subprocess")
+        from src.pipelines import parsing_pipeline
+        parsing_pipeline.parse(parsing_config)
 
 def init_logging():
     logging.basicConfig(
