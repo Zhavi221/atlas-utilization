@@ -133,10 +133,10 @@ def filter_events_by_particle_counts(events, particle_counts, is_exact_count=Fal
     
     return ak.to_packed(filtered_events)
 
-def slice_events_by_field(events, particle_counts, slice_by_field):
+def slice_events_by_field(events, particle_counts, field_to_slice_by):
     for obj, count in particle_counts.items():
         obj_array = events[obj]
-        sorted_obj_array = obj_array[ak.argsort(obj_array[slice_by_field], ascending=False)]
+        sorted_obj_array = obj_array[ak.argsort(obj_array[field_to_slice_by], ascending=False)]
         sliced_obj_array = sorted_obj_array[:, :count]
 
         events[obj] = sliced_obj_array

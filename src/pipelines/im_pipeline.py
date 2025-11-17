@@ -33,7 +33,7 @@ def mass_calculate(config):
         max_particles=config["max_particles"],
         min_count=config["min_count"],
         max_count=config["max_count"],
-        limit=30) #FOR TESTING - limit
+        limit=config["limit_combinations"])
 
     for filename in os.listdir(config["input_dir"]):
         if filename.endswith(".root"):
@@ -58,7 +58,7 @@ def mass_calculate(config):
                     sliced_events_by_pt: ak.Array = physics_calcs.slice_events_by_field(
                         events=filtered_events, 
                         particle_counts=combination,
-                        slice_by_field="pt"
+                        field_to_slice_by=config["field_to_slice_by"]
                     )
 
                     if len(sliced_events_by_pt) == 0:

@@ -54,7 +54,7 @@ def make_objects_combinations_for_category(
                 
                 yield obj_selection
             
-def get_all_combinations(object_types, min_particles, max_particles, min_count, max_count, limit=-1):
+def get_all_combinations(object_types, min_particles, max_particles, min_count, max_count, limit=None):
     categories = make_objects_categories(object_types, min_particles, max_particles)
     all_combinations = []
     # Show first example category
