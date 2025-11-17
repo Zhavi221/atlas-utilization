@@ -280,7 +280,7 @@ class ATLAS_Parser():
                                     # Store chunk reference
                                     chunk_to_yield = self.events
                                     
-                                    # CRITICAL: Clear r`eference BEFORE yielding
+                                    # CRITICAL: Clear reference BEFORE yielding
                                     self.events = None
                                     self.file_parsed_count = 0
                                     self.total_chunks += 1
@@ -317,12 +317,9 @@ class ATLAS_Parser():
                         status = self._get_parsing_status_for_pbar(successful_count)
                         pbar.set_postfix_str(status)
                         pbar.update(1)
-
-                        # del futures[future]#CHECK  # Remove completed future
-    
-                        # # Periodic cleanup #CHECK
-                        # if len(futures) > 100:#CHECK
-                        #     gc.collect()#CHECK
+                
+                gc.collect()
+                        
 
 
             #TEMP for when the subprocess eliminates the generator and never returns so yielding has to be last
@@ -449,9 +446,6 @@ class ATLAS_Parser():
         else:
             old_events = self.events
             self.events = ak.concatenate([old_events, cur_file_data], axis=0)
-            # del old_events  #CHECK
-        
-        # del cur_file_data  #CHECK
         
         mem_after = memory_utils.get_process_mem_usage_mb()
         mem_delta = mem_after - mem_before
