@@ -106,7 +106,7 @@ def fs_dict_exceedng_threshold(fs_im_mapping, threshold):
     """Check if we should yield based on ACTUAL memory pressure"""
     process_memory = get_process_memory_mb() 
     
-    # if (process_memory + 1000) > 8192: #FEATURE this ideally considers process memory limitations
+    # if (process_memory + 1000) > 8192: #FEATURE IM this ideally considers process memory limitations
     #     return False
 
     return sys.getsizeof(fs_im_mapping) >= threshold
