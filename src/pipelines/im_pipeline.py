@@ -13,6 +13,7 @@ import psutil
 
 from src.calculations import combinatorics, physics_calcs
 from src.parse_atlas import parser
+from src.im_calculator import im_calculator
 from src.utils import memory_utils
 
 import argparse, yaml, uproot
@@ -36,12 +37,14 @@ def mass_calculate(config):
         max_count=config["max_count"],
         limit=config["limit_combinations"])
 
+    im_calculator = im_calculator.IM_Calculator()
     for filename in os.listdir(config["input_dir"]):
         if filename.endswith(".root"):
             logger.info(f"Processing file: {filename}")
             file_path = os.path.join(config["input_dir"], filename)
             
             particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
+            
             fs_im_mapping = {}
             for cur_fs, fs_events in physics_calcs.group_by_final_state(particle_arrays):
                 if cur_fs not in fs_im_mapping:
