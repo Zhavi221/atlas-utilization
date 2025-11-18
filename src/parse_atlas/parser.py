@@ -190,7 +190,7 @@ class ATLAS_Parser():
                     datasets = atom.available_datasets()
 
                     for dataset_id in datasets:
-                        future = executor.submit(atom.get_urls, dataset_id) #FEATURE handle 'noskim' absence
+                        future = executor.submit(atom.get_urls, dataset_id) #FEATURE PARSING handle 'noskim' absence
                         urls = future.result(timeout=timeout)
                         if urls:
                             release_years_file_ids[year].extend(urls)
@@ -243,26 +243,36 @@ class ATLAS_Parser():
         if release_years_file_ids is None:
             raise ValueError("No release_years_file_ids provided.")
         
-        successful_count = 0
+        self.successful_count = 0
         with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
             for release_year, file_ids in release_years_file_ids.items():
                 logging.info(f"Starting to parse year {release_year}'s {len(file_ids)} files with {self.max_threads} threads.")
                 with tqdm(total=len(file_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
-                    futures = {}
-                    for file_index in file_ids:
-                        tree_name = self._get_tree_name_for_file(file_index) 
-
-                        future = executor.submit(
+                    futures = {
+                        executor.submit(
                             ATLAS_Parser.parse_file, 
                             file_index,
-                            tree_name)
-                        
-                        futures[future] = file_index
+                            self.possible_tree_names
+                        ): file_index
+                        for file_index in file_ids
+                    }
                 
                     for future in as_completed(futures):
                         file_index = futures[future]
-                        file_start_time = time.time()
-
+                        self._process_completed_future(
+                            future, file_index, release_year
+                        )
+                        
+                        if self._chunk_exceed_threshold():
+                            self._save_chunk_metadata()
+                            chunk_to_yield = self._prepare_chunk_for_yield()
+                        
+                            yield chunk_to_yield
+                            del chunk_to_yield
+                            gc.collect() 
+                            memory_utils.print_gc_stats() #FOR TESTING
+                            memory_utils.print_top_memory_variables(n=10) #FOR TESTING
+                        '''
                         try:
                             cur_file_data = future.result(timeout=10)
                             
@@ -313,15 +323,13 @@ class ATLAS_Parser():
                             self._log_crash(file_index, e, file_processing_time)
                             tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}")
 
-                        
-                        status = self._get_parsing_status_for_pbar(successful_count)
+                        '''
+                        status = self._get_parsing_status_for_pbar()
                         pbar.set_postfix_str(status)
                         pbar.update(1)
                 
                 gc.collect()
                         
-
-
             #TEMP for when the subprocess eliminates the generator and never returns so yielding has to be last
             if self.events is not None:
                 self.total_chunks += 1
@@ -330,7 +338,7 @@ class ATLAS_Parser():
             if save_statistics:
                 logging.info(f"Saving statistics to {self.stats_log}")
                 total_files = [file_id for file_id in file_ids for file_ids in release_years_file_ids.values()]
-                stats = self.get_statistics(len(total_files), successful_count)
+                stats = self.get_statistics(len(total_files))
                 
                 with open(self.stats_log, 'a') as f:
                     json.dump(stats, f, indent=2)
@@ -341,42 +349,60 @@ class ATLAS_Parser():
                 self.max_memory_captured = memory_utils.get_process_mem_usage_mb()
                 yield self.events
                 self.events = None
-            
-    def _get_tree_name_for_file(self, file_index):
-        if not self.possible_tree_names:
-            logging.warning("No possible_tree_names provided, defaulting to 'CollectionTree'.")
-            return "CollectionTree"
+    
+    def _process_completed_future(self, future, file_index, release_year):
+        """Process a single completed future. Returns updated success count."""
+        file_start_time = time.time()
+        try:
+            cur_file_data = future.result(timeout=10)
+            if cur_file_data is not None:
+                self.successful_count += 1
+                self._save_parsed_file_metadata(cur_file_data, release_year, file_index)
+                cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
+                self._concatenate_events(cur_file_data)
+                
+                tqdm.write(f"{memory_utils.get_process_mem_usage_mb():.1f} MB used...")
+                
+        except Exception as e:
+            file_processing_time = time.time() - file_start_time
+            self._log_crash(file_index, e, file_processing_time)
+            tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}") 
+    
+    def _prepare_chunk_for_yield(self):    
+        chunk_to_yield = self.events
+        self.events = None
+        self.file_parsed_count = 0
+        self.total_chunks += 1
         
-        with uproot.open(file_index) as file:
-            available_trees = [key[:-2] for key in file.keys()] # Remove trailing ';1'
-            for tree_name in self.possible_tree_names:
-                if tree_name in available_trees:
-                    return tree_name
+        mem_before_yield = memory_utils.get_process_mem_usage_mb()
+        self.max_memory_captured = max(self.max_memory_captured, mem_before_yield)
         
-        return "CollectionTree" 
-        
+        return chunk_to_yield
+
     @staticmethod
-    def parse_file(file_index, tree_name="CollectionTree", batch_size=40_000) -> ak.Array:
+    def parse_file(file_index, tree_names, batch_size=40_000) -> ak.Array:
         """
         Parse an ATLAS DAOD file in batches if necessary.
         Accumulates raw arrays and zips into vector objects only once per object.
         """
-        with uproot.open({file_index: tree_name}) as tree:
+        with uproot.open(file_index) as root_file:
+            root_file_keys = root_file.keys()
+            tree_name = ATLAS_Parser.get_data_tree_name_for_root_file(root_file_keys, tree_names)
+            tree = root_file[tree_name]
             all_tree_branches = set(tree.keys())
             n_entries = tree.num_entries
             is_file_big = n_entries > batch_size 
 
-            # 1. Precompute all fields to read
-            branches_by_obj_in_schema: dict = ATLAS_Parser._extract_branches_by_obj_in_schema(
+            obj_branches_and_quantities: dict[str, dict[str, str]] = ATLAS_Parser._extract_branches_by_obj_in_schema(
                 all_tree_branches, schema=schemas.INVARIANT_MASS_SCHEMA)
 
-            if not branches_by_obj_in_schema.values():
+            if not obj_branches_and_quantities.values():
                 return None
             
-            all_branches = set(itertools.chain.from_iterable(branches_by_obj_in_schema.values()))
+            all_branches = set(itertools.chain.from_iterable(obj_branches_and_quantities.values()))
 
             # 2. Initialize storage for raw batches
-            all_events = {obj_name: [] for obj_name in branches_by_obj_in_schema.keys()}
+            obj_events_by_quantities = {obj_name: [] for obj_name in obj_branches_and_quantities.keys()}
 
             # 3. Define entry ranges
             entry_ranges = []
@@ -391,35 +417,29 @@ class ATLAS_Parser():
             # 4. Read batches
             for entry_start, entry_stop in entry_ranges:
                 batch_data = tree.arrays(all_branches, entry_start=entry_start, entry_stop=entry_stop)
+                
+                for obj_name, branch_mapping in obj_branches_and_quantities.items():
+                    subset = batch_data[list(branch_mapping.keys())]  # Get branches as list
+                    if len(subset) > 0:
+                        obj_events_by_quantities[obj_name].append(subset)
 
-                for obj_name, fields in branches_by_obj_in_schema.items():
-                    subset = batch_data[fields]
-                    if len(subset) == 0:
-                        continue
-
-                    all_events[obj_name].append(subset)
-                    
-
-            #GO OVER last part to go over
-            for obj_name, chunks in all_events.items():
+            for obj_name, chunks in obj_events_by_quantities.items():
                 concatenated = ak.concatenate(chunks)
                 
-                # Keep as plain awkward array with proper field names
-                field_names = [f.split('.')[-1] for f in branches_by_obj_in_schema[obj_name]]
-                all_events[obj_name] = ak.zip({
-                    name: concatenated[full] 
-                    for name, full in zip(field_names, branches_by_obj_in_schema[obj_name])
-                })  # Plain ak.zip, not vector.zip
+                obj_events_by_quantities[obj_name] = ak.zip({
+                    quantity: concatenated[full_branch]
+                    for full_branch, quantity in obj_branches_and_quantities[obj_name].items()
+                })
 
-            return ak.zip(all_events, depth_limit=1)
+            return ak.zip(obj_events_by_quantities, depth_limit=1)
 
-    def _get_parsing_status_for_pbar(self, successful_count):
+    def _get_parsing_status_for_pbar(self):
         success_rate = (
-                        (successful_count / (successful_count + len(self.failed_files)) * 100)
-                        if (successful_count + len(self.failed_files)) > 0 else 0
+                        (self.successful_count / (self.successful_count + len(self.failed_files)) * 100)
+                        if (self.successful_count + len(self.failed_files)) > 0 else 0
                     )
         status = (
-                f"✅ {successful_count} | "
+                f"✅ {self.successful_count} | "
                 f"❌ {len(self.failed_files)} | "
                 f"✨ {success_rate:.1f}% | "
                 f"💾 {self.total_size_kb / (1024 * 1024):.1f} MB | "
@@ -588,7 +608,7 @@ class ATLAS_Parser():
         
         self.cur_chunk += 1
     
-    def get_statistics(self, total_files, successful_count):
+    def get_statistics(self, total_files):
         """Save comprehensive parsing statistics to JSON"""
         end_time = time.time()
         total_time = end_time - self.parsing_start_time if self.parsing_start_time else 0
@@ -600,9 +620,9 @@ class ATLAS_Parser():
                 "total_time_seconds": total_time,
                 "avg_chunk_time": avg_chunk_time,
                 "total_files": total_files,
-                "successful_files": successful_count,
+                "successful_files": self.successful_count,
                 "failed_files": len(self.failed_files),
-                "success_rate": (successful_count / total_files * 100) if total_files > 0 else 0
+                "success_rate": (self.successful_count / total_files * 100) if total_files > 0 else 0
             },
             "performance": {
                 "max_file_size_mb": self.max_file_size_mb if self.max_file_size_mb > 0 else 0,
@@ -661,17 +681,34 @@ class ATLAS_Parser():
 
     #STATIC METHODS
     @staticmethod
-    def _extract_branches_by_schema(tree_branches, schema: dict):
+    def get_data_tree_name_for_root_file(root_file_keys, possible_tree_names):
+        if not possible_tree_names:
+            logging.warning("No possible_tree_names provided, defaulting to 'CollectionTree'.")
+            return "CollectionTree"
+        
+        available_trees = [key[:-2] for key in root_file_keys] # Remove trailing ';1'
+        for tree_name in possible_tree_names:
+            if tree_name in available_trees:
+                return tree_name
+        
+        return "CollectionTree" 
+    
+    @staticmethod
+    def _extract_branches_by_obj_in_schema(tree_branches, schema: dict):
+        """Returns {obj_name: {full_branch: quantity, ...}}"""
         obj_branches = {}
+        
         for obj_name, fields in schema.items():
             cur_obj_branch_name = ATLAS_Parser._prepare_obj_branch_name(obj_name, schema)
             obj_available_physical_quantities = [
-                    f for f in fields if f"{cur_obj_branch_name}.{f}" in tree_branches
-                ]
+                f for f in fields if f"{cur_obj_branch_name}.{f}" in tree_branches
+            ]
 
             if ATLAS_Parser._can_calculate_inv_mass(obj_available_physical_quantities):
-                full_branches = [f"{cur_obj_branch_name}.{f}" for f in obj_available_physical_quantities]
-                obj_branches[obj_name] = full_branches
+                obj_branches[obj_name] = {
+                    f"{cur_obj_branch_name}.{quantity}": quantity
+                    for quantity in obj_available_physical_quantities
+                }
 
         return obj_branches
 
