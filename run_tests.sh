@@ -9,7 +9,7 @@
 #BSUB -n 4
 
 CONFIG_INDEX=$((LSB_JOBINDEX-1))
-CONFIG_NAME=$(jq -r ".[$CONFIG_INDEX].name" testing_runs.json)
+CONFIG_NAME=$(jq -r ".[$CONFIG_INDEX].name" testing/testing_runs.json)
 
 ml Singularity
 singularity exec rootproject_latest.sif python main_pipeline.py --config "configs/pipeline_config.yaml" --test_run_index "$((LSB_JOBINDEX))"
