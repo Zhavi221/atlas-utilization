@@ -13,6 +13,7 @@ import psutil
 
 from src.calculations import combinatorics, physics_calcs
 from src.parse_atlas import parser
+from src.utils import memory_utils
 
 import argparse, yaml, uproot
 import numpy as np
@@ -96,15 +97,9 @@ def mass_calculate(config):
                             
                             np.save(output_path, ak.to_numpy(im_arr))
 
-def get_process_memory_mb():
-    """Get actual process memory usage"""
-    process = psutil.Process(os.getpid())
-    process_rss_bytes = process.memory_info().rss
-    return process_rss_bytes / (1024**2)
-
 def fs_dict_exceedng_threshold(fs_im_mapping, threshold):
     """Check if we should yield based on ACTUAL memory pressure"""
-    process_memory = get_process_memory_mb() 
+    process_memory = memory_utils.get_process_memory_mb() 
     
     # if (process_memory + 1000) > 8192: #FEATURE IM this ideally considers process memory limitations
     #     return False

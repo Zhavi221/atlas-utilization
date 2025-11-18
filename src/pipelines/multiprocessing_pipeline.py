@@ -121,6 +121,7 @@ def parse_with_per_chunk_subprocess(config):
     if pipeline_config["limit_files_per_year"]:
         parser.ATLAS_Parser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
     
+    count_retries_failed_files = pipeline_config["count_retries_failed_files"]
     chunk_count = 0
     total_events = 0
     
@@ -128,95 +129,97 @@ def parse_with_per_chunk_subprocess(config):
     max_parallel_workers = pipeline_config["max_parallel_workers"]
     for release_year, file_ids in release_years_file_ids.items():
         logger.info(f"Found {len(file_ids)} files to process")
-        
+        cur_retries = 0
+
         # Progress bar
         pbar = tqdm(total=len(file_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=3)
         
         # Loop: spawn subprocess for each chunk
         files_remaining = file_ids
-    
-        while files_remaining:
-            logger.info(f"Files remaining: {len(files_remaining)}, spawning {max_parallel_workers} workers...")
-            
-            # Split remaining files among workers
-            num_workers = min(max_parallel_workers, len(files_remaining))
-            if len(files_remaining) < (max_parallel_workers * 10):  # Less than 10 files per worker
-                num_workers = max(1, len(files_remaining) // 20)
+        crashed_files_path = atlasparser_config["logging_path"] + "crashed_files.json"
 
-            file_chunks = chunk_list(files_remaining, num_workers)
-            
-            # Prepare arguments for each worker (no queue needed)
-            worker_args = [
-                (config, worker_num, {release_year: chunk}) 
-                for worker_num, chunk in enumerate(file_chunks)
-            ]
-            
-            # Launch workers in parallel using Pool
-            with mp.Pool(processes=num_workers) as pool:
-                # Launch all workers asynchronously
-                async_results = []
-                for args in worker_args:
-                    async_result = pool.apply_async(
-                        worker_parse_and_process_one_chunk, 
-                        args=args
-                    )
-                    async_results.append(async_result)
+        while cur_retries < count_retries_failed_files # CHECK retry files
+            while files_remaining:
+                logger.info(f"Files remaining: {len(files_remaining)}, spawning {max_parallel_workers} workers...")
                 
-                # Process results as they become available (not in order)
-                results = [None] * len(async_results)  # Pre-allocate to maintain order
-                completed_count = 0
+                # Split remaining files among workers
+                num_workers = min(max_parallel_workers, len(files_remaining))
+                if len(files_remaining) < (max_parallel_workers * 10):  # Less than 10 files per worker
+                    num_workers = max(1, len(files_remaining) // 20)
+
+                file_chunks = chunk_list(files_remaining, num_workers)
                 
-                while completed_count < len(async_results):
-                    for i, async_result in enumerate(async_results):
-                        if results[i] is None and async_result.ready():
-                            try:
-                                result = async_result.get(timeout=0.1)
-                                results[i] = result
-                                completed_count += 1
-                                
-                                if result["status"] == "chunk_complete":
-                                    all_stats.append(result["stats"])
-                                    files_parsed = result["files_parsed"]
-                                    
-                                    # Update tracking
-                                    for f in files_parsed:
-                                        if f in files_remaining:
-                                            files_remaining.remove(f)
-                                    
-                                    chunk_count += 1
-                                    total_events += result["num_events"]
-                                    pbar.update(len(files_parsed))
-                                    
-                                    logger.info(f"Worker {i+1} completed: {len(files_parsed)} files, {result['num_events']} events")
-                                
-                                elif result["status"] == "error":
-                                    logger.error(f"Worker {i+1} failed: {result['message']}")
-                                
-                                elif result["status"] == "no_chunks":
-                                    logger.info(f"Worker {i+1}: No chunks to process")
-                            except Exception as e:
-                                logger.error(f"Error getting result from worker {i+1}: {e}")
-                                results[i] = {"status": "error", "message": str(e)}
-                                completed_count += 1
+                # Prepare arguments for each worker (no queue needed)
+                worker_args = [
+                    (config, worker_num, {release_year: chunk}) 
+                    for worker_num, chunk in enumerate(file_chunks)
+                ]
+                
+                # Launch workers in parallel using Pool
+                with mp.Pool(processes=num_workers) as pool:
+                    # Launch all workers asynchronously
+                    async_results = []
+                    for args in worker_args:
+                        async_result = pool.apply_async(
+                            worker_parse_and_process_one_chunk, 
+                            args=args
+                        )
+                        async_results.append(async_result)
                     
-                    # Small sleep to avoid busy-waiting
-                    if completed_count < len(async_results):
-                        time.sleep(0.01)
+                    # Process results as they become available (not in order)
+                    results = [None] * len(async_results)  # Pre-allocate to maintain order
+                    completed_count = 0
+                    
+                    while completed_count < len(async_results):
+                        for i, async_result in enumerate(async_results):
+                            if results[i] is None and async_result.ready():
+                                try:
+                                    result = async_result.get(timeout=0.1)
+                                    results[i] = result
+                                    completed_count += 1
+                                    
+                                    if result["status"] == "chunk_complete":
+                                        all_stats.append(result["stats"])
+                                        files_parsed = result["files_parsed"]
+                                        
+                                        # Update tracking
+                                        for f in files_parsed:
+                                            if f in files_remaining:
+                                                files_remaining.remove(f)
+                                        
+                                        chunk_count += 1
+                                        total_events += result["num_events"]
+                                        pbar.update(len(files_parsed))
+                                        
+                                        logger.info(f"Worker {i+1} completed: {len(files_parsed)} files, {result['num_events']} events")
+                                    
+                                    elif result["status"] == "error":
+                                        logger.error(f"Worker {i+1} failed: {result['message']}")
+                                    
+                                    elif result["status"] == "no_chunks":
+                                        logger.info(f"Worker {i+1}: No chunks to process")
+                                except Exception as e:
+                                    logger.error(f"Error getting result from worker {i+1}: {e}")
+                                    results[i] = {"status": "error", "message": str(e)}
+                                    completed_count += 1
+                        
+                        # Small sleep to avoid busy-waiting
+                        if completed_count < len(async_results):
+                            time.sleep(0.01)
+                    
+                    # Get timestamp when all workers are done
+                    all_workers_end_timestamp = datetime.now()
+                    logger.info(f"All workers completed at: {all_workers_end_timestamp}")
                 
-                # Get timestamp when all workers are done
-                all_workers_end_timestamp = datetime.now()
-                logger.info(f"All workers completed at: {all_workers_end_timestamp}")
-            
-        
-        #CHECK this mechanism Handle crashed files
-        if not files_remaining:
-            crashed_files_path = atlasparser_config["logging_path"] + "crashed_files.json"
             if os.path.exists(crashed_files_path):
-                with open(crashed_files_path, "r") as f:
+                with open(crashed_files_path, "r+") as f:
                     data = json.load(f)
                     files_remaining = data.get("failed_files", [])
                     if files_remaining:
                         logger.info(f"Retrying {len(files_remaining)} crashed files...")
+                        f.seek(0)
+                        f.write({"failed_files":[]})
+                        cur_retries += 1
         
     if all_stats:
         logging.info(f"Aggregating stats at {run_metadata["run_name"]}")
@@ -310,7 +313,7 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_c
             "successful_files": successful_files,
             "failed_files": failed_files,
             "success_rate": (successful_files / all_files * 100) if all_files > 0 else 0
-            #FEATURE add a measurment for time between first worker to finish and it's current iteration parsing 
+            #FEATURE STATS add a measurment for time between first worker to finish and it's current iteration parsing 
         },
         "performance": {
             "total_data_processed_mb": total_data_mb,

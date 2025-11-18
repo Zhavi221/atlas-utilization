@@ -570,7 +570,6 @@ class ATLAS_Parser():
                 f.write(f"Traceback:\n{traceback.format_exc()}\n")
                 f.write("-" * 60 + "\n")
 
-            
             if os.path.exists(self.crashed_files):
                 with open(self.crashed_files, 'r') as f:
                     data = json.load(f)
