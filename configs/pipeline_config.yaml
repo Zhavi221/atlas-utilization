@@ -11,7 +11,7 @@ parsing_config:
 
   pipeline_config:
     # ===USE A MULTIPROCESSING WHILE PARSING
-    parse_in_multiprocessing: false #important for cluster processing
+    parse_in_multiprocessing: true #important for cluster processing
     # ===ADD FAILED FILES TO QUEUE OF FILES===
     count_retries_failed_files: 1 #CHECK retry files 
     # ===SHUFFLE THE FILES FOR RANDOMNESS===

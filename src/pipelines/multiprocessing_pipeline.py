@@ -31,7 +31,8 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
             max_threads=atlasparser_config["max_threads"],
             logging_path=atlasparser_config["logging_path"],
-            possible_tree_names=atlasparser_config["possible_tree_names"]
+            possible_tree_names=atlasparser_config["possible_tree_names"],
+            wrapping_logger=logger
         )
         
         # Parse until we get ONE chunk
@@ -138,7 +139,7 @@ def parse_with_per_chunk_subprocess(config):
         files_remaining = file_ids
         crashed_files_path = atlasparser_config["logging_path"] + "crashed_files.json"
 
-        while cur_retries < count_retries_failed_files # CHECK retry files
+        while cur_retries < count_retries_failed_files: # CHECK retry files
             while files_remaining:
                 logger.info(f"Files remaining: {len(files_remaining)}, spawning {max_parallel_workers} workers...")
                 
@@ -211,15 +212,18 @@ def parse_with_per_chunk_subprocess(config):
                     all_workers_end_timestamp = datetime.now()
                     logger.info(f"All workers completed at: {all_workers_end_timestamp}")
                 
-            if os.path.exists(crashed_files_path):
-                with open(crashed_files_path, "r+") as f:
-                    data = json.load(f)
-                    files_remaining = data.get("failed_files", [])
-                    if files_remaining:
-                        logger.info(f"Retrying {len(files_remaining)} crashed files...")
-                        f.seek(0)
-                        f.write({"failed_files":[]})
-                        cur_retries += 1
+            if not os.path.exists(crashed_files_path):
+                break
+
+            with open(crashed_files_path, "r+") as f:
+                data = json.load(f)
+                files_remaining = data.get("failed_files", [])
+                if files_remaining:
+                    logger.info(f"Retrying {len(files_remaining)} crashed files...")
+                    f.seek(0)
+                    f.write({"failed_files":[]})
+                    cur_retries += 1
+        
         
     if all_stats:
         logging.info(f"Aggregating stats at {run_metadata["run_name"]}")

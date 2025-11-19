@@ -65,14 +65,15 @@ class ATLAS_Parser():
             Normalizes fields in the awkward array to match schema.
     '''
     def __init__(self, 
-                 chunk_yield_threshold_bytes, 
-                 max_threads, 
-                 logging_path, 
-                 possible_tree_names=["CollectionTree"],
-                 create_dirs=False, 
-                 max_environment_memory_mb=None, 
-                 release_years=[],
-                show_available_releases=False):
+                chunk_yield_threshold_bytes, 
+                max_threads, 
+                logging_path, 
+                possible_tree_names=["CollectionTree"],
+                create_dirs=False, 
+                max_environment_memory_mb=None, 
+                release_years=[],
+                show_available_releases=False,
+                wrapping_logger=None):
         self.files_ids = None
         self.file_parsed_count = 0
         self.cur_chunk = 0
@@ -85,14 +86,15 @@ class ATLAS_Parser():
         self._fetch_available_releases(show_available_releases)
         self._setup_release_years(release_years)
         
-        self._initialize_flags(
+        self._init_flags(
             create_dirs,
             possible_tree_names,
             chunk_yield_threshold_bytes,
             max_environment_memory_mb,
             logging_path
             )
-
+        
+        self._init_logger(wrapping_logger)
         # New statistics tracking
         self.crash_lock = threading.Lock()
         self.failed_files = []
@@ -110,7 +112,7 @@ class ATLAS_Parser():
         #PARALLELISM CONFIG
         self.max_threads = max_threads
 
-    def _initialize_flags(self, 
+    def _init_flags(self, 
                           create_dirs, 
                           possible_tree_names, 
                           chunk_yield_threshold_bytes, 
@@ -143,7 +145,13 @@ class ATLAS_Parser():
             self._initialize_statistics()
             logging.info(
                 f"Recreated directories...")
-        
+
+    def _init_logger(self, wrapping_logger=None):
+        if wrapping_logger is not None and isinstance(wrapping_logger, logging.Logger):
+            root = logging.getLogger()
+            root.handlers = list(wrapping_logger.handlers)
+            root.setLevel(wrapping_logger.level)
+            
     #FETCHING FILE IDS
     def _fetch_available_releases(self, show_available_releases):
         if show_available_releases:
@@ -272,6 +280,7 @@ class ATLAS_Parser():
                             gc.collect() 
                             memory_utils.print_gc_stats() #FOR TESTING
                             memory_utils.print_top_memory_variables(n=10) #FOR TESTING
+                        #CHECK remove this commented?
                         '''
                         try:
                             cur_file_data = future.result(timeout=10)
@@ -380,7 +389,7 @@ class ATLAS_Parser():
         return chunk_to_yield
 
     @staticmethod
-    def parse_file(file_index, tree_names, batch_size=40_000) -> ak.Array:
+    def parse_file(file_index, tree_names=["CollectionTree"], batch_size=40_000) -> ak.Array:
         """
         Parse an ATLAS DAOD file in batches if necessary.
         Accumulates raw arrays and zips into vector objects only once per object.
@@ -393,7 +402,7 @@ class ATLAS_Parser():
             n_entries = tree.num_entries
             is_file_big = n_entries > batch_size 
 
-            obj_branches_and_quantities: dict[str, dict[str, str]] = ATLAS_Parser._extract_branches_by_obj_in_schema(
+            obj_branches_and_quantities: dict[str, dict[str, str]] = ATLAS_Parser.extract_branches_by_obj_in_schema(
                 all_tree_branches, schema=schemas.INVARIANT_MASS_SCHEMA)
 
             if not obj_branches_and_quantities.values():
@@ -498,7 +507,11 @@ class ATLAS_Parser():
             obj = awk_arr[obj_name]
 
             # e.g., obj_name = "Jets"  -> cur_obj_name = "AnalysisJets"
-            cur_obj_branch_name = ATLAS_Parser._prepare_obj_branch_name(obj_name)
+            # obj_branches_and_quantities: dict[str, dict[str, str]] = ATLAS_Parser.extract_branches_by_obj_in_schema(
+            #     all_tree_branches, schema=schemas.INVARIANT_MASS_SCHEMA)
+            
+            cur_obj_branch_name = ATLAS_Parser._prepare_obj_branch_name(
+                obj_name, schema=schemas.INVARIANT_MASS_SCHEMA) #TODO replace with extract_branches_by_obj_in_schema?
 
             if cur_obj_branch_name is None:
                 cur_obj_branch_name = obj_name
@@ -693,7 +706,7 @@ class ATLAS_Parser():
         return "CollectionTree" 
     
     @staticmethod
-    def _extract_branches_by_obj_in_schema(tree_branches, schema: dict):
+    def extract_branches_by_obj_in_schema(tree_branches, schema: dict):
         """Returns {obj_name: {full_branch: quantity, ...}}"""
         obj_branches = {}
         
