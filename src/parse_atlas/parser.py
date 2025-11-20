@@ -186,7 +186,7 @@ class ATLAS_Parser():
         return release_files_uris
 
     @staticmethod
-    def fetch_record_ids_for_release_years(release_years, timeout=60):
+    def fetch_record_ids_for_release_years(release_years: list, timeout=60):
         release_years_file_ids = {}
         with ThreadPoolExecutor(max_workers=1) as executor:
             for year in release_years:
@@ -526,7 +526,7 @@ class ATLAS_Parser():
 
                     # IMPORTANT: match the structure used by _parse_file
                     # e.g., "AnalysisJetsAuxDyn.pt"
-                    branch_name = f"{cur_obj_branch_name}AuxDyn.{field}"
+                    branch_name = f"{cur_obj_branch_name}.{field}"
                     root_ready[branch_name] = filled_branch
 
             except AttributeError:
