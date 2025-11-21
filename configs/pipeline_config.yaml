@@ -7,11 +7,11 @@ testing_config:
 
 parsing_config:
   run_metadata:
-    temp: false
+    placeholder: false
 
   pipeline_config:
     # ===USE A MULTIPROCESSING WHILE PARSING
-    parse_in_multiprocessing: true #important for cluster processing
+    parse_in_multiprocessing: false #important for cluster processing
     # ===ADD FAILED FILES TO QUEUE OF FILES===
     count_retries_failed_files: 1 #CHECK retry files 
     # ===SHUFFLE THE FILES FOR RANDOMNESS===
@@ -34,8 +34,8 @@ parsing_config:
     # ===AMOUNT OF THREADS TO USE MULTITHREADING WITH, 4 IS A STABLE AMOUNT===
     max_threads: 4
     # ===A THRESHOLD FOR PREVENTING MEMORY OVERLOAD===
-    chunk_yield_threshold_bytes: 1000000000 #?1GB 
-    # chunk_yield_threshold_bytes: 100000000 #FOR TESTING - 50MB for testing
+    # chunk_yield_threshold_bytes: 1000000000 #?1GB 
+    chunk_yield_threshold_bytes: 5000000 #FOR TESTING - 5MB for testing
     # ===PATH FOR OUTPUTTING THE LOGS===
     logging_path: "logs/"
     # ===SHOULD CREATE LOGGING AND DATA DIRECTORIES===
