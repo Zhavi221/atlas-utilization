@@ -179,13 +179,14 @@ class ATLAS_Parser():
         else:
             release_years = self.available_releases
         
-        release_files_uris: dict = self._fetch_record_ids_for_release_years(
+        release_files_uris: dict = ATLAS_Parser.fetch_record_ids_for_release_years(
             release_years,
             timeout=timeout)
 
         return release_files_uris
     
-    def _fetch_record_ids_for_release_years(self, release_years, timeout=60):
+    @staticmethod
+    def fetch_record_ids_for_release_years(release_years, timeout=60) -> dict:
         release_years_file_ids = {}
         with ThreadPoolExecutor(max_workers=1) as executor:
             for year in release_years:
