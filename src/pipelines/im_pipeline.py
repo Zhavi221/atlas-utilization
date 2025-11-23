@@ -13,6 +13,7 @@ import psutil
 
 from src.calculations import combinatorics, physics_calcs
 from src.parse_atlas import parser
+from src.im_calculator import im_calculator
 from src.utils import memory_utils
 
 import argparse, yaml, uproot
@@ -36,6 +37,7 @@ def mass_calculate(config):
         max_count=config["max_count"],
         limit=config["limit_combinations"])
 
+    im_calculator = im_calculator.IM_Calculator()
     for filename in os.listdir(config["input_dir"]):
         if filename.endswith(".root"):
             logger.info(f"Processing file: {filename}")
