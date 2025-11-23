@@ -74,7 +74,7 @@ mass_calculate:
   limit_combinations: 0
   # ===THRESHOLD FOR EMPTYING THE FS MAPPING===
   # fs_mapping_threshold_bytes: 1000000000 #1GB 
-  fs_mapping_threshold_bytes: 3000 #FOR TESTING - 500MB for testing
+  fs_mapping_threshold_bytes: 50000 #FOR TESTING - 500MB for testing
   # ===INPUT DIRECTORY FOR THE ROOT FILES TO CALCULATE FROM===
   input_dir: "data/root_files"
   # ===OUTPUT DIRECTORY FOR THE INVARIANT MASS ARRAYS===

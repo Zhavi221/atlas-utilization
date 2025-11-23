@@ -224,12 +224,12 @@ def parse_with_per_chunk_subprocess(config):
                     f.write({"failed_files":[]})
                     cur_retries += 1
         
-        
+
     if all_stats:
-        logging.info(f"Aggregating stats at {run_metadata["run_name"]}")
+        logging.info(f"Aggregating stats for {run_metadata['run_metadata']}")
         aggregate_statistics(all_stats, atlasparser_config["logging_path"], pipeline_config, atlasparser_config, run_metadata)    
     else:
-        logging.info(f"No stats to aggregate at {run_metadata["run_name"]}")
+        logging.info(f"No stats to aggregate at {run_metadata['run_metadata']}")
 
         pbar.close()
     

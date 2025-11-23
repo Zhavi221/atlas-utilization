@@ -42,6 +42,11 @@ def mass_calculate(config):
             file_path = os.path.join(config["input_dir"], filename)
             
             particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
+            
+            if particle_arrays is None or not ak.any(particle_arrays):
+                logging.info(f"File {filename} is empty")
+                continue
+            
             fs_im_mapping = {}
             for cur_fs, fs_events in physics_calcs.group_by_final_state(particle_arrays):
                 if cur_fs not in fs_im_mapping:
