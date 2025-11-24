@@ -26,7 +26,7 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
     atlasparser_config = config["atlasparser_config"]
     
     try:
-        atlasparser = parser.ATLAS_Parser(
+        atlasparser = parser.AtlasOpenParser(
             max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
             chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
             max_threads=atlasparser_config["max_threads"],
@@ -70,8 +70,7 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])
 
             stats = atlasparser.get_statistics(
-                total_files=len(files_parsed),
-                successful_count=len(files_parsed),
+                total_files=len(files_parsed)
             )
             
             logger.info("Subprocess exiting")
@@ -104,7 +103,7 @@ def parse_with_per_chunk_subprocess(config):
     run_metadata = config["run_metadata"]
 
     # Get file list upfront (in main process)
-    temp_parser = parser.ATLAS_Parser(
+    temp_parser = parser.AtlasOpenParser(
         max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
         chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
         max_threads=atlasparser_config["max_threads"],
@@ -120,7 +119,7 @@ def parse_with_per_chunk_subprocess(config):
         random.shuffle(release_years_file_ids)
 
     if pipeline_config["limit_files_per_year"]:
-        parser.ATLAS_Parser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
+        parser.AtlasOpenParser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
     
     count_retries_failed_files = pipeline_config["count_retries_failed_files"]
     chunk_count = 0
@@ -224,12 +223,12 @@ def parse_with_per_chunk_subprocess(config):
                     f.write({"failed_files":[]})
                     cur_retries += 1
         
-        
+
     if all_stats:
-        logging.info(f"Aggregating stats at {run_metadata["run_name"]}")
+        logging.info(f"Aggregating stats for {run_metadata['run_metadata']}")
         aggregate_statistics(all_stats, atlasparser_config["logging_path"], pipeline_config, atlasparser_config, run_metadata)    
     else:
-        logging.info(f"No stats to aggregate at {run_metadata["run_name"]}")
+        logging.info(f"No stats to aggregate at {run_metadata['run_metadata']}")
 
         pbar.close()
     

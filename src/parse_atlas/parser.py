@@ -30,9 +30,9 @@ import hashlib
 from . import schemas
 from src.utils import memory_utils
 
-class ATLAS_Parser():
+class AtlasOpenParser():
     '''
-    ATLAS_Parser class is responsible for parsing ATLAS Open Data files and handling event selection, filtering, and output.
+    AtlasOpenParser class is responsible for parsing ATLAS Open Data files and handling event selection, filtering, and output.
     Attributes:
         categories (list): List of object categories for combinatorics.
         files_ids (list): List of file URIs to be parsed.
@@ -184,9 +184,8 @@ class ATLAS_Parser():
             timeout=timeout)
 
         return release_files_uris
-
-    @staticmethod
-    def fetch_record_ids_for_release_years(release_years: list, timeout=60):
+    
+    def _fetch_record_ids_for_release_years(self, release_years, timeout=60):
         release_years_file_ids = {}
         with ThreadPoolExecutor(max_workers=1) as executor:
             for year in release_years:
@@ -259,7 +258,7 @@ class ATLAS_Parser():
                 with tqdm(total=len(file_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
                     futures = {
                         executor.submit(
-                            ATLAS_Parser.parse_file, 
+                            AtlasOpenParser.parse_file, 
                             file_index,
                             self.possible_tree_names
                         ): file_index
@@ -290,7 +289,7 @@ class ATLAS_Parser():
                                 successful_count += 1
 
                                 self._save_parsed_file_metadata(cur_file_data, release_year, file_index)
-                                cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
+                                cur_file_data = AtlasOpenParser._normalize_fields(cur_file_data)
                                 self._concatenate_events(cur_file_data)
                                 
                                 tqdm.write(f"{memory_utils.get_process_mem_usage_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
@@ -368,7 +367,7 @@ class ATLAS_Parser():
             if cur_file_data is not None:
                 self.successful_count += 1
                 self._save_parsed_file_metadata(cur_file_data, release_year, file_index)
-                cur_file_data = ATLAS_Parser._normalize_fields(cur_file_data)
+                cur_file_data = AtlasOpenParser._normalize_fields(cur_file_data)
                 self._concatenate_events(cur_file_data)
                 
                 tqdm.write(f"{memory_utils.get_process_mem_usage_mb():.1f} MB used...")
@@ -397,13 +396,13 @@ class ATLAS_Parser():
         """
         with uproot.open(file_index) as root_file:
             root_file_keys = root_file.keys()
-            tree_name = ATLAS_Parser.get_data_tree_name_for_root_file(root_file_keys, tree_names)
+            tree_name = AtlasOpenParser.get_data_tree_name_for_root_file(root_file_keys, tree_names)
             tree = root_file[tree_name]
             all_tree_branches = set(tree.keys())
             n_entries = tree.num_entries
             is_file_big = n_entries > batch_size 
 
-            obj_branches_and_quantities: dict[str, dict[str, str]] = ATLAS_Parser.extract_branches_by_obj_in_schema(
+            obj_branches_and_quantities: dict[str, dict[str, str]] = AtlasOpenParser.extract_branches_by_obj_in_schema(
                 all_tree_branches, schema=schemas.INVARIANT_MASS_SCHEMA)
 
             if not obj_branches_and_quantities.values():
@@ -508,10 +507,10 @@ class ATLAS_Parser():
             obj = awk_arr[obj_name]
 
             # e.g., obj_name = "Jets"  -> cur_obj_name = "AnalysisJets"
-            # obj_branches_and_quantities: dict[str, dict[str, str]] = ATLAS_Parser.extract_branches_by_obj_in_schema(
+            # obj_branches_and_quantities: dict[str, dict[str, str]] = AtlasOpenParser.extract_branches_by_obj_in_schema(
             #     all_tree_branches, schema=schemas.INVARIANT_MASS_SCHEMA)
             
-            cur_obj_branch_name = ATLAS_Parser._prepare_obj_branch_name(
+            cur_obj_branch_name = AtlasOpenParser._prepare_obj_branch_name(
                 obj_name, schema=schemas.INVARIANT_MASS_SCHEMA) #TODO replace with extract_branches_by_obj_in_schema?
 
             if cur_obj_branch_name is None:
@@ -712,12 +711,12 @@ class ATLAS_Parser():
         obj_branches = {}
         
         for obj_name, fields in schema.items():
-            cur_obj_branch_name = ATLAS_Parser._prepare_obj_branch_name(obj_name, schema)
+            cur_obj_branch_name = AtlasOpenParser._prepare_obj_branch_name(obj_name, schema)
             obj_available_physical_quantities = [
                 f for f in fields if f"{cur_obj_branch_name}.{f}" in tree_branches
             ]
 
-            if ATLAS_Parser._can_calculate_inv_mass(obj_available_physical_quantities):
+            if AtlasOpenParser._can_calculate_inv_mass(obj_available_physical_quantities):
                 obj_branches[obj_name] = {
                     f"{cur_obj_branch_name}.{quantity}": quantity
                     for quantity in obj_available_physical_quantities

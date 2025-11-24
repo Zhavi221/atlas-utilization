@@ -37,14 +37,17 @@ def mass_calculate(config):
         max_count=config["max_count"],
         limit=config["limit_combinations"])
 
-    im_calculator = im_calculator.IM_Calculator()
     for filename in os.listdir(config["input_dir"]):
         if filename.endswith(".root"):
             logger.info(f"Processing file: {filename}")
             file_path = os.path.join(config["input_dir"], filename)
             
-            particle_arrays: ak.Array = parser.ATLAS_Parser.parse_file(file_path)
+            particle_arrays: ak.Array = parser.AtlasOpenParser.parse_file(file_path)
             
+            if particle_arrays is None or not ak.any(particle_arrays):
+                logging.info(f"File {filename} is empty")
+                continue
+
             fs_im_mapping = {}
             for cur_fs, fs_events in physics_calcs.group_by_final_state(particle_arrays):
                 if cur_fs not in fs_im_mapping:
@@ -79,7 +82,7 @@ def mass_calculate(config):
                         fs_im_mapping[cur_fs][cur_combination_name] = cur_im
                     else:
                         combination_im = fs_im_mapping[cur_fs][cur_combination_name]
-                        fs_im_mapping[cur_fs][cur_combination_name] = combination_im.extend(cur_im)
+                        fs_im_mapping[cur_fs][cur_combination_name] = ak.concatenate([combination_im, cur_im])
                     
                     
                     if fs_dict_exceedng_threshold(fs_im_mapping, config["fs_mapping_threshold_bytes"]):
