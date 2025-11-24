@@ -11,7 +11,7 @@ echo "Submitting $NUM_JOBS array jobs"
 # Create a temporary PBS script
 cat <<EOF > dynamic_job.pbs
 #!/bin/bash
-#PBS -q robotE
+#PBS -q N
 #PBS -N im_job
 #PBS -o im_job_\$PBS_ARRAY_INDEX.out
 #PBS -e im_job_\$PBS_ARRAY_INDEX.err
