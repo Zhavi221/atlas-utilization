@@ -185,8 +185,7 @@ class AtlasOpenParser():
 
         return release_files_uris
     
-    @staticmethod
-    def fetch_record_ids_for_release_years(release_years, timeout=60) -> dict:
+    def _fetch_record_ids_for_release_years(self, release_years, timeout=60):
         release_years_file_ids = {}
         with ThreadPoolExecutor(max_workers=1) as executor:
             for year in release_years:
