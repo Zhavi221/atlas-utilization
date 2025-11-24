@@ -19,7 +19,7 @@ def parse(config):
     pipeline_config = config["pipeline_config"]
     atlasparser_config = config["atlasparser_config"]
 
-    atlasparser = parser.ATLAS_Parser(
+    atlasparser = parser.AtlasOpenParser(
         max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
         chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
         max_threads=atlasparser_config["max_threads"],
@@ -32,7 +32,7 @@ def parse(config):
     release_years_file_ids = atlasparser.fetch_record_ids(pipeline_config["fetching_metadata_timeout"])
 
     if pipeline_config["limit_files_per_year"]:
-        parser.ATLAS_Parser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
+        parser.AtlasOpenParser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
     
     if pipeline_config["random_files"]:
         random.shuffle(release_years_file_ids)

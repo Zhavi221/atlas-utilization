@@ -18,7 +18,7 @@ python main_pipeline.py --config configs/pipeline_config.yaml
 ```
 
 Main components
-- `src/parse_atlas/parser.py`: `ATLAS_Parser` — fetch metadata, parse files (`parse_file`), yield memory-aware chunks (`parse_files`), and prepare ROOT-friendly output (`flatten_for_root`).
+- `src/parse_atlas/parser.py`: `AtlasOpenParser` — fetch metadata, parse files (`parse_file`), yield memory-aware chunks (`parse_files`), and prepare ROOT-friendly output (`flatten_for_root`).
 - `src/pipelines/parsing_pipeline.py`: threaded parse → filter → save flow.
 - `src/pipelines/multiprocessing_pipeline.py`: subprocess-per-chunk mode for lower resident memory.
 - `src/pipelines/im_pipeline.py`: calculate and save invariant masses from saved ROOT files.
@@ -32,5 +32,5 @@ Implementation note
 - Calls to `future.result(timeout=...)` raise `concurrent.futures.TimeoutError` (not the built-in `TimeoutError`). Code that counts timeouts should check for the futures exception class.
 
 Need help?
-- I can shorten further, add a top-level `requirements.txt`, or patch `ATLAS_Parser` to correctly count `concurrent.futures.TimeoutError`. Reply which you prefer.
+- I can shorten further, add a top-level `requirements.txt`, or patch `AtlasOpenParser` to correctly count `concurrent.futures.TimeoutError`. Reply which you prefer.
 
