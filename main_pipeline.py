@@ -47,14 +47,18 @@ def init_logging():
 def load_config(config_path):
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--config", help="Config file", default=config_path)
-    arg_parser.add_argument("--test_run_index", help="Config file")
+    arg_parser.add_argument("--test_run_index", help="Config file", default=None)
     args = arg_parser.parse_args()
     with open(args.config) as f:
         config = yaml.safe_load(f)
     
-    if config["testing_config"]["status"]:
-        test_run_index = int(args.test_run_index)
-        with open("testing_runs.json") as f:
+    if config["testing_config"]["is_on"]:
+        if args.test_run_index is not None:
+            test_run_index = int(args.test_run_index)
+        else:
+            test_run_index = config["testing_config"]["test_run_index"]
+
+        with open("testing/testing_runs.json") as f:
             testing_runs = json.load(f)
             cur_run_config = testing_runs[test_run_index]
 
