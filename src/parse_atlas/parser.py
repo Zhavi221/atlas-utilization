@@ -526,7 +526,7 @@ class AtlasOpenParser():
 
                     # IMPORTANT: match the structure used by _parse_file
                     # e.g., "AnalysisJetsAuxDyn.pt"
-                    branch_name = f"{cur_obj_branch_name}AuxDyn.{field}"
+                    branch_name = f"{cur_obj_branch_name}.{field}"
                     root_ready[branch_name] = filled_branch
 
             except AttributeError:

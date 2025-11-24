@@ -8,7 +8,7 @@ testing_config:
 
 parsing_config:
   run_metadata:
-    temp: false
+    placeholder: false
 
   pipeline_config:
     # ===USE A MULTIPROCESSING WHILE PARSING
