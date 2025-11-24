@@ -70,8 +70,7 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])
 
             stats = atlasparser.get_statistics(
-                total_files=len(files_parsed),
-                successful_count=len(files_parsed),
+                total_files=len(files_parsed)
             )
             
             logger.info("Subprocess exiting")

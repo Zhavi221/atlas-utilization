@@ -27,7 +27,7 @@
       },
       "atlasparser_config": {
         "max_threads": 2,
-        "chunk_yield_threshold_bytes": 100000000,
+        "chunk_yield_threshold_bytes": 100000000, 
         "max_environment_memory_mb": 15000
       }
     },

@@ -3,7 +3,8 @@ tasks:
   do_mass_calculating: false
 
 testing_config:
-  status: false #normal or random
+  is_on: true #normal or random
+  test_run_index: 1
 
 parsing_config:
   run_metadata:
@@ -11,7 +12,7 @@ parsing_config:
 
   pipeline_config:
     # ===USE A MULTIPROCESSING WHILE PARSING
-    parse_in_multiprocessing: true #important for cluster processing
+    parse_in_multiprocessing: false #important for cluster processing
     # ===ADD FAILED FILES TO QUEUE OF FILES===
     count_retries_failed_files: 1 #CHECK retry files 
     # ===SHUFFLE THE FILES FOR RANDOMNESS===
@@ -19,7 +20,7 @@ parsing_config:
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
-    limit_files_per_year: 1000 #FOR TESTING - limit number of files per year
+    limit_files_per_year: 50 #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
     # ===PATH FOR OUTPUTTING THE DATA===
@@ -40,7 +41,7 @@ parsing_config:
     logging_path: "logs/"
     # ===SHOULD CREATE LOGGING AND DATA DIRECTORIES===
     create_dirs: true
-    # ===THE NAMES FOR THE DATA TREES INSIDE THE ROOT FILES, IT VARIES BY RELEASE YEAR===
+    # ===THE NAMES FOR THE DATA TREES INSIDE THE ROOT FILES, CHANGES FROM EDU TO RESEARCH RELEASES===
     possible_tree_names: ["CollectionTree", "mini", "analysis"]
 
   particle_counts:
