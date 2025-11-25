@@ -3,12 +3,13 @@ tasks:
   do_mass_calculating: true
 
 testing_config:
-  is_on: true #normal or random
+  is_on: false #normal or random
   test_run_index: 1
 
 parsing_config:
   run_metadata:
-    placeholder: false
+    # ===BATCH JOB INDEX===
+    batch_job_index: null
 
   pipeline_config:
     # ===USE A MULTIPROCESSING WHILE PARSING
@@ -20,7 +21,7 @@ parsing_config:
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
-    limit_files_per_year: 1000 #FOR TESTING - limit number of files per year
+    limit_files_per_year: 50 #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
     # ===PATH FOR OUTPUTTING THE DATA===

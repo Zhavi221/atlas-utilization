@@ -113,8 +113,13 @@ def parse_with_per_chunk_subprocess(config):
         possible_tree_names=atlasparser_config["possible_tree_names"]
     )
     
-    release_years_file_ids = temp_parser.fetch_record_ids(timeout=pipeline_config["fetching_metadata_timeout"])
+    release_years_file_ids = temp_parser.fetch_record_ids(
+        timeout=pipeline_config["fetching_metadata_timeout"])
     
+    if run_metadata["batch_job_index"] is not None:
+        with open("data/batch_job_file_ids.json", "w") as f:
+            json.dump(release_years_file_ids, f, indent=2)
+
     if pipeline_config["random_files"]:
         random.shuffle(release_years_file_ids)
 
@@ -212,6 +217,7 @@ def parse_with_per_chunk_subprocess(config):
                     logger.info(f"All workers completed at: {all_workers_end_timestamp}")
                 
             if not os.path.exists(crashed_files_path):
+                logger.info("No crashed files to retry.")
                 break
 
             with open(crashed_files_path, "r+") as f:

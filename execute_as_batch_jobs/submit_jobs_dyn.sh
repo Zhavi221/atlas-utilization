@@ -22,7 +22,7 @@ lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 
 echo "Running job index: \$PBS_ARRAY_INDEX"
 
-python main_pipeline.py --job-index \$PBS_ARRAY_INDEX
+python main_pipeline.py --batch_job_index \$PBS_ARRAY_INDEX
 EOF
 
 # Submit it

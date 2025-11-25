@@ -48,7 +48,7 @@ def load_config(config_path):
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--config", help="Config file", default=config_path)
     arg_parser.add_argument("--test_run_index", help="Config file", default=None)
-    arg_parser.add_argument("--run_index", help="Config file", default=None)
+    arg_parser.add_argument("--batch_job_index", default=None)
     args = arg_parser.parse_args()
     with open(args.config) as f:
         config = yaml.safe_load(f)
@@ -75,13 +75,11 @@ def load_config(config_path):
 
         config["parsing_config"]["run_metadata"] = cur_run_config["run_metadata"]
     else:
-        if args.run_index is not None:
-            run_index = int(args.run_index)
+        if args.batch_job_index is not None:
+            batch_job_index = int(args.batch_job_index)
             config["parsing_config"]["run_metadata"] = {
-                "run_name": f"run_{run_index}",
-                "run_index": run_index
+                "batch_job_index": batch_job_index
             }
-            #FEATURE add selecting file ids based on index
                 
     return config
 
