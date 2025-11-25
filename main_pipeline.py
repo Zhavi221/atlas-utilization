@@ -48,7 +48,11 @@ def load_config(config_path):
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--config", help="Config file", default=config_path)
     arg_parser.add_argument("--test_run_index", help="Config file", default=None)
+<<<<<<< HEAD
     arg_parser.add_argument("--batch_job_index", default=None)
+=======
+    arg_parser.add_argument("--run_index", help="Config file", default=None)
+>>>>>>> f5c569c (submitting all jobs altogether)
     args = arg_parser.parse_args()
     with open(args.config) as f:
         config = yaml.safe_load(f)
