@@ -48,6 +48,7 @@ def load_config(config_path):
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--config", help="Config file", default=config_path)
     arg_parser.add_argument("--test_run_index", help="Config file", default=None)
+    arg_parser.add_argument("--batch_job_index", default=None)
     args = arg_parser.parse_args()
     with open(args.config) as f:
         config = yaml.safe_load(f)
@@ -73,7 +74,13 @@ def load_config(config_path):
                 config["parsing_config"]["atlasparser_config"][key] = value
 
         config["parsing_config"]["run_metadata"] = cur_run_config["run_metadata"]
-        
+    else:
+        if args.batch_job_index is not None:
+            batch_job_index = int(args.batch_job_index)
+            config["parsing_config"]["run_metadata"] = {
+                "batch_job_index": batch_job_index
+            }
+                
     return config
 
 
