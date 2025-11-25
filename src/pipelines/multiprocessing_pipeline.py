@@ -4,7 +4,8 @@ import time
 import multiprocessing as mp
 from multiprocessing import Process, Queue
 from src.parse_atlas import parser, schemas
-from src.calculations import combinatorics, physics_calcs, math_utils, consts
+from src.calculations import combinatorics, physics_calcs, math_utils
+from . import consts
 import awkward as ak
 from tqdm import tqdm
 import yaml
@@ -66,7 +67,7 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             del filtered_events
             
             logger.info("Saving events to disk")
-            atlasparser.cur_file_ids = files_parsed
+            # atlasparser.cur_file_ids = files_parsed #CHECK is this ruining the end of the loop?
             atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])
 
             stats = atlasparser.get_statistics(
@@ -143,7 +144,7 @@ def parse_with_per_chunk_subprocess(config):
         files_remaining = file_ids
         crashed_files_path = atlasparser_config["logging_path"] + "crashed_files.json"
 
-        while cur_retries < count_retries_failed_files: # CHECK retry files
+        while cur_retries <= count_retries_failed_files: # CHECK retry files
             while files_remaining:
                 logger.info(f"Files remaining: {len(files_remaining)}, spawning {max_parallel_workers} workers...")
                 
@@ -219,22 +220,23 @@ def parse_with_per_chunk_subprocess(config):
             if not os.path.exists(crashed_files_path):
                 logger.info("No crashed files to retry.")
                 break
-
-            with open(crashed_files_path, "r+") as f:
-                data = json.load(f)
+            else:
+                with open(crashed_files_path, "r+") as f:
+                    data = json.load(f)
                 files_remaining = data.get("failed_files", [])
                 if files_remaining:
                     logger.info(f"Retrying {len(files_remaining)} crashed files...")
-                    f.seek(0)
-                    f.write({"failed_files":[]})
+                    os.remove(crashed_files_path)
+                    
                     cur_retries += 1
+                #Allow for some sleep to let remote dataserver rest
+                time.sleep(30)
         
 
     if all_stats:
-        logging.info(f"Aggregating stats for {run_metadata['run_metadata']}")
         aggregate_statistics(all_stats, atlasparser_config["logging_path"], pipeline_config, atlasparser_config, run_metadata)    
     else:
-        logging.info(f"No stats to aggregate at {run_metadata['run_metadata']}")
+        logging.info(f"No stats to aggregate.")
 
         pbar.close()
     
@@ -322,7 +324,6 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_c
             "successful_files": successful_files,
             "failed_files": failed_files,
             "success_rate": (successful_files / all_files * 100) if all_files > 0 else 0
-            #FEATURE STATS add a measurment for time between first worker to finish and it's current iteration parsing 
         },
         "performance": {
             "total_data_processed_mb": total_data_mb,
@@ -367,7 +368,7 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_c
     }
     
     # Save consolidated statistics
-    output_file = os.path.join(output_path, run_metadata["run_name"])
+    output_file = os.path.join(output_path, run_metadata["run_name"]) + ".json"
     with open(output_file, "w") as f:
         json.dump(consolidated, f, indent=2)
         logging.info(f"Succesfully aggregated and saved all statistics under the name {output_file}")
