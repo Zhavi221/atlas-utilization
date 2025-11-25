@@ -17,7 +17,7 @@ def main():
         main_logger.info("Starting parsing task")
         parsing_config = config["parsing_config"]
         pipeline_config = parsing_config["pipeline_config"]
-        count_retries = pipeline_config["count_retries_failed_files"]
+        count_retries = pipeline_config["count_retries_failed_files"] #CHECK
             
         if pipeline_config["parse_in_multiprocessing"]:
             main_logger.info("Parsing with multiprocessing")

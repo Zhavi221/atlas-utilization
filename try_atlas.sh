@@ -1,9 +1,9 @@
 #!/bin/bash
 #PBS -q N
 #PBS -N im_job
-#PBS -o im_job_$PBS_ARRAY_INDEX.out
-#PBS -e im_job_$PBS_ARRAY_INDEX.err
-#PBS -l select=1:ncpus=4:mem=4000mb
+#PBS -o logs/test_run.out
+#PBS -e logs/test_run.err
+#PBS -l select=1:ncpus=4:mem=20000mb
 #PBS -l io=5
 
 # Move to the submission directory
