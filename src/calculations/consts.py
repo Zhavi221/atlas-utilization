@@ -4,3 +4,4 @@ KNOWN_MASSES = {
     "Electrons": 0.000511,
     "Jets": 0.0
 }
+LETTER_PARTICLE_MAPPING = {"e":"Electrons", "j":"Jets", "p":"Photos", "m":"Muons"}

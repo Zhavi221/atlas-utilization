@@ -10,8 +10,9 @@ cat <<EOF > dynamic_job.pbs
 #PBS -N parse_job_num_\$PBS_ARRAY_INDEX
 #PBS -o logs/parse_job_num_\$PBS_ARRAY_INDEX.out
 #PBS -e logs/parse_job_num_\$PBS_ARRAY_INDEX.err
-#PBS -l select=1:ncpus=4:mem=10gb
-#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=4:mem=20gb
+#PBS -l io=5
+#PBS -l walltime=25:00:00
 #PBS -J 1-$NUM_JOBS
 
 cd \$PBS_O_WORKDIR
@@ -22,7 +23,7 @@ lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 
 echo "Running job index: \$PBS_ARRAY_INDEX"
 
-python main_pipeline.py --batch_job_index \$PBS_ARRAY_INDEX
+python main_pipeline.py --batch_job_index \$PBS_ARRAY_INDEX --total_batch_jobs $NUM_JOBS
 EOF
 
 # Submit it

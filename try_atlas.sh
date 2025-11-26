@@ -5,6 +5,7 @@
 #PBS -e logs/test_run.err
 #PBS -l select=1:ncpus=4:mem=20000mb
 #PBS -l io=5
+#PBS 
 
 # Move to the submission directory
 cd $PBS_O_WORKDIR

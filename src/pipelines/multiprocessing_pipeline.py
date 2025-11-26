@@ -114,12 +114,18 @@ def parse_with_per_chunk_subprocess(config):
         possible_tree_names=atlasparser_config["possible_tree_names"]
     )
     
-    release_years_file_ids = temp_parser.fetch_record_ids(
-        timeout=pipeline_config["fetching_metadata_timeout"])
-    
+    #CHECK test the following mechanism
+    release_years_file_ids = {}
     if run_metadata["batch_job_index"] is not None:
-        with open("data/batch_job_file_ids.json", "w") as f:
-            json.dump(release_years_file_ids, f, indent=2)
+        if os.path.exists(pipeline_config["file_urls_path"]):
+            with open(pipeline_config["file_urls_path"], "r") as f:
+                whole_file_ids = json.load(f)
+                release_years_file_ids = get_batch_by_index(whole_file_ids, run_metadata["batch_job_index"], run_metadata["total_batch_jobs"])
+        else:
+            release_years_file_ids = temp_parser.fetch_record_ids(
+                timeout=pipeline_config["fetching_metadata_timeout"])
+            with open(pipeline_config["file_urls_path"]) as f:
+                json.dump(release_years_file_ids, f, indent=2)
 
     if pipeline_config["random_files"]:
         random.shuffle(release_years_file_ids)
@@ -244,6 +250,38 @@ def parse_with_per_chunk_subprocess(config):
         f"Parsing complete! Processed {chunk_count} chunks, "
         f"{total_events:,} total events"
     )
+
+def get_batch_by_index(whole_file_ids, batch_index, total_batch_jobs):
+    """Extracts a batch of file IDs using a moving window across all years"""
+    batch_index = int(batch_index)
+    
+    # Flatten all file IDs into a single array with year tracking
+    all_files = []
+    for year, file_ids in whole_file_ids.items():
+        for file_id in file_ids:
+            all_files.append((year, file_id))
+    
+    # Calculate batch boundaries
+    total_files = len(all_files)
+    files_per_batch = total_files // total_batch_jobs
+    start_idx = (batch_index - 1) * files_per_batch
+    
+    if batch_index == total_batch_jobs:
+        end_idx = total_files
+    else:
+        end_idx = start_idx + files_per_batch
+    
+    # Extract the batch slice
+    batch_slice = all_files[start_idx:end_idx]
+    
+    # Reconstruct dictionary format
+    batch_file_ids = {}
+    for year, file_id in batch_slice:
+        if year not in batch_file_ids:
+            batch_file_ids[year] = []
+        batch_file_ids[year].append(file_id)
+    
+    return batch_file_ids
 
 def chunk_list(lst, n):
     """Split list into n roughly equal chunks"""

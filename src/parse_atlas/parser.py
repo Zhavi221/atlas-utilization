@@ -389,6 +389,7 @@ class AtlasOpenParser():
         
         return chunk_to_yield
 
+    #CHECK check performance of this function, even for big local files its slow
     @staticmethod
     def parse_file(file_index, tree_names=["CollectionTree"], batch_size=40_000) -> ak.Array:
         """
@@ -495,6 +496,7 @@ class AtlasOpenParser():
 
         self.cur_file_ids.clear()
     
+    #FEATURE make static
     def flatten_for_root(self, awk_arr):
         """
         Flatten a top-level awkward Array into a ROOT-friendly dict

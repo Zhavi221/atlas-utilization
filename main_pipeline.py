@@ -51,6 +51,7 @@ def load_config(config_path):
     arg_parser.add_argument("--config", help="Config file", default=config_path)
     arg_parser.add_argument("--test_run_index", help="Config file", default=None)
     arg_parser.add_argument("--batch_job_index", default=None)
+    arg_parser.add_argument("--total_batch_jobs", default=None)
     args = arg_parser.parse_args()
     with open(args.config) as f:
         config = yaml.safe_load(f)
@@ -82,12 +83,14 @@ def load_config(config_path):
             batch_job_index = int(args.batch_job_index)
             config["parsing_config"]["run_metadata"] = {
                 "batch_job_index": batch_job_index,
-                "run_name": f"job_idx{batch_job_index}_{ts:%d_%m_%Y_%H:%M}"
+                "run_name": f"job_idx{batch_job_index}_{ts:%d_%m_%Y_%H:%M}",
+                "total_batch_jobs": args.total_batch_jobs
             }
         else:
             config["parsing_config"]["run_metadata"] = {
                 "batch_job_index": None,
-                "run_name":  f"run_{ts:%d_%m_%Y_%H:%M}"
+                "run_name":  f"run_{ts:%d_%m_%Y_%H:%M}",
+                "total_batch_jobs": None
             }
                 
     return config

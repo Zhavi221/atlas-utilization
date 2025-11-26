@@ -36,7 +36,7 @@ def mass_calculate(config):
         min_count=config["min_count"],
         max_count=config["max_count"],
         limit=config["limit_combinations"])
-
+    
     for filename in os.listdir(config["input_dir"]):
         if filename.endswith(".root"):
             logger.info(f"Processing file: {filename}")
@@ -44,7 +44,7 @@ def mass_calculate(config):
             
             particle_arrays: ak.Array = parser.AtlasOpenParser.parse_file(file_path)
             
-            if particle_arrays is None or not ak.any(particle_arrays):
+            if particle_arrays is None or len(particle_arrays) == 0:
                 logging.info(f"File {filename} is empty")
                 continue
 
@@ -52,6 +52,7 @@ def mass_calculate(config):
             for cur_fs, fs_events in physics_calcs.group_by_final_state(particle_arrays):
                 if cur_fs not in fs_im_mapping:
                     fs_im_mapping[cur_fs] = {}
+
                 for combination in all_combinations:
                     if not physics_calcs.is_finalstate_contain_combination(cur_fs, combination):
                         continue
@@ -84,24 +85,30 @@ def mass_calculate(config):
                         combination_im = fs_im_mapping[cur_fs][cur_combination_name]
                         fs_im_mapping[cur_fs][cur_combination_name] = ak.concatenate([combination_im, cur_im])
                     
+                    #TEMP
+                    output_path = os.path.join(
+                        config["output_dir"], 
+                        f"{cur_combination_name}.npy" 
+                        )
                     
-                    if fs_dict_exceedng_threshold(fs_im_mapping, config["fs_mapping_threshold_bytes"]):
-                        logger.info(f"FS mapping exceeding threshold. Saving big IM arrays.")
-                        
-                        combinations_to_save: list = get_combinations_exceeding_mem(fs_im_mapping, config["fs_mapping_threshold_bytes"])
-                        for combination in combinations_to_save:  
-                            combination_tuple = list(combination.items())[0]
-                            im_combination_name = combination_tuple[0]                     
-                            im_arr = combination_tuple[1]       
+                    np.save(output_path, ak.to_numpy(cur_im))
+                    #TEMP END
 
-                            logger.info(f"Saving {im_combination_name}")   
+                    #FOR TESTING commented                    
+                    # if fs_dict_exceedng_threshold(fs_im_mapping, config["fs_mapping_threshold_bytes"]):
+                    # logger.info(f"FS mapping exceeding threshold. Saving big IM arrays.")
+                    
+                    # combinations_to_save: list = get_combinations_exceeding_mem(fs_im_mapping, config["fs_mapping_threshold_bytes"])
+                # logging.info(f"Saving {len(fs_im_mapping[cur_fs].items())} IM arrays for final state: {cur_fs}")
+                # for im_combination_name, im_arr in fs_im_mapping[cur_fs].items():  
+                #     logger.info(f"Saving {im_combination_name}")   
 
-                            output_path = os.path.join(
-                                config["output_dir"], 
-                                f"{im_combination_name}.npy" 
-                                )
-                            
-                            np.save(output_path, ak.to_numpy(im_arr))
+                #     output_path = os.path.join(
+                #         config["output_dir"], 
+                #         f"{im_combination_name}.npy" 
+                #         )
+                    
+                #     np.save(output_path, ak.to_numpy(im_arr))
 
 def fs_dict_exceedng_threshold(fs_im_mapping, threshold):
     """Check if we should yield based on ACTUAL memory pressure"""

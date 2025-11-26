@@ -69,7 +69,20 @@ def group_by_final_state(events: ak.Array):
     for fs in unique_fs:
         mask = (ak.Array(all_events_fs) == fs)
         events_matching_fs = events[mask]
+        fs = limit_particles_in_fs(fs, 4)
         yield (fs, events_matching_fs)
+
+def limit_particles_in_fs(final_state, threshold):
+    fs_particles = final_state.split('_')
+    for str_amount_particle in fs_particles:
+        amount_to_calc = str_amount_particle[0]
+        particle_letter = str_amount_particle[1]
+        amount = int(amount_to_calc)
+        if amount > threshold:
+            final_state = final_state.replace(
+                f"{amount}{particle_letter}", f"{threshold}{particle_letter}")
+            
+    return final_state
 
 def is_finalstate_contain_combination(final_state, combination):
     fs_particles = final_state.split('_')

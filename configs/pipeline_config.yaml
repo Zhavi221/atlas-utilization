@@ -21,16 +21,17 @@ parsing_config:
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
-    limit_files_per_year: 10 #FOR TESTING - limit number of files per year
+    limit_files_per_year: 100 #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
     # ===PATH FOR OUTPUTTING THE DATA===
     output_path: "data/root_files"
+    file_urls_path: "data/batch_job_file_ids.json"
   
   atlasparser_config:
     # max_environment_memory_mb: 8192
       # ===RELEVANT WHEN USED IN A RESTRICTED MEMORY ENV (A CLUSTER)===
-    max_environment_memory_mb: 15000
+    max_environment_memory_mb: 20000 
     # ===RELEASE YEARS TO PARSE THE FILES FROM (CAN BE EMPTY)===  
     release_years: ["2024r-pp"]
     # ===AMOUNT OF THREADS TO USE MULTITHREADING WITH, 4 IS A STABLE AMOUNT===
@@ -73,7 +74,7 @@ mass_calculate:
   # ===SLICE EVENTS AT TOP X PARTICLES BY THIS FIELD===
   field_to_slice_by: "pt" 
   # ===LIMIT COMBINATIONS CALCULATED, MAINLY FOR TESTING===
-  limit_combinations: 0
+  limit_combinations: null
   # ===THRESHOLD FOR EMPTYING THE FS MAPPING===
   # fs_mapping_threshold_bytes: 1000000000 #1GB 
   fs_mapping_threshold_bytes: 50000 #FOR TESTING - 500MB for testing
