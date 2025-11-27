@@ -1,0 +1,182 @@
+{
+  "parsing_session": {
+    "start_timestamp": "2025-11-27 12:51:19.978411",
+    "last_timestamp": "2025-11-27 13:54:16.097417",
+    "last_to_first_timestamp_diff_minutes": 62.93333333333333,
+    "total_processing_time_minutes": 33.08348272244135,
+    "avg_chunk_parsing_mins": 2.363105908745811,
+    "min_chunk_parsing_mins": 1.1157249967257181,
+    "max_chunk_parsing_mins": 3.92557088136673,
+    "total_files": 100,
+    "successful_files": 100,
+    "failed_files": 0,
+    "success_rate": 100.0
+  },
+  "performance": {
+    "total_data_processed_mb": 1409.6001014709473,
+    "total_events_processed": 10486000,
+    "chunks_created": 14,
+    "avg_chunk_size_mb": 100.6857215336391,
+    "min_chunk_size_mb": 60.688087463378906,
+    "max_chunk_size_mb": 115.73294067382812,
+    "events_per_second": 5282.595793583668,
+    "mb_per_second": 0.7101227891155386,
+    "max_process_memory_captured": 784.4921875
+  },
+  "advanced_stats": {
+    "mem_first_deriv_avg": 694.654296875,
+    "mem_second_deriv_avg": -66.46135226272865,
+    "chunk_first_deriv_avg": 100.6857215336391,
+    "chunk_second_deriv_avg": -12.092445642371601
+  },
+  "config_variables": {
+    "config_yield_threshold_mb": 95.367431640625,
+    "max_parallel_workers": 2,
+    "limit_files_per_year": 100,
+    "max_threads": 2
+  },
+  "for_all_data": {
+    "days_to_parse": 1075236217.1929674
+  },
+  "errors": {
+    "timeout_count": 0,
+    "error_types": {},
+    "failed_file_list": []
+  },
+  "raw_data": {
+    "timestamps": [
+      3,
+      16,
+      18,
+      19,
+      27,
+      28,
+      29,
+      36,
+      38,
+      43,
+      47,
+      55,
+      56,
+      57
+    ],
+    "avg_chunks_sizes": [
+      103.12228012084961,
+      60.688087463378906,
+      115.73294067382812,
+      110.76635360717773,
+      99.78017807006836,
+      96.38410186767578,
+      99.89250564575195,
+      107.78889846801758,
+      105.01096725463867,
+      101.15486526489258,
+      95.69131088256836,
+      111.49109268188477,
+      98.41650390625,
+      103.68001556396484
+    ],
+    "max_memory_captures": [
+      721.4765625,
+      505.859375,
+      784.4921875,
+      734.7890625,
+      676.30078125,
+      656.609375,
+      712.17578125,
+      722.8671875,
+      699.1328125,
+      666.29296875,
+      662.203125,
+      740.27734375,
+      703.6015625,
+      739.08203125
+    ]
+  },
+  "chunk_details": [
+    {
+      "chunk_id": 0,
+      "events": 866000,
+      "size_mb": 110.76595687866211,
+      "files_included": 14
+    },
+    {
+      "chunk_id": 1,
+      "events": 715000,
+      "size_mb": 101.1546516418457,
+      "files_included": 8
+    },
+    {
+      "chunk_id": 2,
+      "events": 800000,
+      "size_mb": 99.78008651733398,
+      "files_included": 4
+    },
+    {
+      "chunk_id": 3,
+      "events": 670000,
+      "size_mb": 103.67989349365234,
+      "files_included": 5
+    },
+    {
+      "chunk_id": 4,
+      "events": 618000,
+      "size_mb": 95.69118881225586,
+      "files_included": 5
+    },
+    {
+      "chunk_id": 5,
+      "events": 894000,
+      "size_mb": 111.49097061157227,
+      "files_included": 5
+    },
+    {
+      "chunk_id": 6,
+      "events": 787000,
+      "size_mb": 105.01069259643555,
+      "files_included": 10
+    },
+    {
+      "chunk_id": 7,
+      "events": 850000,
+      "size_mb": 107.78874588012695,
+      "files_included": 6
+    },
+    {
+      "chunk_id": 8,
+      "events": 920000,
+      "size_mb": 115.73272705078125,
+      "files_included": 8
+    },
+    {
+      "chunk_id": 9,
+      "events": 756000,
+      "size_mb": 99.89238357543945,
+      "files_included": 5
+    },
+    {
+      "chunk_id": 10,
+      "events": 750000,
+      "size_mb": 98.41619873046875,
+      "files_included": 11
+    },
+    {
+      "chunk_id": 11,
+      "events": 745000,
+      "size_mb": 103.12218856811523,
+      "files_included": 4
+    },
+    {
+      "chunk_id": 12,
+      "events": 647000,
+      "size_mb": 96.38385772705078,
+      "files_included": 9
+    },
+    {
+      "chunk_id": 13,
+      "events": 468000,
+      "size_mb": 60.68793487548828,
+      "files_included": 6
+    }
+  ]
+}

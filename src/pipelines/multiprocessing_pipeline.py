@@ -67,7 +67,6 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             del filtered_events
             
             logger.info("Saving events to disk")
-            # atlasparser.cur_file_ids = files_parsed #CHECK is this ruining the end of the loop?
             atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])
 
             stats = atlasparser.get_statistics(
@@ -117,7 +116,6 @@ def parse_with_per_chunk_subprocess(config):
     #CHECK test the following mechanism
     
     release_years_file_ids = {}
-    crashed_files_name = "crashed_files.json"
     if run_metadata.get("batch_job_index",None) is None or run_metadata["batch_job_index"]==1:    
         release_years_file_ids = temp_parser.fetch_record_ids(
             timeout=pipeline_config["fetching_metadata_timeout"])
@@ -133,6 +131,7 @@ def parse_with_per_chunk_subprocess(config):
         logger.error(f"File with all file URLs not found at {pipeline_config['file_urls_path']}")
         return
     
+    crashed_files_name = "crashed_files.json"
     if run_metadata.get("batch_job_index",None) is not None:
         crashed_files_name = f"crashed_files_{run_metadata['batch_job_index']}.json"
     else:
@@ -140,9 +139,6 @@ def parse_with_per_chunk_subprocess(config):
 
     crashed_files_path = atlasparser_config["logging_path"] + crashed_files_name
     
-    if pipeline_config["random_files"]:
-        random.shuffle(release_years_file_ids)
-
     if pipeline_config["limit_files_per_year"]:
         parser.AtlasOpenParser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
     

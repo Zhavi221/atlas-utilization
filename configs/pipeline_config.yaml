@@ -15,9 +15,7 @@ parsing_config:
     # ===USE A MULTIPROCESSING WHILE PARSING
     parse_in_multiprocessing: true #important for cluster processing
     # ===ADD FAILED FILES TO QUEUE OF FILES===
-    count_retries_failed_files: 1 #CHECK retry files 
-    # ===SHUFFLE THE FILES FOR RANDOMNESS===
-    random_files: false #FEATURE CONFIG random_files
+    count_retries_failed_files: 1 
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===

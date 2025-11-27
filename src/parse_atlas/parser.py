@@ -168,7 +168,7 @@ class AtlasOpenParser():
         
         self.input_release_years = release_years
 
-    def fetch_record_ids(self, timeout=60):
+    def fetch_record_ids(self, timeout=60, seperate_mc=False) -> dict:
         '''
             Fetches the real records IDs for a given release year.
             Returns a list of file URIs.
@@ -183,6 +183,15 @@ class AtlasOpenParser():
             release_years,
             timeout=timeout)
 
+        #CHECK seperate mc feature
+        if seperate_mc:
+            for year, file_uris in release_files_uris.items():
+                mc_file_uris = [uri for uri in file_uris if "mc" in uri.lower()]
+                if mc_file_uris:
+                    mc_year = f"{year}_mc"
+                    release_files_uris[mc_year] = mc_file_uris
+                    release_files_uris[year].remove(mc_file_uris)
+        
         return release_files_uris
     
     @staticmethod
@@ -281,59 +290,7 @@ class AtlasOpenParser():
                             gc.collect() 
                             memory_utils.print_gc_stats() #FOR TESTING
                             memory_utils.print_top_memory_variables(n=10) #FOR TESTING
-                        #CHECK remove this commented?
-                        '''
-                        try:
-                            cur_file_data = future.result(timeout=10)
-                            
-                            if cur_file_data is not None:
-                                successful_count += 1
-
-                                self._save_parsed_file_metadata(cur_file_data, release_year, file_index)
-                                cur_file_data = AtlasOpenParser._normalize_fields(cur_file_data)
-                                self._concatenate_events(cur_file_data)
-                                
-                                tqdm.write(f"{memory_utils.get_process_mem_usage_mb():.1f} MB used after parsing {self.file_parsed_count} files.")
-                                if self._chunk_exceed_threshold():
-                                    self._save_chunk_metadata()
-                                    
-                                    # Store chunk reference
-                                    chunk_to_yield = self.events
-                                    
-                                    # CRITICAL: Clear reference BEFORE yielding
-                                    self.events = None
-                                    self.file_parsed_count = 0
-                                    self.total_chunks += 1
-                                    
-                                    mem_before_yield = memory_utils.get_process_mem_usage_mb()
-                                    self.max_memory_captured = max(self.max_memory_captured, mem_before_yield)
-                                    
-                                    yield chunk_to_yield
-                                    
-                                    # CRITICAL: delete local reference after yield
-                                    del chunk_to_yield
-                                    
-                                    # Force aggressive cleanup after yield
-                                    gc.collect()
-                                    memory_utils.print_gc_stats()
-                                    memory_utils.print_top_memory_variables(n=10)
-                                    
-                                    mem_after_yield = memory_utils.get_process_mem_usage_mb()
-                                    mem_freed = mem_before_yield - mem_after_yield
-                                    
-
-                                    tqdm.write(
-                                        f"🧹 Memory before yield: {mem_before_yield:.1f} MB "
-                                        f"🧹 Memory after yield: {mem_after_yield:.1f} MB "
-                                        f"(freed: {mem_freed:.1f} MB)"
-                                    )
-
-                        except Exception as e:
-                            file_processing_time = time.time() - file_start_time
-                            self._log_crash(file_index, e, file_processing_time)
-                            tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}")
-
-                        '''
+                        
                         status = self._get_parsing_status_for_pbar()
                         pbar.set_postfix_str(status)
                         pbar.update(1)
@@ -509,12 +466,8 @@ class AtlasOpenParser():
         for obj_name in awk_arr.fields:
             obj = awk_arr[obj_name]
 
-            # e.g., obj_name = "Jets"  -> cur_obj_name = "AnalysisJets"
-            # obj_branches_and_quantities: dict[str, dict[str, str]] = AtlasOpenParser.extract_branches_by_obj_in_schema(
-            #     all_tree_branches, schema=schemas.INVARIANT_MASS_SCHEMA)
-            
             cur_obj_branch_name = AtlasOpenParser._prepare_obj_branch_name(
-                obj_name, schema=schemas.INVARIANT_MASS_SCHEMA) #TODO replace with extract_branches_by_obj_in_schema?
+                obj_name, schema=schemas.INVARIANT_MASS_SCHEMA) 
 
             if cur_obj_branch_name is None:
                 cur_obj_branch_name = obj_name
