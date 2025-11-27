@@ -16,12 +16,14 @@ cat <<EOF > dynamic_job.pbs
 #PBS -J 1-$NUM_JOBS
 
 cd \$PBS_O_WORKDIR
-o
+
 export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
 source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
 lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 
 echo "Running job index: \$PBS_ARRAY_INDEX"
+
+python create_folder_for_run.py
 
 python main_pipeline.py --batch_job_index \$PBS_ARRAY_INDEX --total_batch_jobs $NUM_JOBS
 EOF

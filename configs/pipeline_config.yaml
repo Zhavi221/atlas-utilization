@@ -3,7 +3,7 @@ tasks:
   do_mass_calculating: false
 
 testing_config:
-  is_on: true #normal or random
+  is_on: false #normal or random
   test_run_index: null
 
 parsing_config:
@@ -19,11 +19,11 @@ parsing_config:
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
-    limit_files_per_year: 5000 #FOR TESTING - limit number of files per year
+    limit_files_per_year: 100 #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
     # ===PATH FOR OUTPUTTING THE DATA===
-    output_path: "/storage/agrp/netalev/data/root_files"
+    output_path: "/storage/agrp/netalev/data/root_files/"
     file_urls_path: "/storage/agrp/netalev/data/batch_job_file_ids.json"
   
   atlasparser_config:
@@ -77,9 +77,9 @@ mass_calculate:
   # fs_mapping_threshold_bytes: 1000000000 #1GB 
   fs_mapping_threshold_bytes: 50000 #FOR TESTING - 500MB for testing
   # ===INPUT DIRECTORY FOR THE ROOT FILES TO CALCULATE FROM===
-  input_dir: "/storage/agrp/netalev/data/root_files"
+  input_dir: "/storage/agrp/netalev/data/root_files/"
   # ===OUTPUT DIRECTORY FOR THE INVARIANT MASS ARRAYS===
-  output_dir: "/storage/agrp/netalev/data/inv_masses"
+  output_dir: "/storage/agrp/netalev/data/inv_masses/"
   # ===PARTICLES TO CALCULATE INVARIANT MASS OUT OF===
   objects_to_calculate:
       - Electrons

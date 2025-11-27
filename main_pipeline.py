@@ -78,17 +78,19 @@ def load_config(config_path):
         config["parsing_config"]["run_metadata"] = cur_run_config["run_metadata"]
     else:
         ts = datetime.now()
+        run_time = ts.strftime("%d_%m_%Y_%H:%M")
         if args.batch_job_index is not None:
             batch_job_index = int(args.batch_job_index)
             config["parsing_config"]["run_metadata"] = {
                 "batch_job_index": batch_job_index,
-                "run_name": f"job_idx{batch_job_index}_{ts:%d_%m_%Y_%H:%M}",
+                "run_name": f"job_idx{batch_job_index}_{run_time}",
                 "total_batch_jobs": args.total_batch_jobs
             }
+
         else:
             config["parsing_config"]["run_metadata"] = {
                 "batch_job_index": None,
-                "run_name":  f"run_{ts:%d_%m_%Y_%H:%M}",
+                "run_name":  f"run_{run_time}",
                 "total_batch_jobs": None
             }
                 

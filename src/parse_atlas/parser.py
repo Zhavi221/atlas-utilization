@@ -185,14 +185,28 @@ class AtlasOpenParser():
 
         #CHECK seperate mc feature
         if seperate_mc:
-            for year, file_uris in release_files_uris.items():
-                mc_file_uris = [uri for uri in file_uris if "mc" in uri.lower()]
-                if mc_file_uris:
-                    mc_year = f"{year}_mc"
-                    release_files_uris[mc_year] = mc_file_uris
-                    release_files_uris[year].remove(mc_file_uris)
+            release_files_uris = AtlasOpenParser.seperate_mc_files(release_files_uris)
         
         return release_files_uris
+
+    @staticmethod
+    def seperate_mc_files(release_files_uris):
+        seperated_release_files_uris = {}
+        for year, file_uris in release_files_uris.items():
+            mc_file_uris = []
+            data_file_uris = []
+            for uri in file_uris:
+                if "mc" in uri.lower():
+                    mc_file_uris.append(uri)
+                else:
+                    data_file_uris.append(uri)    
+
+            if mc_file_uris:
+                mc_year = f"{year}_mc"
+                seperated_release_files_uris[mc_year] = mc_file_uris
+                seperated_release_files_uris[year] = data_file_uris
+        
+        return seperated_release_files_uris
     
     @staticmethod
     def fetch_record_ids_for_release_years(release_years, timeout=60) -> dict:

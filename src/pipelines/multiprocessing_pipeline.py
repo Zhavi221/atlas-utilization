@@ -118,7 +118,7 @@ def parse_with_per_chunk_subprocess(config):
     release_years_file_ids = {}
     if run_metadata.get("batch_job_index",None) is None or run_metadata["batch_job_index"]==1:    
         release_years_file_ids = temp_parser.fetch_record_ids(
-            timeout=pipeline_config["fetching_metadata_timeout"])
+            timeout=pipeline_config["fetching_metadata_timeout"], seperate_mc=True)
             
         with open(pipeline_config["file_urls_path"], "w") as f:
             json.dump(release_years_file_ids, f, indent=2)
