@@ -57,7 +57,7 @@ def load_config(config_path):
         config = yaml.safe_load(f)
     
     if config["testing_config"]["is_on"]:
-        if args.test_run_index is not None:
+        if args.test_run_index:
             test_run_index = int(args.test_run_index)
         else:
             test_run_index = config["testing_config"]["test_run_index"]

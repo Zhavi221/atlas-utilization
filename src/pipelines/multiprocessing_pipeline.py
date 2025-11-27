@@ -115,18 +115,31 @@ def parse_with_per_chunk_subprocess(config):
     )
     
     #CHECK test the following mechanism
+    
     release_years_file_ids = {}
-    if run_metadata["batch_job_index"] is not None:
-        if os.path.exists(pipeline_config["file_urls_path"]):
+    crashed_files_name = "crashed_files.json"
+    if run_metadata.get("batch_job_index",None) is None or run_metadata["batch_job_index"]==1:    
+        release_years_file_ids = temp_parser.fetch_record_ids(
+            timeout=pipeline_config["fetching_metadata_timeout"])
+            
+        with open(pipeline_config["file_urls_path"], "w") as f:
+            json.dump(release_years_file_ids, f, indent=2)
+
+    elif os.path.exists(pipeline_config["file_urls_path"]):
             with open(pipeline_config["file_urls_path"], "r") as f:
                 whole_file_ids = json.load(f)
                 release_years_file_ids = get_batch_by_index(whole_file_ids, run_metadata["batch_job_index"], run_metadata["total_batch_jobs"])
-        else:
-            release_years_file_ids = temp_parser.fetch_record_ids(
-                timeout=pipeline_config["fetching_metadata_timeout"])
-            with open(pipeline_config["file_urls_path"]) as f:
-                json.dump(release_years_file_ids, f, indent=2)
+    else:
+        logger.error(f"File with all file URLs not found at {pipeline_config['file_urls_path']}")
+        return
+    
+    if run_metadata.get("batch_job_index",None) is not None:
+        crashed_files_name = f"crashed_files_{run_metadata['batch_job_index']}.json"
+    else:
+        crashed_files_name = "crashed_files.json"
 
+    crashed_files_path = atlasparser_config["logging_path"] + crashed_files_name
+    
     if pipeline_config["random_files"]:
         random.shuffle(release_years_file_ids)
 
@@ -148,7 +161,6 @@ def parse_with_per_chunk_subprocess(config):
         
         # Loop: spawn subprocess for each chunk
         files_remaining = file_ids
-        crashed_files_path = atlasparser_config["logging_path"] + "crashed_files.json"
 
         while cur_retries <= count_retries_failed_files: # CHECK retry files
             while files_remaining:
@@ -244,7 +256,6 @@ def parse_with_per_chunk_subprocess(config):
     else:
         logging.info(f"No stats to aggregate.")
 
-        pbar.close()
     
     logger.info(
         f"Parsing complete! Processed {chunk_count} chunks, "
