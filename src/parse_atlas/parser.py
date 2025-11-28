@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 import itertools
 
 import uproot
+import tarfile
 import requests
 import atlasopenmagic as atom
 
@@ -278,11 +279,12 @@ class AtlasOpenParser():
         self.successful_count = 0
         with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
             for release_year, file_ids in release_years_file_ids.items():
+                self.cur_release_year = release_year
                 logging.info(f"Starting to parse year {release_year}'s {len(file_ids)} files with {self.max_threads} threads.")
                 with tqdm(total=len(file_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=1) as pbar:
                     futures = {
                         executor.submit(
-                            AtlasOpenParser.parse_file, 
+                            AtlasOpenParser.parse_root_file, 
                             file_index,
                             self.possible_tree_names
                         ): file_index
@@ -296,6 +298,7 @@ class AtlasOpenParser():
                         )
                         
                         if self._chunk_exceed_threshold():
+                            self.total_chunks += 1
                             self._save_chunk_metadata()
                             chunk_to_yield = self._prepare_chunk_for_yield()
                         
@@ -310,23 +313,22 @@ class AtlasOpenParser():
                         pbar.update(1)
                 
                 gc.collect()
+
+                if self.events is None:
+                    continue
                         
-            #TEMP for when the subprocess eliminates the generator and never returns so yielding has to be last
-            if self.events is not None:
                 self.total_chunks += 1
                 self._save_chunk_metadata()
-                
-            if save_statistics:
-                logging.info(f"Saving statistics to {self.stats_log}")
-                total_files = [file_id for file_id in file_ids for file_ids in release_years_file_ids.values()]
-                stats = self.get_statistics(len(total_files))
-                
-                with open(self.stats_log, 'a') as f:
-                    json.dump(stats, f, indent=2)
+                if save_statistics:
+                    logging.info(f"Saving statistics to {self.stats_log}")
+                    total_files = [file_id for file_id in file_ids for file_ids in release_years_file_ids.values()]
+                    stats = self.get_statistics(len(total_files))
+                    
+                    with open(self.stats_log, 'a') as f:
+                        json.dump(stats, f, indent=2)
 
-                self.print_statistics_summary(stats)
+                    self.print_statistics_summary(stats)
 
-            if self.events is not None:
                 self.max_memory_captured = memory_utils.get_process_mem_usage_mb()
                 yield self.events
                 self.events = None
@@ -338,12 +340,16 @@ class AtlasOpenParser():
             cur_file_data = future.result(timeout=10)
             if cur_file_data is not None:
                 self.successful_count += 1
-                self._save_parsed_file_metadata(cur_file_data, release_year, file_index)
+                file_size_mb, events_in_file = self._save_parsed_file_metadata(
+                    cur_file_data, release_year, file_index)
+                
+                tqdm.write(
+                    f"✅ File processed: {file_size_mb:.2f} MB logical size, " 
+                    f"{events_in_file:,} events."
+                )
                 cur_file_data = AtlasOpenParser._normalize_fields(cur_file_data)
                 self._concatenate_events(cur_file_data)
-                
-                tqdm.write(f"{memory_utils.get_process_mem_usage_mb():.1f} MB used...")
-                
+
         except Exception as e:
             file_processing_time = time.time() - file_start_time
             self._log_crash(file_index, e, file_processing_time)
@@ -359,10 +365,10 @@ class AtlasOpenParser():
         self.max_memory_captured = max(self.max_memory_captured, mem_before_yield)
         
         return chunk_to_yield
-
+    
     #CHECK check performance of this function, even for big local files its slow
     @staticmethod
-    def parse_file(file_index, tree_names=["CollectionTree"], batch_size=40_000) -> ak.Array:
+    def parse_root_file(file_index, tree_names=["CollectionTree"], batch_size=40_000) -> ak.Array:
         """
         Parse an ATLAS DAOD file in batches if necessary.
         Accumulates raw arrays and zips into vector objects only once per object.
@@ -471,7 +477,7 @@ class AtlasOpenParser():
     def flatten_for_root(self, awk_arr):
         """
         Flatten a top-level awkward Array into a ROOT-friendly dict
-        compatible with _parse_file()'s expected field structure.
+        compatible with _parse_root_file()'s expected field structure.
         Specifically, each particle object is stored under
         "<cur_obj_name>AuxDyn.<field>" branches.
         """
@@ -493,7 +499,7 @@ class AtlasOpenParser():
                     # ROOT doesn't like None — fill with 0.0
                     filled_branch = ak.fill_none(branch, 0.0)
 
-                    # IMPORTANT: match the structure used by _parse_file
+                    # IMPORTANT: match the structure used by _parse_root_file
                     # e.g., "AnalysisJetsAuxDyn.pt"
                     branch_name = f"{cur_obj_branch_name}.{field}"
                     root_ready[branch_name] = filled_branch
@@ -552,7 +558,10 @@ class AtlasOpenParser():
                     f.write(f"Processing Time: {processing_time:.2f}s\n")
                 f.write(f"Traceback:\n{traceback.format_exc()}\n")
                 f.write("-" * 60 + "\n")
-
+            
+            if "ValueError" in str(exception):
+                return
+            
             if os.path.exists(self.crashed_files):
                 with open(self.crashed_files, 'r') as f:
                     data = json.load(f)
@@ -571,13 +580,10 @@ class AtlasOpenParser():
 
         events_in_file = len(cur_file_data)
         self.total_events_processed += events_in_file
-        tqdm.write(
-            f"✅ File processed: {file_size_mb:.2f} MB logical size, " 
-            f"{events_in_file:,} events."
-        )
         
         self.cur_file_ids.append(file_index)
-        self.cur_release_year = release_year
+
+        return file_size_mb, events_in_file
     
     def _save_chunk_metadata(self):
         chunk_info = {
@@ -665,7 +671,6 @@ class AtlasOpenParser():
     @staticmethod
     def get_data_tree_name_for_root_file(root_file_keys, possible_tree_names):
         if not possible_tree_names:
-            logging.warning("No possible_tree_names provided, defaulting to 'CollectionTree'.")
             return "CollectionTree"
         
         available_trees = [key[:-2] for key in root_file_keys] # Remove trailing ';1'

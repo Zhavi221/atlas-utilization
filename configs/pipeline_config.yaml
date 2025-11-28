@@ -3,7 +3,7 @@ tasks:
   do_mass_calculating: false
 
 testing_config:
-  is_on: true #normal or random
+  is_on: false #normal or random
   test_run_index: null
   testing_jobs_path: "testing/testing_runs_bigger.json"
 
@@ -20,7 +20,7 @@ parsing_config:
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
-    limit_files_per_year: 10 #FOR TESTING - limit number of files per year
+    limit_files_per_year: null #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
     # ===PATH FOR OUTPUTTING THE DATA===
@@ -32,7 +32,7 @@ parsing_config:
       # ===RELEVANT WHEN USED IN A RESTRICTED MEMORY ENV (A CLUSTER)===
     max_environment_memory_mb: 20000 
     # ===RELEASE YEARS TO PARSE THE FILES FROM (IF EMPTY FETCHES ALL)===  
-    release_years: []
+    release_years: ["2024r-pp"]
     # ===AMOUNT OF THREADS TO USE MULTITHREADING WITH, 4 IS A STABLE AMOUNT===
     max_threads: 8
     # ===A THRESHOLD FOR PREVENTING MEMORY OVERLOAD===

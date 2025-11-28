@@ -17,4 +17,8 @@ echo "Running job index: $PBS_ARRAY_INDEX"
 
 python create_folder_for_run.py
 
+<<<<<<< HEAD
 python main_pipeline.py --batch_job_index $PBS_ARRAY_INDEX --total_batch_jobs      > "/storage/agrp/netalev/logs/real_job_${PBS_ARRAY_INDEX}.out"     2> "/storage/agrp/netalev/logs/real_job_${PBS_ARRAY_INDEX}.err"
+=======
+python main_pipeline.py --batch_job_index $PBS_ARRAY_INDEX --total_batch_jobs 17     > "/storage/agrp/netalev/logs/real_job_${PBS_ARRAY_INDEX}.out"     2> "/storage/agrp/netalev/logs/real_job_${PBS_ARRAY_INDEX}.err"
+>>>>>>> c675d96 (more test runs)

@@ -42,7 +42,7 @@ def mass_calculate(config):
             logger.info(f"Processing file: {filename}")
             file_path = os.path.join(config["input_dir"], filename)
             
-            particle_arrays: ak.Array = parser.AtlasOpenParser.parse_file(file_path)
+            particle_arrays: ak.Array = parser.AtlasOpenParser.parse_root_file(file_path)
             
             if particle_arrays is None or len(particle_arrays) == 0:
                 logging.info(f"File {filename} is empty")
