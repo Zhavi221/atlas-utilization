@@ -1,0 +1,242 @@
+[
+  {
+    "run_metadata": {
+      "name": "production_baseline",
+      "description": "Production-like baseline: moderate chunks, balanced workers",
+      "run_name": "production_baseline.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 6,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 150000000, 
+      "max_environment_memory_mb": 20000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "large_chunks_high_workers",
+      "description": "Large 250MB chunks with 8 workers for max throughput",
+      "run_name": "large_chunks_high_workers.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 8,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 250000000,
+      "max_environment_memory_mb": 25000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "xlarge_chunks_moderate_workers",
+      "description": "Extra large 500MB chunks with moderate workers for minimal I/O overhead",
+      "run_name": "xlarge_chunks_moderate_workers.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 6,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 500000000,
+      "max_environment_memory_mb": 30000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "huge_chunks_low_workers",
+      "description": "Huge 1GB chunks with fewer workers for extreme I/O optimization",
+      "run_name": "huge_chunks_low_workers.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 4,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 1000000000,
+      "max_environment_memory_mb": 35000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "balanced_high_parallelism",
+      "description": "Balanced 200MB chunks with high parallelism (8 workers)",
+      "run_name": "balanced_high_parallelism.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 8,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 200000000,
+      "max_environment_memory_mb": 22000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "high_threads_large_chunks",
+      "description": "6 threads with 300MB chunks for CPU-intensive workloads",
+      "run_name": "high_threads_large_chunks.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 6,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 6,
+      "chunk_yield_threshold_bytes": 300000000,
+      "max_environment_memory_mb": 25000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "max_throughput_test",
+      "description": "Maximum parallelism: 10 workers, 200MB chunks",
+      "run_name": "max_throughput_test.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 10,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 200000000,
+      "max_environment_memory_mb": 30000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "aggressive_chunking",
+      "description": "Very large 750MB chunks with 5 workers for minimal overhead",
+      "run_name": "aggressive_chunking.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 5,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 750000000,
+      "max_environment_memory_mb": 32000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "extreme_chunks",
+      "description": "Extreme 2GB chunks with minimal workers for pure I/O optimization",
+      "run_name": "extreme_chunks.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 3,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 2000000000,
+      "max_environment_memory_mb": 40000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "high_workers_moderate_chunks",
+      "description": "12 workers with moderate 150MB chunks for max parallelism",
+      "run_name": "high_workers_moderate_chunks.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 12,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 150000000,
+      "max_environment_memory_mb": 35000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "sweet_spot_test",
+      "description": "Testing sweet spot: 8 workers, 400MB chunks",
+      "run_name": "sweet_spot_test.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 8,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 400000000,
+      "max_environment_memory_mb": 28000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "thread_heavy_approach",
+      "description": "Fewer workers (4) but more threads (8) with 300MB chunks",
+      "run_name": "thread_heavy_approach.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 4,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 8,
+      "chunk_yield_threshold_bytes": 300000000,
+      "max_environment_memory_mb": 25000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "cluster_optimized",
+      "description": "Cluster-optimized: 6 workers, 6 threads, 350MB chunks",
+      "run_name": "cluster_optimized.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 6,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 6,
+      "chunk_yield_threshold_bytes": 350000000,
+      "max_environment_memory_mb": 28000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "io_optimized",
+      "description": "I/O optimized: large 600MB chunks with 4 workers to minimize disk operations",
+      "run_name": "io_optimized.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 4,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 600000000,
+      "max_environment_memory_mb": 30000
+    }
+  },
+  {
+    "run_metadata": {
+      "name": "memory_aggressive",
+      "description": "Memory aggressive: 1.5GB chunks with moderate parallelism",
+      "run_name": "memory_aggressive.json"
+    },
+    "pipeline_config": {
+      "max_parallel_workers": 5,
+      "limit_files_per_year": 500
+    },
+    "atlasparser_config": {
+      "max_threads": 4,
+      "chunk_yield_threshold_bytes": 1500000000,
+      "max_environment_memory_mb": 38000
+    }
+  }
+]

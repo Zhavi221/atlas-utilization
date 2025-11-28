@@ -1,0 +1,335 @@
+{
+  "parsing_session": {
+    "start_timestamp": "2025-11-27 23:38:57.748820",
+    "last_timestamp": "2025-11-28 02:04:09.423740",
+    "last_to_first_timestamp_diff_minutes": 145.18333333333334,
+    "total_processing_time_minutes": 189.36489144563674,
+    "avg_chunk_parsing_mins": 6.108544885343121,
+    "min_chunk_parsing_mins": 1.9270169695218404,
+    "max_chunk_parsing_mins": 10.644198854764303,
+    "total_files": 1000,
+    "successful_files": 1000,
+    "failed_files": 0,
+    "success_rate": 100.0
+  },
+  "performance": {
+    "total_data_processed_mb": 16878.33058166504,
+    "total_events_processed": 169725393,
+    "chunks_created": 31,
+    "avg_chunk_size_mb": 544.4622768279045,
+    "min_chunk_size_mb": 61.2417106628418,
+    "max_chunk_size_mb": 602.9600067138672,
+    "events_per_second": 14938.12569164694,
+    "mb_per_second": 1.485520930236295,
+    "max_process_memory_captured": 2601.90625
+  },
+  "advanced_stats": {
+    "mem_first_deriv_avg": "not increasing sequence",
+    "mem_second_deriv_avg": "not increasing sequence",
+    "chunk_first_deriv_avg": "not increasing sequence",
+    "chunk_second_deriv_avg": "not increasing sequence"
+  },
+  "config_variables": {
+    "config_yield_threshold_mb": 572.20458984375,
+    "max_parallel_workers": 4,
+    "limit_files_per_year": 500,
+    "max_threads": 4
+  },
+  "for_all_data": {
+    "days_to_parse": 513994603.48879546
+  },
+  "errors": {
+    "timeout_count": 0,
+    "error_types": {},
+    "failed_file_list": []
+  },
+  "raw_data": {
+    "timestamps": [
+      2,
+      3,
+      3,
+      9,
+      9,
+      15,
+      19,
+      19,
+      21,
+      22,
+      23,
+      23,
+      23,
+      24,
+      31,
+      32,
+      32,
+      32,
+      34,
+      36,
+      37,
+      37,
+      44,
+      44,
+      46,
+      52,
+      53,
+      53,
+      54,
+      57,
+      57
+    ],
+    "avg_chunks_sizes": [
+      581.972282409668,
+      581.5383949279785,
+      582.6580924987793,
+      574.526481628418,
+      284.50424575805664,
+      574.0801391601562,
+      575.2920150756836,
+      598.1874656677246,
+      599.4216346740723,
+      585.6124382019043,
+      577.4260177612305,
+      579.2525405883789,
+      575.5619964599609,
+      587.1536827087402,
+      575.5165405273438,
+      601.9214935302734,
+      516.4513397216797,
+      61.2417106628418,
+      588.2905387878418,
+      596.188232421875,
+      593.9486503601074,
+      574.4455680847168,
+      305.2235565185547,
+      602.9600067138672,
+      586.2209625244141,
+      513.8165512084961,
+      581.3649368286133,
+      581.8151359558105,
+      575.2013130187988,
+      573.954963684082,
+      592.5816535949707
+    ],
+    "max_memory_captures": [
+      2257.171875,
+      2553.28125,
+      1979.3125,
+      2130.6953125,
+      1553.30859375,
+      2202.90625,
+      1908.3671875,
+      2330.8671875,
+      2541.9375,
+      2433.359375,
+      2367.078125,
+      1992.234375,
+      1888.5859375,
+      2601.90625,
+      2044.078125,
+      2431.0234375,
+      2368.4140625,
+      584.046875,
+      2497.515625,
+      2211.88671875,
+      2224.4453125,
+      1963.67578125,
+      1629.94140625,
+      2206.65625,
+      2315.3046875,
+      1910.55859375,
+      1887.0234375,
+      1773.2890625,
+      1938.53515625,
+      2542.578125,
+      2074.83203125
+    ]
+  },
+  "chunk_details": [
+    {
+      "chunk_id": 0,
+      "events": 4112000,
+      "size_mb": 573.952766418457,
+      "files_included": 73
+    },
+    {
+      "chunk_id": 1,
+      "events": 4689000,
+      "size_mb": 601.9203948974609,
+      "files_included": 37
+    },
+    {
+      "chunk_id": 2,
+      "events": 3822000,
+      "size_mb": 585.611156463623,
+      "files_included": 43
+    },
+    {
+      "chunk_id": 3,
+      "events": 4420000,
+      "size_mb": 586.2203216552734,
+      "files_included": 22
+    },
+    {
+      "chunk_id": 4,
+      "events": 4019000,
+      "size_mb": 581.537052154541,
+      "files_included": 45
+    },
+    {
+      "chunk_id": 5,
+      "events": 3809000,
+      "size_mb": 599.4199562072754,
+      "files_included": 56
+    },
+    {
+      "chunk_id": 6,
+      "events": 4317400,
+      "size_mb": 575.515380859375,
+      "files_included": 39
+    },
+    {
+      "chunk_id": 7,
+      "events": 5310000,
+      "size_mb": 596.1875915527344,
+      "files_included": 22
+    },
+    {
+      "chunk_id": 8,
+      "events": 3977000,
+      "size_mb": 516.4501190185547,
+      "files_included": 41
+    },
+    {
+      "chunk_id": 9,
+      "events": 4600000,
+      "size_mb": 577.4251937866211,
+      "files_included": 28
+    },
+    {
+      "chunk_id": 10,
+      "events": 4761000,
+      "size_mb": 581.971305847168,
+      "files_included": 33
+    },
+    {
+      "chunk_id": 11,
+      "events": 4176000,
+      "size_mb": 587.1528587341309,
+      "files_included": 28
+    },
+    {
+      "chunk_id": 12,
+      "events": 4710000,
+      "size_mb": 588.2899894714355,
+      "files_included": 19
+    },
+    {
+      "chunk_id": 13,
+      "events": 2589000,
+      "size_mb": 305.22315979003906,
+      "files_included": 14
+    },
+    {
+      "chunk_id": 14,
+      "events": 6596542,
+      "size_mb": 575.2905502319336,
+      "files_included": 49
+    },
+    {
+      "chunk_id": 15,
+      "events": 8258414,
+      "size_mb": 582.6570854187012,
+      "files_included": 34
+    },
+    {
+      "chunk_id": 16,
+      "events": 8035695,
+      "size_mb": 581.3640823364258,
+      "files_included": 29
+    },
+    {
+      "chunk_id": 17,
+      "events": 7342428,
+      "size_mb": 579.2512283325195,
+      "files_included": 44
+    },
+    {
+      "chunk_id": 18,
+      "events": 8207263,
+      "size_mb": 581.8142204284668,
+      "files_included": 31
+    },
+    {
+      "chunk_id": 19,
+      "events": 6762689,
+      "size_mb": 575.5605010986328,
+      "files_included": 50
+    },
+    {
+      "chunk_id": 20,
+      "events": 5825141,
+      "size_mb": 592.5809211730957,
+      "files_included": 25
+    },
+    {
+      "chunk_id": 21,
+      "events": 5463295,
+      "size_mb": 593.9479789733887,
+      "files_included": 23
+    },
+    {
+      "chunk_id": 22,
+      "events": 6272834,
+      "size_mb": 598.1870384216309,
+      "files_included": 15
+    },
+    {
+      "chunk_id": 23,
+      "events": 7964318,
+      "size_mb": 574.4446220397949,
+      "files_included": 32
+    },
+    {
+      "chunk_id": 24,
+      "events": 7049028,
+      "size_mb": 575.2006721496582,
+      "files_included": 22
+    },
+    {
+      "chunk_id": 25,
+      "events": 7094557,
+      "size_mb": 574.5253524780273,
+      "files_included": 38
+    },
+    {
+      "chunk_id": 26,
+      "events": 1185725,
+      "size_mb": 61.24091720581055,
+      "files_included": 27
+    },
+    {
+      "chunk_id": 27,
+      "events": 7167170,
+      "size_mb": 513.8157577514648,
+      "files_included": 27
+    },
+    {
+      "chunk_id": 28,
+      "events": 7199873,
+      "size_mb": 602.9595794677734,
+      "files_included": 15
+    },
+    {
+      "chunk_id": 29,
+      "events": 6423232,
+      "size_mb": 574.0793762207031,
+      "files_included": 26
+    },
+    {
+      "chunk_id": 30,
+      "events": 3565789,
+      "size_mb": 284.50387954711914,
+      "files_included": 13
+    }
+  ]
+}

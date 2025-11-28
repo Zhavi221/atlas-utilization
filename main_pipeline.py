@@ -61,7 +61,7 @@ def load_config(config_path):
         else:
             test_run_index = config["testing_config"]["test_run_index"]
 
-        with open("testing/testing_runs.json") as f:
+        with open(config["testing_config"]["testing_jobs_path"]) as f:
             testing_runs = json.load(f)
             cur_run_config = testing_runs[test_run_index]
 

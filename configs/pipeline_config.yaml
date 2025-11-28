@@ -3,8 +3,9 @@ tasks:
   do_mass_calculating: false
 
 testing_config:
-  is_on: false #normal or random
+  is_on: true #normal or random
   test_run_index: null
+  testing_jobs_path: "testing/testing_runs_bigger.json"
 
 parsing_config:
   run_metadata:

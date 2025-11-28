@@ -1,15 +1,14 @@
+import argparse
+import yaml
+from datetime import datetime
+#CHECK test this script with submitting real jobs
+CONFIG_PATH = "configs/pipeline_config.yaml"
 
-# Create dated folder
 # DATE_FOLDER=\$(date +%Y%m%d_%H%M%S)
 # OUTPUT_DATA_PATH="/storage/agrp/netalev/data/root_files/\${DATE_FOLDER}"
 # OUTPUT_IM_PATH="/storage/agrp/netalev/data/inv_masses/\${DATE_FOLDER}"
 # mkdir -p "\${OUTPUT_PATH}"
 # mkdir -p "\${OUTPUT_IM_PATH}"
-import argparse
-import yaml
-from datetime import datetime
-
-CONFIG_PATH = "configs/pipeline_config.yaml"
 
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("--config", help="Config file", default=CONFIG_PATH)
