@@ -34,8 +34,6 @@ def parse(config):
     if pipeline_config["limit_files_per_year"]:
         parser.AtlasOpenParser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
     
-    if pipeline_config["random_files"]:
-        random.shuffle(release_years_file_ids)
 
     for events_chunk in atlasparser.parse_files(
         release_years_file_ids=release_years_file_ids,

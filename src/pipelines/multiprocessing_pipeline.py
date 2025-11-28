@@ -119,7 +119,9 @@ def parse_with_per_chunk_subprocess(config):
     if run_metadata.get("batch_job_index",None) is None or run_metadata["batch_job_index"]==1:    
         release_years_file_ids = temp_parser.fetch_record_ids(
             timeout=pipeline_config["fetching_metadata_timeout"], seperate_mc=True)
-            
+        parser.AtlasOpenParser.limit_files_per_year(
+            release_years_file_ids, pipeline_config["limit_files_per_year"])
+        
         with open(pipeline_config["file_urls_path"], "w") as f:
             json.dump(release_years_file_ids, f, indent=2)
 
@@ -242,9 +244,10 @@ def parse_with_per_chunk_subprocess(config):
                     logger.info(f"Retrying {len(files_remaining)} crashed files...")
                     os.remove(crashed_files_path)
                     
-                    cur_retries += 1
                 #Allow for some sleep to let remote dataserver rest
+                cur_retries += 1
                 time.sleep(30)
+            
         
 
     if all_stats:
@@ -261,6 +264,7 @@ def parse_with_per_chunk_subprocess(config):
 def get_batch_by_index(whole_file_ids, batch_index, total_batch_jobs):
     """Extracts a batch of file IDs using a moving window across all years"""
     batch_index = int(batch_index)
+    total_batch_jobs = int(total_batch_jobs)
     
     # Flatten all file IDs into a single array with year tracking
     all_files = []

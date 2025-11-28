@@ -15,7 +15,7 @@ import io
 import contextlib
 
 CONFIG_PATH = "configs/pipeline_config.yaml"
-TIME_FOR_FILE_SEC = 5 * 60
+TIME_FOR_FILE_SEC = 20
 WALLTIME_PER_JOB_SEC = 24 * 3600  # 24 hours
 
 arg_parser = argparse.ArgumentParser()
@@ -29,9 +29,11 @@ with open(args.config) as f:
 
 _buf = io.StringIO()
 with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_buf):
-    release_year_file_ids: dict = parser.AtlasOpenParser.fetch_record_ids_for_release_years(
-        release_years=config["parsing_config"]["atlasparser_config"]["release_years"],
-        timeout=60
+    temp_parser = parser.AtlasOpenParser(
+        chunk_yield_threshold_bytes=0, max_threads=0, logging_path=None,
+        release_years=config["parsing_config"]["atlasparser_config"]["release_years"])
+    release_year_file_ids: dict = temp_parser.fetch_record_ids(
+        timeout=160
     )
 
 all_file_ids = set(itertools.chain.from_iterable(release_year_file_ids.values()))

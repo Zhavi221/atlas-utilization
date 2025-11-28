@@ -14,13 +14,13 @@ parsing_config:
 
   pipeline_config:
     # ===USE A MULTIPROCESSING WHILE PARSING
-    parse_in_multiprocessing: true #important for cluster processing
+    parse_in_multiprocessing: false #important for cluster processing
     # ===ADD FAILED FILES TO QUEUE OF FILES===
-    count_retries_failed_files: 1 
+    count_retries_failed_files: 3 
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
-    limit_files_per_year: 100 #FOR TESTING - limit number of files per year
+    limit_files_per_year: 10 #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
     # ===PATH FOR OUTPUTTING THE DATA===
@@ -31,12 +31,12 @@ parsing_config:
     # max_environment_memory_mb: 8192
       # ===RELEVANT WHEN USED IN A RESTRICTED MEMORY ENV (A CLUSTER)===
     max_environment_memory_mb: 20000 
-    # ===RELEASE YEARS TO PARSE THE FILES FROM (CAN BE EMPTY)===  
-    release_years: ["2024r-pp"]
+    # ===RELEASE YEARS TO PARSE THE FILES FROM (IF EMPTY FETCHES ALL)===  
+    release_years: []
     # ===AMOUNT OF THREADS TO USE MULTITHREADING WITH, 4 IS A STABLE AMOUNT===
-    max_threads: 4
+    max_threads: 8
     # ===A THRESHOLD FOR PREVENTING MEMORY OVERLOAD===
-    chunk_yield_threshold_bytes: 5000000000 #?1GB 
+    chunk_yield_threshold_bytes: 5000000000 #?1GB CURRENTLY BUT 300MB PROVED ITSELF IN TESTING
     # chunk_yield_threshold_bytes: 100000000 #FOR TESTING - 50MB for testing
     # ===PATH FOR OUTPUTTING THE LOGS===
     logging_path: "/storage/agrp/netalev/logs/"
