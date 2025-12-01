@@ -14,18 +14,18 @@ parsing_config:
 
   pipeline_config:
     # ===USE A MULTIPROCESSING WHILE PARSING
-    parse_in_multiprocessing: false #important for cluster processing
+    parse_in_multiprocessing: true #important for cluster processing
     # ===ADD FAILED FILES TO QUEUE OF FILES===
     count_retries_failed_files: 3 
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
-    limit_files_per_year: null #FOR TESTING - limit number of files per year
+    limit_files_per_year: 50 #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
     # ===PATH FOR OUTPUTTING THE DATA===
-    output_path: "/storage/agrp/netalev/data/root_files/"
-    file_urls_path: "/storage/agrp/netalev/data/batch_job_file_ids.json"
+    output_path: "/data/root_files/"
+    file_urls_path: "/data/batch_job_file_ids.json"
   
   atlasparser_config:
     # max_environment_memory_mb: 8192
@@ -39,7 +39,7 @@ parsing_config:
     chunk_yield_threshold_bytes: 5000000000 #?1GB CURRENTLY BUT 300MB PROVED ITSELF IN TESTING
     # chunk_yield_threshold_bytes: 100000000 #FOR TESTING - 50MB for testing
     # ===PATH FOR OUTPUTTING THE LOGS===
-    logging_path: "/storage/agrp/netalev/logs/"
+    logging_path: "/data/logs/"
     # ===SHOULD CREATE LOGGING AND DATA DIRECTORIES===
     create_dirs: true
     # ===THE NAMES FOR THE DATA TREES INSIDE THE ROOT FILES, CHANGES FROM EDU TO RESEARCH RELEASES===
@@ -74,13 +74,19 @@ mass_calculate:
   field_to_slice_by: "pt" 
   # ===LIMIT COMBINATIONS CALCULATED, MAINLY FOR TESTING===
   limit_combinations: null
-  # ===THRESHOLD FOR EMPTYING THE FS MAPPING===
-  # fs_mapping_threshold_bytes: 1000000000 #1GB 
-  fs_mapping_threshold_bytes: 50000 #FOR TESTING - 500MB for testing
+  # ===THRESHOLD FOR EMPTYING THE FS MAPPING (in bytes)===
+  fs_mapping_threshold_bytes: 50000000  # 50MB default
   # ===INPUT DIRECTORY FOR THE ROOT FILES TO CALCULATE FROM===
-  input_dir: "/storage/agrp/netalev/data/root_files/"
+  input_dir: "/data/root_files/"
   # ===OUTPUT DIRECTORY FOR THE INVARIANT MASS ARRAYS===
-  output_dir: "/storage/agrp/netalev/data/inv_masses/"
+  output_dir: "/data/inv_masses/"
+  # ===USE MULTIPROCESSING FOR PARALLEL FILE PROCESSING===
+  use_multiprocessing: false
+  # ===NUMBER OF WORKER PROCESSES (only used if use_multiprocessing is true)===
+  max_workers: null  # null = use CPU count
+  # ===BATCH JOB CONFIGURATION (for distributed processing)===
+  batch_job_index: null  # Set when running as batch job
+  total_batch_jobs: null  # Set when running as batch job
   # ===PARTICLES TO CALCULATE INVARIANT MASS OUT OF===
   objects_to_calculate:
       - Electrons
@@ -88,7 +94,7 @@ mass_calculate:
       - Jets
       - Photons
   # ===COMBINATORICS===
-  # ===MINIMUM AND MAXIUM PARTICLES IN A COMBINATION===
+  # ===MINIMUM AND MAXIMUM PARTICLES IN A COMBINATION===
   min_particles: 2
   max_particles: 4
   # ===COUNT FOR EACH PARTICLE IN A COMBINATION=== 

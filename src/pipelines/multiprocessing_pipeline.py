@@ -64,14 +64,24 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             
             logger.info("Flattening for ROOT")
             root_ready = atlasparser.flatten_for_root(filtered_events)
+
+            # Measure filtered logical size before freeing
+            filtered_size_mb = filtered_events.layout.nbytes / (1024**2)
             del filtered_events
             
             logger.info("Saving events to disk")
-            atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])
+            output_path = atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])
+            
+            # Measure on-disk size of the produced ROOT file
+            disk_size_mb = os.path.getsize(output_path) / (1024**2) if os.path.exists(output_path) else 0.0
 
             stats = atlasparser.get_statistics(
                 total_files=len(files_parsed)
             )
+            # Attach filtered and disk size measurements to stats
+            stats.setdefault("performance", {})
+            stats["performance"]["total_filtered_data_mb"] = filtered_size_mb
+            stats["performance"]["total_disk_data_mb"] = disk_size_mb
             
             logger.info("Subprocess exiting")
             return {
@@ -165,9 +175,14 @@ def parse_with_per_chunk_subprocess(config):
                 logger.info(f"Files remaining: {len(files_remaining)}, spawning {max_parallel_workers} workers...")
                 
                 # Split remaining files among workers
+                # Use adaptive worker count based on remaining files
+                MIN_FILES_PER_WORKER = 10
+                FALLBACK_FILES_PER_WORKER = 20
+                
                 num_workers = min(max_parallel_workers, len(files_remaining))
-                if len(files_remaining) < (max_parallel_workers * 10):  # Less than 10 files per worker
-                    num_workers = max(1, len(files_remaining) // 20)
+                if len(files_remaining) < (max_parallel_workers * MIN_FILES_PER_WORKER):
+                    # Not enough files for full parallelism, reduce workers
+                    num_workers = max(1, len(files_remaining) // FALLBACK_FILES_PER_WORKER)
 
                 file_chunks = chunk_list(files_remaining, num_workers)
                 
@@ -204,10 +219,11 @@ def parse_with_per_chunk_subprocess(config):
                                         all_stats.append(result["stats"])
                                         files_parsed = result["files_parsed"]
                                         
-                                        # Update tracking
-                                        for f in files_parsed:
-                                            if f in files_remaining:
-                                                files_remaining.remove(f)
+                                        # Update tracking - use set for O(1) removal
+                                        files_parsed_set = set(files_parsed)
+                                        files_remaining_set = set(files_remaining)
+                                        files_remaining_set -= files_parsed_set
+                                        files_remaining = list(files_remaining_set)
                                         
                                         chunk_count += 1
                                         total_events += result["num_events"]
@@ -236,17 +252,31 @@ def parse_with_per_chunk_subprocess(config):
             if not os.path.exists(crashed_files_path):
                 logger.info("No crashed files to retry.")
                 break
-            else:
-                with open(crashed_files_path, "r+") as f:
+            
+            # Validate and load crashed files
+            try:
+                with open(crashed_files_path, "r") as f:
                     data = json.load(f)
                 files_remaining = data.get("failed_files", [])
+                
+                if not isinstance(files_remaining, list):
+                    logger.warning(f"Invalid format in {crashed_files_path}, expected list")
+                    files_remaining = []
+                
                 if files_remaining:
                     logger.info(f"Retrying {len(files_remaining)} crashed files...")
                     os.remove(crashed_files_path)
+                else:
+                    logger.info("Crashed files list is empty, no retries needed.")
+                    break
                     
-                #Allow for some sleep to let remote dataserver rest
-                cur_retries += 1
-                time.sleep(30)
+            except (json.JSONDecodeError, IOError) as e:
+                logger.error(f"Error reading crashed files: {e}. Skipping retry.")
+                break
+            
+            # Allow for some sleep to let remote dataserver rest
+            cur_retries += 1
+            time.sleep(30)
             
         
 
@@ -313,6 +343,8 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_c
     all_chunk_sizes = [s["performance"]["avg_chunk_size_mb"] for s in stats_list]
     total_events = sum(s["performance"]["total_events_processed"] for s in stats_list)
     total_data_mb = sum(s["performance"]["total_data_processed_mb"] for s in stats_list)
+    total_filtered_data_mb = sum(s["performance"].get("total_filtered_data_mb", 0.0) for s in stats_list)
+    total_disk_data_mb = sum(s["performance"].get("total_disk_data_mb", 0.0) for s in stats_list)
     all_memory_captures = [s["performance"]["max_memory_captured_mb"] for s in stats_list]
 
     # Collect all chunk details
@@ -376,6 +408,8 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_c
         },
         "performance": {
             "total_data_processed_mb": total_data_mb,
+            "total_filtered_data_mb": total_filtered_data_mb,
+            "total_disk_data_mb": total_disk_data_mb,
             "total_events_processed": total_events,
             "chunks_created": total_chunks,
             "avg_chunk_size_mb": total_data_mb / total_chunks,

@@ -239,31 +239,17 @@ class AtlasOpenParser():
         '''
             Fetches the Monte Carlo records IDs for a given release year.
             Returns a list of file URIs.
+            
+            NOTE: This method is currently unused and may need refactoring.
+            It relies on external constants that are not defined in this codebase.
         '''
-        release = consts.RELEASES_YEARS[release_year]
-        metadata_url = consts.LIBRARY_RELEASES_METADATA[release]
-
-        _metadata = {}
-
-        response = requests.get(metadata_url)
-
-        response.raise_for_status()
-        lines = response.text.splitlines()
-
-        reader = csv.DictReader(lines)
-        for row in reader:
-            dataset_number = row['dataset_number'].strip()
-            _metadata[dataset_number] = row
-
-        all_mc_ids = list(_metadata.keys())
-
-        if is_random:
-            random_mc_id = random.choice(all_mc_ids)
-            all_metadata = atom.get_metadata(random_mc_id)
-            print(all_metadata['process'], all_metadata['short_name'])
-            return random_mc_id
-
-        return all_mc_ids
+        # TODO: This method references undefined constants (RELEASES_YEARS, LIBRARY_RELEASES_METADATA)
+        # If this functionality is needed, these constants should be defined or
+        # the method should be refactored to use the atlasopenmagic library directly.
+        raise NotImplementedError(
+            "fetch_mc_files_ids is not fully implemented. "
+            "Use fetch_record_ids with appropriate release years instead."
+        )
 
     #PARSING METHODS
     def parse_files(self,
@@ -336,8 +322,11 @@ class AtlasOpenParser():
     def _process_completed_future(self, future, file_index, release_year):
         """Process a single completed future. Returns updated success count."""
         file_start_time = time.time()
+        # Use configurable timeout, default to 10 seconds
+        file_timeout = getattr(self, 'file_processing_timeout', 10)
+        
         try:
-            cur_file_data = future.result(timeout=10)
+            cur_file_data = future.result(timeout=file_timeout)
             if cur_file_data is not None:
                 self.successful_count += 1
                 file_size_mb, events_in_file = self._save_parsed_file_metadata(
@@ -350,10 +339,18 @@ class AtlasOpenParser():
                 cur_file_data = AtlasOpenParser._normalize_fields(cur_file_data)
                 self._concatenate_events(cur_file_data)
 
+        except TimeoutError as e:
+            file_processing_time = time.time() - file_start_time
+            self._log_crash(file_index, e, file_processing_time)
+            tqdm.write(f"⚠️ Timeout: {file_index} - processing took >{file_timeout}s")
+        except (ValueError, KeyError, AttributeError) as e:
+            file_processing_time = time.time() - file_start_time
+            self._log_crash(file_index, e, file_processing_time)
+            tqdm.write(f"⚠️ Data error: {file_index} - {type(e).__name__}: {str(e)[:100]}")
         except Exception as e:
             file_processing_time = time.time() - file_start_time
             self._log_crash(file_index, e, file_processing_time)
-            tqdm.write(f"⚠️ Error: {file_index} - {type(e).__name__}") 
+            tqdm.write(f"⚠️ Unexpected error: {file_index} - {type(e).__name__}") 
     
     def _prepare_chunk_for_yield(self):    
         chunk_to_yield = self.events
@@ -472,6 +469,7 @@ class AtlasOpenParser():
             }
 
         self.cur_file_ids.clear()
+        return output_path
     
     #FEATURE make static
     def flatten_for_root(self, awk_arr):

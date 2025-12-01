@@ -1,12 +1,31 @@
+"""
+Physics calculations for particle event processing.
+
+Provides functions for:
+- Invariant mass calculations
+- Event filtering by kinematics and particle counts
+- Final state grouping
+- Event slicing and manipulation
+"""
 import awkward as ak
 import numpy as np
 import vector
 import gc
+from typing import Dict, Iterator, Tuple, Optional
 from src.calculations import consts
 
 vector.register_awkward()
 
 def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
+    """
+    Calculate invariant mass for particle events.
+    
+    Args:
+        particle_events: Awkward array with particle fields (Electrons, Muons, etc.)
+        
+    Returns:
+        Array of invariant masses (one per event)
+    """
     if len(particle_events) == 0:
         return ak.Array([])
 
@@ -22,7 +41,16 @@ def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
 
     return inv_mass
 
-def concat_events(particle_events: ak.Array) -> ak.Array:
+def concat_events(particle_events: ak.Array) -> list:
+    """
+    Convert particle events to momentum vectors.
+    
+    Args:
+        particle_events: Awkward array with particle fields
+        
+    Returns:
+        List of momentum vector arrays, one per particle type
+    """
     all_vectors = []
     particle_types = particle_events.fields
     for particle_type in particle_types:
@@ -41,7 +69,17 @@ def concat_events(particle_events: ak.Array) -> ak.Array:
 
     return all_vectors 
 
-def get_particle_known_mass(particle_type, particle_array):
+def get_particle_known_mass(particle_type: str, particle_array: ak.Array) -> ak.Array:
+    """
+    Get particle mass from array or use known mass constant.
+    
+    Args:
+        particle_type: Name of particle type (e.g., "Electrons")
+        particle_array: Array of particles
+        
+    Returns:
+        Array of masses
+    """
     if 'm' in particle_array.fields:
         return particle_array.m
     else:
@@ -56,7 +94,17 @@ def extract_object_types(fields: list) -> set:
 
     return particle_types
 
-def group_by_final_state(events: ak.Array):
+def group_by_final_state(events: ak.Array) -> Iterator[Tuple[str, ak.Array]]:
+    """
+    Group events by their final state (particle counts).
+    
+    Args:
+        events: Awkward array with particle events
+        
+    Yields:
+        Tuples of (final_state_string, events_matching_final_state)
+        Final state format: "{e}e_{m}m_{j}j_{p}p" where numbers are counts
+    """
     particle_counts = ak.num(events)
     e = particle_counts.Electrons
     m = particle_counts.Muons
@@ -73,37 +121,82 @@ def group_by_final_state(events: ak.Array):
         yield (fs, events_matching_fs)
 
 def limit_particles_in_fs(final_state, threshold):
+    """
+    Limit particle counts in final state string to threshold.
+    
+    Args:
+        final_state: Final state string like "2e_3m_5j_1p"
+        threshold: Maximum count to allow
+        
+    Returns:
+        Modified final state string with counts capped at threshold
+    """
     fs_particles = final_state.split('_')
     for str_amount_particle in fs_particles:
+        if len(str_amount_particle) < 2:
+            continue
         amount_to_calc = str_amount_particle[0]
         particle_letter = str_amount_particle[1]
-        amount = int(amount_to_calc)
-        if amount > threshold:
-            final_state = final_state.replace(
-                f"{amount}{particle_letter}", f"{threshold}{particle_letter}")
-            
+        if amount_to_calc.isdigit():
+            amount = int(amount_to_calc)
+            if amount > threshold:
+                final_state = final_state.replace(
+                    f"{amount}{particle_letter}", f"{threshold}{particle_letter}")
     return final_state
 
 def is_finalstate_contain_combination(final_state, combination):
+    """
+    Check if a final state contains enough particles for a combination.
+    
+    Args:
+        final_state: Final state string like "2e_3m_5j_1p"
+        combination: Dictionary mapping particle types to required counts
+        
+    Returns:
+        True if final state has enough particles for the combination
+    """
     fs_particles = final_state.split('_')
     for str_amount_particle in fs_particles:
+        if len(str_amount_particle) < 2:
+            continue
         amount_to_calc = str_amount_particle[0]
         particle_letter = str_amount_particle[1]
-        particle = consts.LETTER_PARTICLE_MAPPING[particle_letter]
-
-        if particle not in combination or not amount_to_calc.isdigit():
+        particle = consts.LETTER_PARTICLE_MAPPING.get(particle_letter)
+        
+        if particle is None or particle not in combination:
             continue
         
-        fs_particle_amount = combination[particle]
-        if int(amount_to_calc) > fs_particle_amount:
+        if not amount_to_calc.isdigit():
+            continue
+        
+        fs_particle_amount = int(amount_to_calc)
+        required_amount = combination[particle]
+        
+        if fs_particle_amount < required_amount:
             return False
         
     return True
 
-def filter_events_by_particle_counts(events, particle_counts, is_exact_count=False, is_particle_counts_range=False):
+def filter_events_by_particle_counts(
+    events: ak.Array, 
+    particle_counts: Dict[str, int], 
+    is_exact_count: bool = False, 
+    is_particle_counts_range: bool = False
+) -> ak.Array:
     """
-    MEMORY OPTIMIZED VERSION: Builds combined mask first, applies once.
+    Filter events by particle counts.
+    
+    Memory optimized: builds combined mask first, applies once.
     This avoids creating intermediate filtered arrays.
+    
+    Args:
+        events: Events to filter
+        particle_counts: Dictionary of particle type to count/range
+        is_exact_count: If True, require exact count match
+        is_particle_counts_range: If True, particle_counts contains min/max dicts
+        
+    Returns:
+        Filtered events array
     """
 
     if len(events) == 0:
@@ -146,7 +239,22 @@ def filter_events_by_particle_counts(events, particle_counts, is_exact_count=Fal
     
     return ak.to_packed(filtered_events)
 
-def slice_events_by_field(events, particle_counts, field_to_slice_by):
+def slice_events_by_field(
+    events: ak.Array, 
+    particle_counts: Dict[str, int], 
+    field_to_slice_by: str
+) -> ak.Array:
+    """
+    Slice events to keep only top N particles by a field (e.g., pt).
+    
+    Args:
+        events: Events to slice
+        particle_counts: Dictionary mapping particle types to counts to keep
+        field_to_slice_by: Field name to sort by (default: "pt")
+        
+    Returns:
+        Sliced events array
+    """
     for obj, count in particle_counts.items():
         obj_array = events[obj]
         sorted_obj_array = obj_array[ak.argsort(obj_array[field_to_slice_by], ascending=False)]
@@ -156,10 +264,23 @@ def slice_events_by_field(events, particle_counts, field_to_slice_by):
 
     return events
 
-def filter_events_by_kinematics(events, kinematic_cuts):
+def filter_events_by_kinematics(
+    events: ak.Array, 
+    kinematic_cuts: Dict[str, Dict[str, float]]
+) -> ak.Array:
     """
-    MEMORY OPTIMIZED: Build masks per particle type, apply once per type.
+    Filter events by kinematic cuts (pt, eta, phi).
+    
+    Memory optimized: builds masks per particle type, applies once per type.
     Avoids creating multiple intermediate filtered arrays.
+    
+    Args:
+        events: Events to filter
+        kinematic_cuts: Dictionary with keys like "pt", "eta", "phi"
+                      containing min/max values
+                      
+    Returns:
+        Filtered events array
     """
     filtered_events = {}
     i = 0
@@ -193,11 +314,19 @@ def filter_events_by_kinematics(events, kinematic_cuts):
 
     return ak.zip(filtered_events, depth_limit=1)
 
-def find_actual_field_name(fields, obj_name):
-    '''
-        Finds the actual field name in the events for a given object name.
-        This is useful when the object name is a substring of the actual field name.
-    '''
+def find_actual_field_name(fields: list, obj_name: str) -> Optional[str]:
+    """
+    Find the actual field name in the events for a given object name.
+    
+    This is useful when the object name is a substring of the actual field name.
+    
+    Args:
+        fields: List of available field names
+        obj_name: Object name to search for
+        
+    Returns:
+        Matching field name or None if not found
+    """
     for field in fields:
         if obj_name in field:
             return field

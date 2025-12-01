@@ -9,28 +9,27 @@ from datetime import datetime
 CONFIG_PATH = "configs/pipeline_config.yaml"
 
 def main():
-    global main_logger
-    main_logger = init_logging()
+    """Main entry point for the pipeline."""
+    logger = init_logging()
     config = load_config(CONFIG_PATH)
     tasks = config["tasks"]
-    testing_config = config["testing_config"]
 
     if tasks["do_parsing"]:
-        main_logger.info("Starting parsing task")
+        logger.info("Starting parsing task")
         parsing_config = config["parsing_config"]
         pipeline_config = parsing_config["pipeline_config"]
             
         if pipeline_config["parse_in_multiprocessing"]:
-            main_logger.info("Parsing with multiprocessing")
+            logger.info("Parsing with multiprocessing")
             from src.pipelines import multiprocessing_pipeline
             multiprocessing_pipeline.parse_with_per_chunk_subprocess(parsing_config)   
         else:
-            main_logger.info("Parsing without a subprocess")
+            logger.info("Parsing without a subprocess")
             from src.pipelines import parsing_pipeline
             parsing_pipeline.parse(parsing_config)
             
     if tasks["do_mass_calculating"]:
-        main_logger.info("Starting calculations task")
+        logger.info("Starting calculations task")
         from src.pipelines import im_pipeline
         im_pipeline.mass_calculate(config["mass_calculate"])
 
@@ -81,11 +80,19 @@ def load_config(config_path):
         run_time = ts.strftime("%d_%m_%Y_%H:%M")
         if args.batch_job_index is not None:
             batch_job_index = int(args.batch_job_index)
+            total_batch_jobs = int(args.total_batch_jobs) if args.total_batch_jobs else None
+            
             config["parsing_config"]["run_metadata"] = {
                 "batch_job_index": batch_job_index,
                 "run_name": f"job_idx{batch_job_index}_{run_time}",
-                "total_batch_jobs": args.total_batch_jobs
+                "total_batch_jobs": total_batch_jobs
             }
+            
+            # Also set batch job info for IM pipeline if it exists
+            # For IM pipeline, batching is based on file+combination pairs
+            if "mass_calculate" in config:
+                config["mass_calculate"]["batch_job_index"] = batch_job_index
+                config["mass_calculate"]["total_batch_jobs"] = total_batch_jobs
 
         else:
             config["parsing_config"]["run_metadata"] = {

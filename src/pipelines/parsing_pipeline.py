@@ -1,18 +1,13 @@
+"""
+Parsing Pipeline - Single Process Mode
+
+Processes ATLAS Open Data files sequentially in a single process.
+For multiprocessing mode, see multiprocessing_pipeline.py
+"""
 import logging
 import sys
-from src.parse_atlas import parser, schemas
-from src.calculations import combinatorics, physics_calcs
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-import matplotlib.pyplot as plt # plotting
-import awkward as ak
-import tqdm
-import argparse
-import yaml
-import uproot
-import awkward as ak
-import os
-import gc
-import random
+from src.parse_atlas import parser
+from src.calculations import physics_calcs
 
 def parse(config):
     logger = init_logging()
@@ -43,7 +38,7 @@ def parse(config):
         cut_events = physics_calcs.filter_events_by_kinematics(
             events_chunk, config["kinematic_cuts"]
         )
-        #del events_chunk  
+        del events_chunk  
 
         logger.info("Filtering events")
         filtered_events = physics_calcs.filter_events_by_particle_counts(
@@ -51,17 +46,15 @@ def parse(config):
             particle_counts=config["particle_counts"], 
             is_particle_counts_range=True
         ) 
-        #del cut_events
+        del cut_events
 
         logger.info("Flattening root")
         root_ready = atlasparser.flatten_for_root(filtered_events)
-        #del filtered_events
+        del filtered_events
 
         logger.info("Saving events")
         atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])        
-        #del root_ready
-
-        #gc.collect()  
+        del root_ready  
 
 def init_logging():
     logging.basicConfig(
