@@ -169,16 +169,13 @@ def parse_with_per_chunk_subprocess(config):
         
         # Loop: spawn subprocess for each chunk
         files_remaining = file_ids
+        MIN_FILES_PER_WORKER = 10
+        FALLBACK_FILES_PER_WORKER = 20
 
         while cur_retries <= count_retries_failed_files: # CHECK retry files
             while files_remaining:
                 logger.info(f"Files remaining: {len(files_remaining)}, spawning {max_parallel_workers} workers...")
-                
-                # Split remaining files among workers
-                # Use adaptive worker count based on remaining files
-                MIN_FILES_PER_WORKER = 10
-                FALLBACK_FILES_PER_WORKER = 20
-                
+                                
                 num_workers = min(max_parallel_workers, len(files_remaining))
                 if len(files_remaining) < (max_parallel_workers * MIN_FILES_PER_WORKER):
                     # Not enough files for full parallelism, reduce workers

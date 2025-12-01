@@ -1,6 +1,6 @@
 tasks:
-  do_parsing: true
-  do_mass_calculating: false
+  do_parsing: false
+  do_mass_calculating: true
 
 testing_config:
   is_on: false #normal or random
@@ -24,8 +24,8 @@ parsing_config:
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
     # ===PATH FOR OUTPUTTING THE DATA===
-    output_path: "/data/root_files/"
-    file_urls_path: "/data/batch_job_file_ids.json"
+    output_path: "/storage/agrp/netalev/data/root_files/"
+    file_urls_path: "/storage/agrp/netalev/data/batch_job_file_ids.json"
   
   atlasparser_config:
     # max_environment_memory_mb: 8192
@@ -39,7 +39,7 @@ parsing_config:
     chunk_yield_threshold_bytes: 5000000000 #?1GB CURRENTLY BUT 300MB PROVED ITSELF IN TESTING
     # chunk_yield_threshold_bytes: 100000000 #FOR TESTING - 50MB for testing
     # ===PATH FOR OUTPUTTING THE LOGS===
-    logging_path: "/data/logs/"
+    logging_path: "/storage/agrp/netalev/logs/"
     # ===SHOULD CREATE LOGGING AND DATA DIRECTORIES===
     create_dirs: true
     # ===THE NAMES FOR THE DATA TREES INSIDE THE ROOT FILES, CHANGES FROM EDU TO RESEARCH RELEASES===
@@ -77,13 +77,13 @@ mass_calculate:
   # ===THRESHOLD FOR EMPTYING THE FS MAPPING (in bytes)===
   fs_mapping_threshold_bytes: 50000000  # 50MB default
   # ===INPUT DIRECTORY FOR THE ROOT FILES TO CALCULATE FROM===
-  input_dir: "/data/root_files/"
+  input_dir: "/storage/agrp/netalev/data/root_files/"
   # ===OUTPUT DIRECTORY FOR THE INVARIANT MASS ARRAYS===
-  output_dir: "/data/inv_masses/"
+  output_dir: "/storage/agrp/netalev/data/inv_masses/"
   # ===USE MULTIPROCESSING FOR PARALLEL FILE PROCESSING===
-  use_multiprocessing: false
+  use_multiprocessing: true
   # ===NUMBER OF WORKER PROCESSES (only used if use_multiprocessing is true)===
-  max_workers: null  # null = use CPU count
+  max_workers: 4  # null = use CPU count
   # ===BATCH JOB CONFIGURATION (for distributed processing)===
   batch_job_index: null  # Set when running as batch job
   total_batch_jobs: null  # Set when running as batch job
