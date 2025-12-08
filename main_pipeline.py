@@ -101,9 +101,9 @@ def load_config(args):
         ts = datetime.now()
         run_time = ts.strftime("%d_%m_%Y_%H:%M")
         if args.batch_job_index is not None:
-            batch_job_index = int(args.batch_job_index)
+            batch_job_index = int(args.batch_job_index) 
             total_batch_jobs = int(args.total_batch_jobs) if args.total_batch_jobs else None
-            
+
             run_name = f"job_idx{batch_job_index}_{run_time}" if config["parsing_config"]["run_metadata"]["run_name"] is None else config["parsing_config"]["run_metadata"]["run_name"]
             
             # Also set batch job info for IM pipeline if it exists

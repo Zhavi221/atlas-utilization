@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/main_pipeline.py",
             "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/atlas_utilization"
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

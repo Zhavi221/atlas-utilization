@@ -1,5 +1,5 @@
 tasks:
-  do_parsing: false
+  do_parsing: true
   do_mass_calculating: true
 
 testing_config:
@@ -12,7 +12,7 @@ parsing_config:
     # ===BATCH JOB INDEX===
     batch_job_index: null
     run_name: null
-    total_batch_jobs: 12
+    total_batch_jobs: null
 
   pipeline_config:
     # ===USE A MULTIPROCESSING WHILE PARSING
@@ -22,12 +22,13 @@ parsing_config:
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
-    limit_files_per_year: 50 #FOR TESTING - limit number of files per year
+    limit_files_per_year: null #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
     # ===PATH FOR OUTPUTTING THE DATA===
     output_path: "/storage/agrp/netalev/data/root_files/"
     file_urls_path: "/storage/agrp/netalev/data/batch_job_file_ids.json"
+    parse_mc: false
   
   atlasparser_config:
     # max_environment_memory_mb: 8192

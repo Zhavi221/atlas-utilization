@@ -1,11 +1,11 @@
 #!/bin/bash
 #PBS -q N
-#PBS -N test_skipping_files
 #PBS -o logs/parse_job_default.out
 #PBS -e logs/parse_job_default.err
 #PBS -l select=1:ncpus=10:mem=20gb
 #PBS -l io=5
 #PBS -l walltime=25:00:00
+#PBS -J 1-14 
 
 cd $PBS_O_WORKDIR
 
@@ -13,8 +13,8 @@ export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
 source ${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
 lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 
-echo "Running single job (batch_job_index=1)"
+echo "Running job index: $PBS_ARRAY_INDEX"
 
 python create_folder_for_run.py
 
-python main_pipeline.py --batch_job_index 1 --total_batch_jobs 1     > "/storage/agrp/netalev/logs/test_skipping_files.out"     2> "/storage/agrp/netalev/logs/test_skipping_files.err"
+python main_pipeline.py --batch_job_index $PBS_ARRAY_INDEX --total_batch_jobs 14     > "/storage/agrp/netalev/logs/real_job_${PBS_ARRAY_INDEX}.out"     2> "/storage/agrp/netalev/logs/real_job_${PBS_ARRAY_INDEX}.err"

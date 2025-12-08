@@ -200,25 +200,123 @@ def parse_with_per_chunk_subprocess(config):
     )
     
     release_years_file_ids = {}
-    if run_metadata.get("batch_job_index",None) is None or run_metadata["batch_job_index"]==1:    
-        release_years_file_ids = temp_parser.fetch_record_ids(
-            timeout=pipeline_config["fetching_metadata_timeout"], seperate_mc=True)
-        if not pipeline_config["parse_mc"]:
-            release_years_file_ids = {k: v for k, v in release_years_file_ids.items() if "mc" not in k}
-
-        parser.AtlasOpenParser.limit_files_per_year(
-            release_years_file_ids, pipeline_config["limit_files_per_year"])
-        
-        with open(pipeline_config["file_urls_path"], "w") as f:
-            json.dump(release_years_file_ids, f, indent=2)
-
-    elif os.path.exists(pipeline_config["file_urls_path"]):
-            with open(pipeline_config["file_urls_path"], "r") as f:
+    file_urls_path = pipeline_config["file_urls_path"]
+    lock_file_path = file_urls_path + ".lock"
+    
+    # First, try to read existing file (for all jobs, including job 1)
+    if os.path.exists(file_urls_path):
+        try:
+            with open(file_urls_path, "r") as f:
                 whole_file_ids = json.load(f)
-                release_years_file_ids = get_batch_by_index(whole_file_ids, run_metadata["batch_job_index"], run_metadata["total_batch_jobs"])
+            logger.info(f"Loaded file URLs from existing file: {file_urls_path}")
+            
+            # Extract batch for this job (or use all if no batching)
+            if run_metadata.get("batch_job_index") is not None:
+                release_years_file_ids = get_batch_by_index(
+                    whole_file_ids, 
+                    run_metadata["batch_job_index"], 
+                    run_metadata["total_batch_jobs"]
+                )
+                logger.info(f"Extracted batch {run_metadata['batch_job_index']}/{run_metadata['total_batch_jobs']} from existing file")
+            else:
+                # No batching, use all files
+                release_years_file_ids = whole_file_ids
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning(f"Error reading existing file URLs: {e}. Will fetch new ones.")
+            whole_file_ids = None
     else:
-        logger.error(f"File with all file URLs not found at {pipeline_config['file_urls_path']}")
-        return
+        whole_file_ids = None
+    
+    # Only fetch if file doesn't exist or was corrupted
+    if whole_file_ids is None:
+        # Use file locking to ensure only one process creates the file
+        max_wait_time = 300  # Wait up to 5 minutes for another job to create the file
+        wait_interval = 2  # Check every 2 seconds
+        elapsed_time = 0
+        lock_acquired = False
+        
+        while elapsed_time < max_wait_time:
+            try:
+                # Try to create lock file exclusively (atomic operation)
+                lock_fd = os.open(lock_file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                # We got the lock! Now fetch and write
+                lock_acquired = True
+                try:
+                    logger.info("Acquired lock - fetching file URLs...")
+                    whole_file_ids = temp_parser.fetch_record_ids(
+                        timeout=pipeline_config["fetching_metadata_timeout"], 
+                        seperate_mc=True
+                    )
+                    if not pipeline_config["parse_mc"]:
+                        whole_file_ids = {
+                            k: v for k, v in whole_file_ids.items() 
+                            if "mc" not in k
+                        }
+                    
+                    parser.AtlasOpenParser.limit_files_per_year(
+                        whole_file_ids, 
+                        pipeline_config["limit_files_per_year"]
+                    )
+                    
+                    # Write atomically using temp file + rename
+                    temp_file_path = file_urls_path + ".tmp"
+                    with open(temp_file_path, "w") as f:
+                        json.dump(whole_file_ids, f, indent=2)
+                    os.rename(temp_file_path, file_urls_path)
+                    logger.info(f"Successfully created file URLs file: {file_urls_path}")
+                    break  # Success, exit loop
+                except Exception as e:
+                    logger.error(f"Error while fetching/writing file URLs: {e}")
+                    # Clean up temp file if it exists
+                    temp_file_path = file_urls_path + ".tmp"
+                    if os.path.exists(temp_file_path):
+                        os.remove(temp_file_path)
+                    raise
+                finally:
+                    os.close(lock_fd)
+                    if os.path.exists(lock_file_path):
+                        os.unlink(lock_file_path)  # Remove lock file
+            except FileExistsError:
+                # Lock file exists - another job is creating the file
+                logger.info(f"Lock file exists, waiting for another job to create file URLs... (waited {elapsed_time}s)")
+                time.sleep(wait_interval)
+                elapsed_time += wait_interval
+                
+                # Check if file was created while we waited
+                if os.path.exists(file_urls_path):
+                    try:
+                        with open(file_urls_path, "r") as f:
+                            whole_file_ids = json.load(f)
+                        logger.info("File was created by another job, loaded successfully")
+                        break
+                    except (json.JSONDecodeError, IOError):
+                        # File might be incomplete, continue waiting
+                        pass
+            except Exception as e:
+                logger.error(f"Unexpected error while acquiring lock: {e}")
+                if lock_acquired and os.path.exists(lock_file_path):
+                    try:
+                        os.unlink(lock_file_path)
+                    except:
+                        pass
+                raise
+        
+        # If we still don't have the file, it's an error
+        if whole_file_ids is None:
+            logger.error(f"Timeout waiting for file URLs to be created. File may not exist at {file_urls_path}")
+            return
+        
+        # Extract batch for this job (or use all if no batching)
+        if run_metadata.get("batch_job_index") is not None:
+            release_years_file_ids = get_batch_by_index(
+                whole_file_ids,
+                run_metadata["batch_job_index"],
+                run_metadata["total_batch_jobs"]
+            )
+            logger.info(f"Extracted batch {run_metadata['batch_job_index']}/{run_metadata['total_batch_jobs']} after fetching")
+        else:
+            # No batching, use all files
+            release_years_file_ids = whole_file_ids
     
     crashed_files_name = "crashed_files.json"
     if run_metadata.get("batch_job_index",None) is not None:

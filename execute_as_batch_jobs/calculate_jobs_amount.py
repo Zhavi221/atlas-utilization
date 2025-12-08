@@ -33,8 +33,11 @@ with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_buf):
         chunk_yield_threshold_bytes=0, max_threads=0, logging_path=None,
         release_years=config["parsing_config"]["atlasparser_config"]["release_years"])
     release_year_file_ids: dict = temp_parser.fetch_record_ids(
-        timeout=160
+        timeout=160, seperate_mc=True
     )
+    if not config["parsing_config"]["pipeline_config"]["parse_mc"]:
+            release_year_file_ids = {k: v for k, v in release_year_file_ids.items() if "mc" not in k}
+
     if config["parsing_config"]["pipeline_config"]["limit_files_per_year"]:
         parser.AtlasOpenParser.limit_files_per_year(release_year_file_ids, 
         config["parsing_config"]["pipeline_config"]["limit_files_per_year"])
