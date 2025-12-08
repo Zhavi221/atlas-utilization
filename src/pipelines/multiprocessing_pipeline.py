@@ -27,19 +27,71 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
     atlasparser_config = config["atlasparser_config"]
     
     try:
+        # Filter out files that have exceeded retries before processing
+        # Load retry counts from crashed_files.json if it exists
+        crashed_files_name = "crashed_files.json"
+        if pipeline_config.get("run_metadata", {}).get("batch_job_index") is not None:
+            batch_job_index = pipeline_config["run_metadata"]["batch_job_index"]
+            crashed_files_name = f"crashed_files_{batch_job_index}.json"
+        crashed_files_path = atlasparser_config["logging_path"] + crashed_files_name
+        
+        worker_retry_counts = {}
+        if os.path.exists(crashed_files_path):
+            try:
+                with open(crashed_files_path, 'r') as f:
+                    worker_data = json.load(f)
+                    worker_retry_counts = worker_data.get("retry_counts", {})
+            except (json.JSONDecodeError, IOError):
+                pass
+        
+        # Filter release_years_file_ids to exclude files that exceeded retries
+        filtered_release_years_file_ids = {}
+        skipped_files = []  # Track files that exceeded max retries
+        max_retries = pipeline_config["count_retries_failed_files"]
+        for release_year, file_ids in release_years_file_ids.items():
+            filtered_file_ids = []
+            for file_path in file_ids:
+                retry_count = worker_retry_counts.get(file_path, 0)
+                if retry_count < max_retries:
+                    filtered_file_ids.append(file_path)
+                else:
+                    skipped_files.append(file_path)
+                    logger.warning(f"Worker {worker_num}: Skipping {file_path} - exceeded max retries ({retry_count} >= {max_retries})")
+            
+            if filtered_file_ids:
+                filtered_release_years_file_ids[release_year] = filtered_file_ids
+            else:
+                logger.warning(f"Worker {worker_num}: All files for {release_year} exceeded max retries, skipping")
+        
+        if not filtered_release_years_file_ids:
+            logger.warning(f"Worker {worker_num}: No files to process after filtering (all exceeded max retries)")
+            return {
+                "status": "skipped",
+                "files_parsed": [],
+                "skipped_files": skipped_files,  # Return list of skipped files so main process can remove them
+                "saved_filename": None,  # No file saved
+                "num_events": 0,
+                "worker_num": worker_num
+            }
+        
         atlasparser = parser.AtlasOpenParser(
             max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
             chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
             max_threads=atlasparser_config["max_threads"],
             logging_path=atlasparser_config["logging_path"],
             possible_tree_names=atlasparser_config["possible_tree_names"],
-            wrapping_logger=logger
+            wrapping_logger=logger,
+            temp_directory=atlasparser_config.get("temp_directory"),
+            show_progress_bar=atlasparser_config.get("show_progress_bar", True),
+            max_file_retries=pipeline_config["count_retries_failed_files"]
         )
         
-        # Parse until we get ONE chunk
+        # Parse until we get ONE chunk (using filtered file list)
+        chunk_received = False
         for events_chunk in atlasparser.parse_files(
-            release_years_file_ids=release_years_file_ids
+            release_years_file_ids=filtered_release_years_file_ids
         ):
+            chunk_received = True
             files_parsed = atlasparser.cur_file_ids.copy()
             chunk_size_before = events_chunk.layout.nbytes / (1024**2)
             num_events = len(events_chunk)
@@ -72,6 +124,9 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             logger.info("Saving events to disk")
             output_path = atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])
             
+            # Extract just the filename (not full path) for IM pipeline
+            saved_filename = os.path.basename(output_path) if output_path else None
+            
             # Measure on-disk size of the produced ROOT file
             disk_size_mb = os.path.getsize(output_path) / (1024**2) if os.path.exists(output_path) else 0.0
 
@@ -87,9 +142,27 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             return {
                 "status": "chunk_complete",
                 "files_parsed": files_parsed,
+                "saved_filename": saved_filename,  # Return saved ROOT filename for IM pipeline
                 "num_events": num_events,
                 "chunk_size_mb": chunk_size_before,
                 "stats": stats  # Return statistics
+            }
+        
+        # If no chunks were yielded (all files failed/timeout), return appropriate status
+        if not chunk_received:
+            # Get list of files that were attempted
+            attempted_files = []
+            for release_year, file_ids in filtered_release_years_file_ids.items():
+                attempted_files.extend(file_ids)
+            
+            logger.warning(f"Worker {worker_num}: No chunks yielded from parse_files() - all {len(attempted_files)} files may have failed or timed out")
+            return {
+                "status": "no_chunks",
+                "files_parsed": attempted_files,  # Return attempted files so they can be marked as failed
+                "saved_filename": None,
+                "num_events": 0,
+                "worker_num": worker_num,
+                "message": f"No chunks produced - all {len(attempted_files)} files failed or timed out"
             }
     except Exception as e:
         logger.error(f"Subprocess error: {e}", exc_info=True)
@@ -120,15 +193,19 @@ def parse_with_per_chunk_subprocess(config):
         logging_path=atlasparser_config["logging_path"],
         release_years=atlasparser_config["release_years"],
         create_dirs=atlasparser_config["create_dirs"],
-        possible_tree_names=atlasparser_config["possible_tree_names"]
+        possible_tree_names=atlasparser_config["possible_tree_names"],
+        temp_directory=atlasparser_config.get("temp_directory"),
+        show_progress_bar=atlasparser_config.get("show_progress_bar", True),
+        max_file_retries=pipeline_config["count_retries_failed_files"]
     )
-    
-    #CHECK test the following mechanism
     
     release_years_file_ids = {}
     if run_metadata.get("batch_job_index",None) is None or run_metadata["batch_job_index"]==1:    
         release_years_file_ids = temp_parser.fetch_record_ids(
             timeout=pipeline_config["fetching_metadata_timeout"], seperate_mc=True)
+        if not pipeline_config["parse_mc"]:
+            release_years_file_ids = {k: v for k, v in release_years_file_ids.items() if "mc" not in k}
+
         parser.AtlasOpenParser.limit_files_per_year(
             release_years_file_ids, pipeline_config["limit_files_per_year"])
         
@@ -159,29 +236,144 @@ def parse_with_per_chunk_subprocess(config):
     total_events = 0
     
     all_stats = []
+    all_saved_files = []  # Track all successfully saved ROOT files for IM pipeline
     max_parallel_workers = pipeline_config["max_parallel_workers"]
+    show_progress_bar = atlasparser_config.get("show_progress_bar", True)
+    
     for release_year, file_ids in release_years_file_ids.items():
         logger.info(f"Found {len(file_ids)} files to process")
         cur_retries = 0
 
-        # Progress bar
-        pbar = tqdm(total=len(file_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=3)
+        # Progress bar (conditional based on config)
+        if show_progress_bar:
+            pbar = tqdm(total=len(file_ids), desc="Parsing files", unit="file", dynamic_ncols=True, mininterval=3)
+        else:
+            # No-op progress bar when disabled
+            class NoOpProgressBar:
+                def __init__(self, *args, **kwargs):
+                    pass
+                def update(self, n=1):
+                    pass
+                def set_postfix_str(self, s):
+                    pass
+                def close(self):
+                    pass
+            pbar = NoOpProgressBar()
         
-        # Loop: spawn subprocess for each chunk
-        files_remaining = file_ids
+        # Filter initial file list to exclude files that have already exceeded retries
+        # Load retry counts from crashed_files.json if it exists
+        crashed_files_path = atlasparser_config["logging_path"] + crashed_files_name
+        initial_retry_counts = {}
+        if os.path.exists(crashed_files_path):
+            try:
+                with open(crashed_files_path, 'r') as f:
+                    initial_data = json.load(f)
+                    initial_retry_counts = initial_data.get("retry_counts", {})
+            except (json.JSONDecodeError, IOError):
+                pass
+        
+        # Filter out files that have exceeded retries from initial list
+        files_remaining = []
+        skipped_initial = []
+        for file_path in file_ids:
+            retry_count = initial_retry_counts.get(file_path, 0)
+            if retry_count < count_retries_failed_files:
+                files_remaining.append(file_path)
+            else:
+                skipped_initial.append(file_path)
+                logger.warning(f"Skipping {file_path} from initial list - already exceeded max retries ({retry_count} >= {count_retries_failed_files})")
+        
+        if skipped_initial:
+            logger.info(f"Filtered out {len(skipped_initial)} files from initial list that exceeded max retries")
+        
+        if not files_remaining:
+            logger.warning(f"All {len(file_ids)} files for {release_year} have exceeded max retries, skipping this release year")
+            pbar.close()
+            continue
         MIN_FILES_PER_WORKER = 10
         FALLBACK_FILES_PER_WORKER = 20
+        # Track retry counts across retry iterations
+        retry_counts_global = {}
+        # Initialize with initial retry counts
+        retry_counts_global.update(initial_retry_counts)
+        # Track files that have permanently exceeded retries to prevent reprocessing
+        permanently_skipped_files = set()
+        # Initialize with files that already exceeded from initial check
+        for file_path in skipped_initial:
+            permanently_skipped_files.add(file_path)
+        # Initialize with files that already exceeded from initial check
+        for file_path in skipped_initial:
+            permanently_skipped_files.add(file_path)
 
         while cur_retries <= count_retries_failed_files: # CHECK retry files
             while files_remaining:
-                logger.info(f"Files remaining: {len(files_remaining)}, spawning {max_parallel_workers} workers...")
+                # Double-check: filter out any files that have exceeded retries before processing
+                # This prevents race conditions where files exceed limit between loading and processing
+                # Update retry_counts_global from crashed_files.json
+                if os.path.exists(crashed_files_path):
+                    try:
+                        with open(crashed_files_path, 'r') as f:
+                            check_data = json.load(f)
+                            retry_counts_global.update(check_data.get("retry_counts", {}))
+                    except (json.JSONDecodeError, IOError):
+                        pass
+                
+                # Filter files_remaining to exclude those that exceeded retries
+                files_to_process = []
+                files_to_remove = []
+                for file_path in files_remaining:
+                    # Skip if already permanently marked as exceeded
+                    if file_path in permanently_skipped_files:
+                        files_to_remove.append(file_path)
+                        continue
+                    
+                    retry_count = retry_counts_global.get(file_path, 0)
+                    if retry_count < count_retries_failed_files:  # Use the same limit
+                        files_to_process.append(file_path)
+                    else:
+                        logger.warning(f"Filtering out {file_path} - exceeded max retries ({retry_count} >= {count_retries_failed_files}) before processing")
+                        files_to_remove.append(file_path)
+                        permanently_skipped_files.add(file_path)  # Mark as permanently skipped
+                
+                # Remove exceeded files from files_remaining
+                if files_to_remove:
+                    files_remaining = [f for f in files_remaining if f not in files_to_remove]
+                
+                if not files_to_process:
+                    logger.info("No files to process after filtering (all exceeded max retries)")
+                    if not files_remaining:
+                        break
+                    # If files_remaining still has items but all exceeded retries, clear it
+                    files_remaining = []
+                    continue
+                
+                logger.info(f"Files remaining: {len(files_to_process)}, spawning {max_parallel_workers} workers...")
                                 
-                num_workers = min(max_parallel_workers, len(files_remaining))
-                if len(files_remaining) < (max_parallel_workers * MIN_FILES_PER_WORKER):
+                num_workers = min(max_parallel_workers, len(files_to_process))
+                if len(files_to_process) < (max_parallel_workers * MIN_FILES_PER_WORKER):
                     # Not enough files for full parallelism, reduce workers
-                    num_workers = max(1, len(files_remaining) // FALLBACK_FILES_PER_WORKER)
-
-                file_chunks = chunk_list(files_remaining, num_workers)
+                    num_workers = max(1, len(files_to_process) // FALLBACK_FILES_PER_WORKER)
+                
+                # Final filter: remove any files that have exceeded retries from chunks
+                # This is a last check before sending to workers
+                final_files_to_process = []
+                for file_path in files_to_process:
+                    if file_path in permanently_skipped_files:
+                        continue
+                    # Double-check retry count one more time
+                    retry_count = retry_counts_global.get(file_path, 0)
+                    if retry_count >= count_retries_failed_files:
+                        logger.warning(f"Final filter: Removing {file_path} - exceeded max retries ({retry_count} >= {count_retries_failed_files})")
+                        permanently_skipped_files.add(file_path)
+                        continue
+                    final_files_to_process.append(file_path)
+                
+                if not final_files_to_process:
+                    logger.info("No files to process after final filtering (all exceeded max retries)")
+                    files_remaining = [f for f in files_remaining if f not in files_to_process]
+                    continue
+                
+                file_chunks = chunk_list(final_files_to_process, num_workers)
                 
                 # Prepare arguments for each worker (no queue needed)
                 worker_args = [
@@ -212,9 +404,24 @@ def parse_with_per_chunk_subprocess(config):
                                     results[i] = result
                                     completed_count += 1
                                     
+                                    # Handle invalid result (None or missing status)
+                                    if result is None or not isinstance(result, dict) or "status" not in result:
+                                        logger.error(f"Worker {i+1} returned invalid result: {result}")
+                                        # Mark as error to prevent infinite loop
+                                        result = {
+                                            "status": "error",
+                                            "message": f"Invalid result returned: {result}",
+                                            "files_parsed": []
+                                        }
+                                    
                                     if result["status"] == "chunk_complete":
                                         all_stats.append(result["stats"])
                                         files_parsed = result["files_parsed"]
+                                        
+                                        # Collect saved filename for IM pipeline
+                                        if result.get("saved_filename"):
+                                            all_saved_files.append(result["saved_filename"])
+                                            logger.info(f"Worker {i+1} saved file: {result['saved_filename']}")
                                         
                                         # Update tracking - use set for O(1) removal
                                         files_parsed_set = set(files_parsed)
@@ -230,9 +437,44 @@ def parse_with_per_chunk_subprocess(config):
                                     
                                     elif result["status"] == "error":
                                         logger.error(f"Worker {i+1} failed: {result['message']}")
+                                        # Mark files as failed so they can be retried
+                                        if "files_parsed" in result:
+                                            files_parsed = result["files_parsed"]
+                                            files_parsed_set = set(files_parsed)
+                                            files_remaining_set = set(files_remaining)
+                                            # Don't remove from files_remaining - they should be retried
                                     
                                     elif result["status"] == "no_chunks":
-                                        logger.info(f"Worker {i+1}: No chunks to process")
+                                        logger.warning(f"Worker {i+1}: No chunks produced - {result.get('message', 'unknown reason')}")
+                                        # Remove attempted files from files_remaining since they failed
+                                        # These will be handled by the retry mechanism via crashed_files.json
+                                        if "files_parsed" in result:
+                                            attempted_files = result["files_parsed"]
+                                            files_parsed_set = set(attempted_files)
+                                            files_remaining_set = set(files_remaining)
+                                            files_remaining_set -= files_parsed_set
+                                            files_remaining = list(files_remaining_set)
+                                            logger.info(f"Removed {len(attempted_files)} failed files from files_remaining (will be retried via crashed_files.json)")
+                                    
+                                    elif result["status"] == "skipped":
+                                        logger.info(f"Worker {i+1}: Skipped (all files exceeded max retries)")
+                                        # Remove skipped files from files_remaining since they exceeded max retries
+                                        if "skipped_files" in result and result["skipped_files"]:
+                                            skipped_files_set = set(result["skipped_files"])
+                                            files_remaining_set = set(files_remaining)
+                                            files_remaining_set -= skipped_files_set
+                                            files_remaining = list(files_remaining_set)
+                                            logger.info(f"Removed {len(result['skipped_files'])} files from files_remaining (exceeded max retries)")
+                                        else:
+                                            # Fallback: if skipped_files not provided, remove all files assigned to this worker
+                                            # This handles edge cases where the worker structure might differ
+                                            if i < len(file_chunks):
+                                                assigned_chunk = file_chunks[i]
+                                                assigned_files_set = set(assigned_chunk)
+                                                files_remaining_set = set(files_remaining)
+                                                files_remaining_set -= assigned_files_set
+                                                files_remaining = list(files_remaining_set)
+                                                logger.info(f"Removed {len(assigned_chunk)} assigned files from files_remaining (all exceeded max retries, fallback removal)")
                                 except Exception as e:
                                     logger.error(f"Error getting result from worker {i+1}: {e}")
                                     results[i] = {"status": "error", "message": str(e)}
@@ -254,39 +496,91 @@ def parse_with_per_chunk_subprocess(config):
             try:
                 with open(crashed_files_path, "r") as f:
                     data = json.load(f)
-                files_remaining = data.get("failed_files", [])
                 
-                if not isinstance(files_remaining, list):
+                # Get failed files and filter out those that exceeded max retries
+                all_failed_files = data.get("failed_files", [])
+                retry_counts = data.get("retry_counts", {})
+                # Update global retry counts for use in inner loop
+                retry_counts_global.update(retry_counts)
+                max_file_retries = count_retries_failed_files  # Use same limit as global retries
+                
+                # Filter out files that have exceeded max retries
+                # Note: retry_count is the number of times we've already retried
+                # So if retry_count >= max_file_retries, we've exceeded the limit
+                files_remaining = []
+                files_exceeded_retries = []
+                for file_path in all_failed_files:
+                    # Skip if already permanently marked
+                    if file_path in permanently_skipped_files:
+                        files_exceeded_retries.append(file_path)
+                        continue
+                    
+                    retry_count = retry_counts.get(file_path, 0)
+                    if retry_count < max_file_retries:  # Use < instead of <= to prevent retrying when at limit
+                        files_remaining.append(file_path)
+                    else:
+                        files_exceeded_retries.append(file_path)
+                        permanently_skipped_files.add(file_path)  # Mark as permanently skipped
+                        logger.warning(f"Skipping {file_path} - exceeded max retries ({retry_count} >= {max_file_retries})")
+                
+                if not isinstance(all_failed_files, list):
                     logger.warning(f"Invalid format in {crashed_files_path}, expected list")
                     files_remaining = []
                 
-                if files_remaining:
-                    logger.info(f"Retrying {len(files_remaining)} crashed files...")
-                    os.remove(crashed_files_path)
-                else:
-                    logger.info("Crashed files list is empty, no retries needed.")
+                # Clean up: remove files that exceeded retries from the JSON file IMMEDIATELY
+                # This prevents them from being processed by workers
+                if files_exceeded_retries:
+                    for file_path in files_exceeded_retries:
+                        if file_path in data["failed_files"]:
+                            data["failed_files"].remove(file_path)
+                        # Also remove from retry_counts to prevent future issues
+                        if "retry_counts" in data and file_path in data["retry_counts"]:
+                            del data["retry_counts"][file_path]
+                        # Mark as permanently skipped
+                        permanently_skipped_files.add(file_path)
+                    # Update the file to remove exceeded retry files BEFORE processing
+                    with open(crashed_files_path, 'w') as f:
+                        json.dump(data, f, indent=2)
+                    logger.info(f"Cleaned up {len(files_exceeded_retries)} files that exceeded max retries from crashed_files.json (removed from both failed_files and retry_counts)")
+                
+                # Only proceed if there are files remaining that haven't exceeded retries
+                if not files_remaining:
+                    logger.info("No files to retry (all exceeded max retries or list is empty).")
+                    # Remove the crashed files list since we're done with retries
+                    if os.path.exists(crashed_files_path):
+                        os.remove(crashed_files_path)
                     break
+                
+                # Update files_remaining to only include files that haven't exceeded retries
+                # This ensures workers don't process files that exceeded the limit
+                logger.info(f"Retrying {len(files_remaining)} crashed files (out of {len(all_failed_files)} total failed, {len(files_exceeded_retries)} exceeded limit)...")
                     
             except (json.JSONDecodeError, IOError) as e:
                 logger.error(f"Error reading crashed files: {e}. Skipping retry.")
                 break
             
             # Allow for some sleep to let remote dataserver rest
+            logger.info(f"Retrying... after {cur_retries} times")
             cur_retries += 1
-            time.sleep(30)
-            
+            time.sleep(10)
         
+        # Close progress bar when done with this release year
+        if show_progress_bar:
+            pbar.close()
 
     if all_stats:
         aggregate_statistics(all_stats, atlasparser_config["logging_path"], pipeline_config, atlasparser_config, run_metadata)    
     else:
         logging.info(f"No stats to aggregate.")
 
-    
     logger.info(
         f"Parsing complete! Processed {chunk_count} chunks, "
         f"{total_events:,} total events"
     )
+    
+    # Return list of successfully saved files for IM pipeline
+    logger.info(f"Successfully saved {len(all_saved_files)} ROOT files for IM calculation.")
+    return all_saved_files
 
 def get_batch_by_index(whole_file_ids, batch_index, total_batch_jobs):
     """Extracts a batch of file IDs using a moving window across all years"""

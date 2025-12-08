@@ -104,12 +104,22 @@ def group_by_final_state(events: ak.Array) -> Iterator[Tuple[str, ak.Array]]:
     Yields:
         Tuples of (final_state_string, events_matching_final_state)
         Final state format: "{e}e_{m}m_{j}j_{p}p" where numbers are counts
+        
+    Note:
+        If a particle type doesn't exist in the events, its count defaults to 0.
     """
     particle_counts = ak.num(events)
-    e = particle_counts.Electrons
-    m = particle_counts.Muons
-    j = particle_counts.Jets
-    p = particle_counts.Photons
+    
+    # Safely get particle counts, defaulting to 0 if particle type doesn't exist
+    # This handles cases where certain particle types aren't present in the data
+    num_events = len(events)
+    zero_array = ak.Array([0] * num_events) if num_events > 0 else ak.Array([])
+    
+    e = getattr(particle_counts, "Electrons", zero_array)
+    m = getattr(particle_counts, "Muons", zero_array)
+    j = getattr(particle_counts, "Jets", zero_array)
+    p = getattr(particle_counts, "Photons", zero_array)
+    
     all_events_fs = [f"{e}e_{m}m_{j}j_{p}p" for e, m, j, p in zip(e, m, j, p)]
 
     unique_fs = set(all_events_fs)
@@ -189,14 +199,18 @@ def filter_events_by_particle_counts(
     Memory optimized: builds combined mask first, applies once.
     This avoids creating intermediate filtered arrays.
     
+    When is_exact_count=True (used for combinations), also extracts only
+    the specified particle types to ensure invariant mass calculations
+    only include the combination particles.
+    
     Args:
         events: Events to filter
         particle_counts: Dictionary of particle type to count/range
-        is_exact_count: If True, require exact count match
+        is_exact_count: If True, require exact count match and extract only specified particle types
         is_particle_counts_range: If True, particle_counts contains min/max dicts
         
     Returns:
-        Filtered events array
+        Filtered events array (with only specified particle types if is_exact_count=True)
     """
 
     if len(events) == 0:
@@ -229,13 +243,29 @@ def filter_events_by_particle_counts(
             particle_mask = (obj_count >= count)
         
         combined_mask = combined_mask & particle_mask
-        
+    
     
     # Apply filter only ONCE at the end
     filtered_events = events[combined_mask]
 
     del combined_mask
     gc.collect()
+    
+    # If filtering by exact count (combinations), extract only specified particle types
+    # This ensures invariant mass calculations only include the combination particles
+    if is_exact_count:
+        # Find actual field names for particle types in the combination
+        fields_to_keep = {}
+        for particle_type in particle_counts.keys():
+            actual_field = find_actual_field_name(filtered_events.fields, particle_type)
+            if actual_field:
+                fields_to_keep[actual_field] = filtered_events[actual_field]
+        
+        # Create new array with only the specified fields
+        if len(fields_to_keep) == 0:
+            return ak.Array([])
+        
+        filtered_events = ak.zip(fields_to_keep, depth_limit=1)
     
     return ak.to_packed(filtered_events)
 
@@ -248,19 +278,22 @@ def slice_events_by_field(
     Slice events to keep only top N particles by a field (e.g., pt).
     
     Args:
-        events: Events to slice
+        events: Events to slice (should already contain only desired particle types)
         particle_counts: Dictionary mapping particle types to counts to keep
         field_to_slice_by: Field name to sort by (default: "pt")
         
     Returns:
-        Sliced events array
+        Sliced events array with top N particles of each type
     """
     for obj, count in particle_counts.items():
-        obj_array = events[obj]
+        actual_field = find_actual_field_name(events.fields, obj)
+        if not actual_field:
+            continue
+        
+        obj_array = events[actual_field]
         sorted_obj_array = obj_array[ak.argsort(obj_array[field_to_slice_by], ascending=False)]
         sliced_obj_array = sorted_obj_array[:, :count]
-
-        events[obj] = sliced_obj_array
+        events[actual_field] = sliced_obj_array
 
     return events
 

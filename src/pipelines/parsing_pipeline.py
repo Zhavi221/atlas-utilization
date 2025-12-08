@@ -21,7 +21,10 @@ def parse(config):
         logging_path=atlasparser_config["logging_path"],
         release_years=atlasparser_config["release_years"],
         create_dirs=atlasparser_config["create_dirs"],
-        possible_tree_names=atlasparser_config["possible_tree_names"]
+        possible_tree_names=atlasparser_config["possible_tree_names"],
+        temp_directory=atlasparser_config.get("temp_directory"),
+        show_progress_bar=atlasparser_config.get("show_progress_bar", True),
+        max_file_retries=pipeline_config["count_retries_failed_files"]
         )
 
     release_years_file_ids = atlasparser.fetch_record_ids(pipeline_config["fetching_metadata_timeout"])
@@ -30,6 +33,9 @@ def parse(config):
         parser.AtlasOpenParser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
     
 
+    saved_files = []  # Track successfully saved ROOT files for IM pipeline
+    import os
+    
     for events_chunk in atlasparser.parse_files(
         release_years_file_ids=release_years_file_ids,
         save_statistics=True
@@ -53,8 +59,15 @@ def parse(config):
         del filtered_events
 
         logger.info("Saving events")
-        atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])        
-        del root_ready  
+        output_path = atlasparser.save_events_as_root(root_ready, pipeline_config["output_path"])
+        if output_path:
+            saved_filename = os.path.basename(output_path)
+            saved_files.append(saved_filename)
+            logger.info(f"Saved file: {saved_filename}")
+        del root_ready
+    
+    logger.info(f"Parsing completed. Successfully saved {len(saved_files)} ROOT files for IM calculation.")
+    return saved_files  
 
 def init_logging():
     logging.basicConfig(

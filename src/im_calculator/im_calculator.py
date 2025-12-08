@@ -110,12 +110,22 @@ class IMCalculator:
         Yields:
             Tuples of (final_state_string, events_matching_final_state)
             Final state format: "{e}e_{m}m_{j}j_{p}p" where numbers are counts
+            
+        Note:
+            If a particle type doesn't exist in the events, its count defaults to 0.
         """
         particle_counts = ak.num(self.events)
-        e = particle_counts.Electrons
-        m = particle_counts.Muons
-        j = particle_counts.Jets
-        p = particle_counts.Photons
+        
+        # Safely get particle counts, defaulting to 0 if particle type doesn't exist
+        # This handles cases where certain particle types aren't present in the data
+        # Create zero array with same length as events for missing particle types
+        num_events = len(self.events)
+        zero_array = ak.Array([0] * num_events) if num_events > 0 else ak.Array([])
+        
+        e = getattr(particle_counts, "Electrons", zero_array)
+        m = getattr(particle_counts, "Muons", zero_array)
+        j = getattr(particle_counts, "Jets", zero_array)
+        p = getattr(particle_counts, "Photons", zero_array)
         
         all_events_fs = [f"{e}e_{m}m_{j}j_{p}p" for e, m, j, p in zip(e, m, j, p)]
         unique_fs = set(all_events_fs)

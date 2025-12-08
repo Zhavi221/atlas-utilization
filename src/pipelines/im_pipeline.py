@@ -24,7 +24,7 @@ from src.im_calculator.im_calculator import IMCalculator
 from src.utils import memory_utils
 
 
-def mass_calculate(config: Dict) -> None:
+def mass_calculate(config: Dict, file_list: Optional[List[str]] = None) -> None:
     """
     Main entry point for invariant mass calculation pipeline.
     
@@ -42,15 +42,14 @@ def mass_calculate(config: Dict) -> None:
             - batch_job_index: Optional batch job index
             - total_batch_jobs: Optional total batch jobs
             - fs_mapping_threshold_bytes: Memory threshold for saving
+        file_list: Optional explicit list of ROOT filenames to process.
+                   If provided, only these files will be processed (must exist in input_dir).
+                   If None, scans input_dir for all .root files.
     """
     logger = init_logging()
     
     input_dir = config["input_dir"]
     output_dir = config["output_dir"]
-    
-    if not os.path.exists(input_dir) or len(os.listdir(input_dir)) == 0:
-        logger.warning(f"Input directory '{input_dir}' is empty or doesn't exist.")
-        return
     
     os.makedirs(output_dir, exist_ok=True)
     
@@ -67,22 +66,47 @@ def mass_calculate(config: Dict) -> None:
     logger.info(f"Generated {len(all_combinations)} combinations to process")
     
     # Get list of ROOT files
-    root_files = [
-        f for f in os.listdir(input_dir) 
-        if f.endswith(".root")
-    ]
-    
-    if not root_files:
-        logger.warning(f"No ROOT files found in {input_dir}")
-        return
-    
-    # Handle batch separation if configured
-    batch_job_index = config.get("batch_job_index")
-    total_batch_jobs = config.get("total_batch_jobs")
-    
-    if batch_job_index is not None and total_batch_jobs is not None:
-        root_files = get_batch_files(root_files, batch_job_index, total_batch_jobs)
-        logger.info(f"Batch {batch_job_index}/{total_batch_jobs}: Processing {len(root_files)} files")
+    if file_list is not None:
+        # Use explicit file list provided
+        root_files = file_list.copy()
+        logger.info(f"Using explicit file list with {len(root_files)} files")
+        
+        # Validate that files exist
+        existing_files = []
+        for filename in root_files:
+            file_path = os.path.join(input_dir, filename)
+            if os.path.exists(file_path):
+                existing_files.append(filename)
+            else:
+                logger.warning(f"File {filename} not found in {input_dir}, skipping")
+        
+        root_files = existing_files
+        
+        if not root_files:
+            logger.warning(f"None of the {len(file_list)} specified files exist in {input_dir}")
+            return
+    else:
+        # Scan directory for ROOT files (original behavior)
+        if not os.path.exists(input_dir) or len(os.listdir(input_dir)) == 0:
+            logger.warning(f"Input directory '{input_dir}' is empty or doesn't exist.")
+            return
+        
+        root_files = [
+            f for f in os.listdir(input_dir) 
+            if f.endswith(".root")
+        ]
+        
+        if not root_files:
+            logger.warning(f"No ROOT files found in {input_dir}")
+            return
+        
+        # Handle batch separation if configured (only when scanning directory)
+        batch_job_index = config.get("batch_job_index")
+        total_batch_jobs = config.get("total_batch_jobs")
+        
+        if batch_job_index is not None and total_batch_jobs is not None:
+            root_files = get_batch_files(root_files, batch_job_index, total_batch_jobs)
+            logger.info(f"Batch {batch_job_index}/{total_batch_jobs}: Processing {len(root_files)} files")
     
     # Process files
     use_multiprocessing = config.get("use_multiprocessing", False)
@@ -130,10 +154,10 @@ def process_files_multiprocessing(
     max_workers: int
 ) -> None:
     """Process files using multiprocessing."""
-    # Prepare arguments for workers
+    # Prepare arguments for workers with worker index
     worker_args = [
-        (filename, input_dir, output_dir, all_combinations, config)
-        for filename in root_files
+        (i, filename, input_dir, output_dir, all_combinations, config)
+        for i, filename in enumerate(root_files)
     ]
     
     with Pool(processes=max_workers) as pool:
@@ -146,6 +170,7 @@ def process_files_multiprocessing(
 
 
 def process_single_file_worker(
+    worker_id: int,
     filename: str,
     input_dir: str,
     output_dir: str,
@@ -155,18 +180,35 @@ def process_single_file_worker(
     """
     Worker function for multiprocessing.
     
+    Args:
+        worker_id: Worker identifier (file index, used for logging)
+        filename: Name of ROOT file
+        input_dir: Input directory path
+        output_dir: Output directory path
+        all_combinations: List of particle combinations to process
+        config: Configuration dictionary
+        
     Returns:
         Dictionary with status and metadata
     """
     logger = init_logging()
+    # Get process name for better worker identification
+    import multiprocessing
+    process_name = multiprocessing.current_process().name
+    # Extract worker number from process name (e.g., "ForkPoolWorker-1" -> 1)
+    try:
+        worker_num = int(process_name.split('-')[-1]) if '-' in process_name else worker_id
+    except (ValueError, IndexError):
+        worker_num = worker_id
+    
     try:
         process_single_file(
-            filename, input_dir, output_dir, all_combinations, config, logger
+            filename, input_dir, output_dir, all_combinations, config, logger, worker_num
         )
-        return {"status": "success", "filename": filename}
+        return {"status": "success", "filename": filename, "worker": worker_num}
     except Exception as e:
-        logger.error(f"Error in worker processing {filename}: {e}", exc_info=True)
-        return {"status": "error", "filename": filename, "error": str(e)}
+        logger.error(f"[Worker {worker_num}] Error processing {filename}: {e}", exc_info=True)
+        return {"status": "error", "filename": filename, "error": str(e), "worker": worker_num}
 
 
 def process_single_file(
@@ -175,7 +217,8 @@ def process_single_file(
     output_dir: str,
     all_combinations: List[Dict[str, int]],
     config: Dict,
-    logger: logging.Logger
+    logger: logging.Logger,
+    worker_num: Optional[int] = None
 ) -> None:
     """
     Process a single ROOT file to calculate invariant masses.
@@ -187,26 +230,71 @@ def process_single_file(
         all_combinations: List of particle combinations to process
         config: Configuration dictionary
         logger: Logger instance
+        worker_num: Optional worker number for multiprocessing (None for sequential)
     """
+    # Create prefix for logging
+    prefix = f"[Worker {worker_num}]" if worker_num is not None else ""
     file_path = os.path.join(input_dir, filename)
     
-    # Parse ROOT file
-    particle_arrays: Optional[ak.Array] = parser.AtlasOpenParser.parse_root_file(file_path)
+    # Get file size for progress indication
+    file_size_mb = os.path.getsize(file_path) / (1024**2) if os.path.exists(file_path) else 0.0
+    logger.info(f"{prefix} [{filename}] Starting parsing (size: {file_size_mb:.2f} MB)...")
+    
+    # Extract release year from filename
+    release_year = parser.AtlasOpenParser.extract_release_year_from_filename(filename)
+    logger.info(f"{prefix} [{filename}] Extracted release year: {release_year}")
+    
+    # Parse ROOT file with inferred release year
+    particle_arrays: Optional[ak.Array] = parser.AtlasOpenParser.parse_root_file(
+        file_path, batch_size=None, release_year=release_year)
     
     if particle_arrays is None or len(particle_arrays) == 0:
-        logger.info(f"File {filename} is empty or could not be parsed")
+        logger.info(f"{prefix} [{filename}] File is empty or could not be parsed")
         return
     
-    logger.info(f"Processing file: {filename} with {len(particle_arrays)} events")
+    num_events = len(particle_arrays)
+    logger.info(f"{prefix} [{filename}] Parsed successfully: {num_events:,} events")
     
     # Initialize calculator
     calculator = IMCalculator(particle_arrays)
+
+    # Track statistics for this file
+    file_stats = {
+        'calculated': 0,
+        'skipped': 0,
+        'skip_reasons': {
+            'no_matching_combination': 0,
+            'no_events_after_filter': 0,
+            'no_events_after_slice': 0,
+            'empty_inv_mass': 0
+        },
+        'final_states_processed': 0
+    }
     
     # Process each final state
     for cur_fs, fs_events in calculator.group_by_final_state():
-        process_final_state(
-            cur_fs, fs_events, filename, all_combinations, config, output_dir, logger, calculator
+        fs_stats = process_final_state(
+            cur_fs, fs_events, filename, all_combinations, config, output_dir, logger, calculator, worker_num
         )
+        # Aggregate statistics
+        if fs_stats:
+            file_stats['calculated'] += fs_stats['calculated']
+            file_stats['skipped'] += fs_stats['skipped']
+            file_stats['final_states_processed'] += 1
+            for reason, count in fs_stats['skip_reasons'].items():
+                file_stats['skip_reasons'][reason] += count
+    
+    # Print summary after each file
+    logger.info(f"{prefix} [{filename}] ===== FILE PROCESSING COMPLETE =====")
+    logger.info(f"{prefix} [{filename}] Events: {num_events:,} | Final States: {file_stats['final_states_processed']}")
+    logger.info(f"{prefix} [{filename}] Mass arrays calculated: {file_stats['calculated']}")
+    logger.info(f"{prefix} [{filename}] Mass arrays skipped: {file_stats['skipped']}")
+    if file_stats['skipped'] > 0:
+        logger.info(f"{prefix} [{filename}] Skip reasons:")
+        for reason, count in file_stats['skip_reasons'].items():
+            if count > 0:
+                logger.info(f"{prefix} [{filename}]   - {reason}: {count}")
+    logger.info(f"{prefix} [{filename}] =====================================")
 
 
 def process_final_state(
@@ -217,8 +305,9 @@ def process_final_state(
     config: Dict,
     output_dir: str,
     logger: logging.Logger,
-    calculator: IMCalculator
-) -> None:
+    calculator: IMCalculator,
+    worker_num: Optional[int] = None
+) -> Dict:
     """
     Process all combinations for a given final state.
     
@@ -234,24 +323,73 @@ def process_final_state(
         output_dir: Output directory
         logger: Logger instance
         calculator: IMCalculator instance
+        worker_num: Optional worker number for multiprocessing
+        
+    Returns:
+        Dictionary with statistics about processed combinations
     """
     if len(fs_events) == 0:
-        return
+        return None
+    
+    # Create prefix for logging
+    prefix = f"[Worker {worker_num}]" if worker_num is not None else ""
+    num_combinations = sum(1 for c in all_combinations 
+                          if calculator.does_final_state_contain_combination(final_state, c))
+    
+    logger.info(f"{prefix} [{filename}] Computing final state '{final_state}': "
+                f"{len(fs_events):,} events, {num_combinations} combinations")
     
     fs_mapping_threshold_bytes = config.get("fs_mapping_threshold_bytes", 50000000)  # 50MB default
     fs_im_mapping: Dict[str, Dict[str, ak.Array]] = {}
     
+    # Track statistics for this final state
+    stats = {
+        'calculated': 0,
+        'skipped': 0,
+        'skip_reasons': {
+            'no_matching_combination': 0,
+            'no_events_after_filter': 0,
+            'no_events_after_slice': 0,
+            'empty_inv_mass': 0
+        }
+    }
+    
+    combination_count = 0
+    # Calculate milestone points for progress logging (only log at key milestones)
+    milestones = set()
+    if num_combinations > 1:
+        milestones = {1, num_combinations // 4, num_combinations // 2, 
+                     3 * num_combinations // 4, num_combinations}
+        milestones = {m for m in milestones if m > 0}  # Remove zeros
+    elif num_combinations == 1:
+        milestones = {1}
+    
     for combination in all_combinations:
         if not calculator.does_final_state_contain_combination(final_state, combination):
+            stats['skipped'] += 1
+            stats['skip_reasons']['no_matching_combination'] += 1
             continue
         
-        inv_mass = _calculate_combination_invariant_mass(
-            fs_events, combination, config, calculator, logger, final_state
+        combination_count += 1
+        
+        # Log progress only at milestones (start, 25%, 50%, 75%, 100%)
+        if combination_count in milestones:
+            pct = (combination_count / num_combinations) * 100 if num_combinations > 0 else 0
+            logger.info(f"{prefix} [{filename}] '{final_state}': "
+                       f"{combination_count}/{num_combinations} ({pct:.0f}%) - "
+                       f"{stats['calculated']} calculated, {stats['skipped']} skipped")
+        
+        inv_mass, skip_reason = _calculate_combination_invariant_mass(
+            fs_events, combination, config, calculator, logger, final_state, worker_num
         )
         
         if inv_mass is None:
+            stats['skipped'] += 1
+            if skip_reason:
+                stats['skip_reasons'][skip_reason] += 1
             continue
         
+        stats['calculated'] += 1
         combination_name = prepare_im_combination_name(filename, final_state, combination)
         _accumulate_invariant_mass(
             fs_im_mapping, final_state, combination_name, inv_mass, 
@@ -260,6 +398,11 @@ def process_final_state(
     
     # Save any remaining accumulated data
     _save_remaining_accumulated_data(fs_im_mapping, output_dir, logger)
+    
+    logger.info(f"{prefix} [{filename}] ✓ Completed '{final_state}': "
+               f"{stats['calculated']} calculated, {stats['skipped']} skipped")
+    
+    return stats
 
 
 def _calculate_combination_invariant_mass(
@@ -268,8 +411,9 @@ def _calculate_combination_invariant_mass(
     config: Dict,
     calculator: IMCalculator,
     logger: logging.Logger,
-    final_state: str
-) -> Optional[ak.Array]:
+    final_state: str,
+    worker_num: Optional[int] = None
+) -> Tuple[Optional[ak.Array], Optional[str]]:
     """
     Calculate invariant mass for a single combination.
     
@@ -285,11 +429,13 @@ def _calculate_combination_invariant_mass(
         final_state: Final state string (for logging)
         
     Returns:
-        Invariant mass array or None if no valid events
+        Tuple of (invariant mass array or None, skip reason string or None)
     """
+    # Logging is handled at higher level, just debug here
     logger.debug(f"Processing combination: {combination} for final state: {final_state}")
     
     # Filter events by exact particle counts
+    # When is_exact_count=True, this also extracts only the specified particle types
     filtered_events = calculator.filter_by_particle_counts(
         events=fs_events,
         particle_counts=combination,
@@ -297,7 +443,7 @@ def _calculate_combination_invariant_mass(
     )
     
     if len(filtered_events) == 0:
-        return None
+        return None, 'no_events_after_filter'
     
     # Slice events by field (e.g., top N by pt)
     field_to_slice_by = config.get("field_to_slice_by", "pt")
@@ -308,15 +454,15 @@ def _calculate_combination_invariant_mass(
     )
     
     if len(sliced_events) == 0:
-        return None
+        return None, 'no_events_after_slice'
     
     # Calculate invariant mass
     inv_mass = calculator.calculate_invariant_mass(sliced_events)
     
     if not ak.any(inv_mass):
-        return None
+        return None, 'empty_inv_mass'
     
-    return inv_mass
+    return inv_mass, None
 
 
 def _accumulate_invariant_mass(
@@ -476,26 +622,42 @@ def prepare_im_combination_name(
     """
     Generate a filename for an invariant mass combination.
     
+    Format: {base_filename}_FS_{final_state}_IM_{e}e_{j}j_{m}m_{p}p
+    Always includes all particle types in consistent order: e, j, m, p
+    
     Args:
         filename: Source ROOT filename (without extension)
-        final_state: Final state string
+        final_state: Final state string (e.g., "2e_3m_5j_1p")
         combination: Dictionary mapping particle types to counts
         
     Returns:
-        Combination name string
+        Combination name string (e.g., "file_FS_2e_3m_5j_1p_IM_2e_0j_0m_0p")
     """
     # Remove .root extension if present
     base_filename = filename.replace(".root", "")
     
-    combination_name = f"{base_filename}_FS_{final_state}_IM_"
+    # Map canonical particle type names to their single-letter codes
+    particle_type_map = {
+        "Electrons": "e",
+        "Jets": "j",
+        "Muons": "m",
+        "Photons": "p"
+    }
     
-    for particle_type, amount in combination.items():
-        # Get first letter of particle type
-        letter = particle_type[0].lower()
-        combination_name += f"{amount}{letter}_"
+    # Always include all particle types in consistent order: e, j, m, p
+    # Get counts from combination dict, defaulting to 0 if not present
+    e_count = combination.get("Electrons", 0)
+    j_count = combination.get("Jets", 0)
+    m_count = combination.get("Muons", 0)
+    p_count = combination.get("Photons", 0)
     
-    # Remove trailing underscore
-    return combination_name.rstrip("_")
+    # Build combination part in format: Ne_Nj_Nm_Np
+    combination_part = f"{e_count}e_{j_count}j_{m_count}m_{p_count}p"
+    
+    # Final format: {base_filename}_FS_{final_state}_IM_{combination_part}
+    combination_name = f"{base_filename}_FS_{final_state}_IM_{combination_part}"
+    
+    return combination_name
 
 
 def init_logging() -> logging.Logger:

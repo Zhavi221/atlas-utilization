@@ -2,7 +2,7 @@
 # Submit batch jobs for IM pipeline calculation
 
 NUM_JOBS=$(python execute_as_batch_jobs/calculate_im_jobs.py \
-    --time_for_work_unit_sec 2 \
+    --time_for_work_unit_sec 1 \
     --walltime_per_job_sec 86400 | tail -1)
 
 echo "Submitting $NUM_JOBS array jobs for IM pipeline"
@@ -10,7 +10,6 @@ echo "Submitting $NUM_JOBS array jobs for IM pipeline"
 cat <<EOF > dynamic_im_job.pbs
 #!/bin/bash
 #PBS -q N
-#PBS -N im_job_\$PBS_ARRAY_INDEX
 #PBS -o logs/im_job_\$PBS_ARRAY_INDEX.out
 #PBS -e logs/im_job_\$PBS_ARRAY_INDEX.err
 #PBS -l select=1:ncpus=8:mem=20gb

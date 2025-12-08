@@ -35,6 +35,9 @@ with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_buf):
     release_year_file_ids: dict = temp_parser.fetch_record_ids(
         timeout=160
     )
+    if config["parsing_config"]["pipeline_config"]["limit_files_per_year"]:
+        parser.AtlasOpenParser.limit_files_per_year(release_year_file_ids, 
+        config["parsing_config"]["pipeline_config"]["limit_files_per_year"])
 
 all_file_ids = set(itertools.chain.from_iterable(release_year_file_ids.values()))
 num_files = len(all_file_ids)
