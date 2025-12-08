@@ -7,6 +7,7 @@ Supports grouping by final state, filtering, and batch processing.
 import awkward as ak
 import vector
 from typing import Dict, Iterator, Tuple, Optional, List
+from collections import Counter
 
 from src.calculations import consts, physics_calcs
 
@@ -128,9 +129,10 @@ class IMCalculator:
         p = getattr(particle_counts, "Photons", zero_array)
         
         all_events_fs = [f"{e}e_{m}m_{j}j_{p}p" for e, m, j, p in zip(e, m, j, p)]
-        unique_fs = set(all_events_fs)
+        fs_by_count = Counter(all_events_fs)
+        fs_by_count_sorted = fs_by_count.most_common()
         
-        for fs in unique_fs:
+        for fs, count in fs_by_count_sorted:
             mask = (ak.Array(all_events_fs) == fs)
             events_matching_fs = self.events[mask]
             fs_limited = self._limit_particles_in_fs(fs, threshold=4)

@@ -1,5 +1,5 @@
 tasks:
-  do_parsing: true
+  do_parsing: false
   do_mass_calculating: true
 
 testing_config:
@@ -91,7 +91,7 @@ mass_calculate:
   # ===OUTPUT DIRECTORY FOR THE INVARIANT MASS ARRAYS===
   output_dir: "/storage/agrp/netalev/data/inv_masses/"
   # ===USE MULTIPROCESSING FOR PARALLEL FILE PROCESSING===
-  use_multiprocessing: true
+  use_multiprocessing: false
   # ===NUMBER OF WORKER PROCESSES (only used if use_multiprocessing is true)===
   max_workers: 4  # null = use CPU count
   # ===BATCH JOB CONFIGURATION (for distributed processing)===
