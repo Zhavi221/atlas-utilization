@@ -1,7 +1,10 @@
 {
 	"folders": [
 		{
-			"path": ".."
+			"path": "../../BumpNet-main"
+		},
+		{
+			"path": "../../atlas_utilization"
 		},
 		{
 			"path": "../../../../../storage/agrp/netalev"

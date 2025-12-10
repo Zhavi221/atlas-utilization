@@ -15,4 +15,4 @@ source ${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
 lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 
 # Run your pipeline with index passed in
-python main_pipeline.py 
+python testing/statistics_im_array.py 

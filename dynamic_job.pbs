@@ -5,7 +5,7 @@
 #PBS -l select=1:ncpus=10:mem=20gb
 #PBS -l io=5
 #PBS -l walltime=25:00:00
-#PBS -J 1-14 
+#PBS -J 1-5 
 
 cd $PBS_O_WORKDIR
 
@@ -17,4 +17,4 @@ echo "Running job index: $PBS_ARRAY_INDEX"
 
 python create_folder_for_run.py
 
-python main_pipeline.py --batch_job_index $PBS_ARRAY_INDEX --total_batch_jobs 14     > "/storage/agrp/netalev/logs/real_job_${PBS_ARRAY_INDEX}.out"     2> "/storage/agrp/netalev/logs/real_job_${PBS_ARRAY_INDEX}.err"
+python main_pipeline.py --batch_job_index $PBS_ARRAY_INDEX --total_batch_jobs 5     > "/storage/agrp/netalev/logs/real_job_${PBS_ARRAY_INDEX}.out"     2> "/storage/agrp/netalev/logs/real_job_${PBS_ARRAY_INDEX}.err"

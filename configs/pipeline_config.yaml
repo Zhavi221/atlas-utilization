@@ -1,6 +1,6 @@
 tasks:
-  do_parsing: false
-  do_mass_calculating: true
+  do_parsing: true
+  do_mass_calculating: false
 
 testing_config:
   is_on: false #normal or random
@@ -57,13 +57,13 @@ parsing_config:
 
   particle_counts:
     Electrons:
-      min: 1
+      min: 0
       max: 6
     Muons:
-      min: 1
+      min: 0
       max: 6
     Jets:
-      min: 2
+      min: 0
       max: 8
     Photons:
       min: 0
