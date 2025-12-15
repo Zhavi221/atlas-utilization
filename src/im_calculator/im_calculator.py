@@ -23,7 +23,7 @@ class IMCalculator:
     - Process events in batches for memory efficiency
     """
     
-    def __init__(self, events: ak.Array):
+    def __init__(self, events: ak.Array, min_events_per_fs: int):
         """
         Initialize the calculator with particle events.
         
@@ -32,6 +32,8 @@ class IMCalculator:
                    Electrons, Muons, Jets, Photons
         """
         self.events = events
+        self.min_events_per_fs = min_events_per_fs
+        self._all_events_fs = None  # Cache for final state labels
         vector.register_awkward()
     
     def calculate_invariant_mass(self, particle_events: ak.Array) -> ak.Array:
@@ -104,39 +106,69 @@ class IMCalculator:
         else:
             return consts.KNOWN_MASSES.get(particle_type, 0.0)
     
-    def group_by_final_state(self) -> Iterator[Tuple[str, ak.Array]]:
+    def _get_all_events_fs(self) -> ak.Array:
+        """
+        Compute and cache final state labels for all events.
+        
+        Returns:
+            ak.Array of final state strings, one per event
+        """
+        if self._all_events_fs is None:
+            particle_counts = ak.num(self.events)
+            
+            # Safely get particle counts, defaulting to 0 if particle type doesn't exist
+            # This handles cases where certain particle types aren't present in the data
+            # Create zero array with same length as events for missing particle types
+            num_events = len(self.events)
+            zero_array = ak.Array([0] * num_events) if num_events > 0 else ak.Array([])
+            
+            e = ak.to_numpy(getattr(particle_counts, "Electrons", zero_array))
+            m = ak.to_numpy(getattr(particle_counts, "Muons", zero_array))
+            j = ak.to_numpy(getattr(particle_counts, "Jets", zero_array))
+            g = ak.to_numpy(getattr(particle_counts, "Photons", zero_array))
+            
+            all_events_fs = [f"{e}e_{m}m_{j}j_{g}g" for e, m, j, g in zip(e, m, j, g)]
+            self._all_events_fs = ak.Array(all_events_fs)
+        
+        return self._all_events_fs
+    
+    def group_by_final_state(self) -> Iterator[str]:
         """
         Group events by their final state (particle counts).
+        Follows SRP - only returns final state strings, doesn't mask events.
         
         Yields:
-            Tuples of (final_state_string, events_matching_final_state)
-            Final state format: "{e}e_{m}m_{j}j_{p}p" where numbers are counts
+            Final state strings (limited by threshold)
+            Final state format: "{e}e_{m}m_{j}j_{g}g" where numbers are counts
             
         Note:
             If a particle type doesn't exist in the events, its count defaults to 0.
         """
-        particle_counts = ak.num(self.events)
+        all_events_fs = self._get_all_events_fs()
+        all_events_fs_list = ak.to_list(all_events_fs)
         
-        # Safely get particle counts, defaulting to 0 if particle type doesn't exist
-        # This handles cases where certain particle types aren't present in the data
-        # Create zero array with same length as events for missing particle types
-        num_events = len(self.events)
-        zero_array = ak.Array([0] * num_events) if num_events > 0 else ak.Array([])
-        
-        e = getattr(particle_counts, "Electrons", zero_array)
-        m = getattr(particle_counts, "Muons", zero_array)
-        j = getattr(particle_counts, "Jets", zero_array)
-        p = getattr(particle_counts, "Photons", zero_array)
-        
-        all_events_fs = [f"{e}e_{m}m_{j}j_{p}p" for e, m, j, p in zip(e, m, j, p)]
-        fs_by_count = Counter(all_events_fs)
+        fs_by_count = Counter(all_events_fs_list)
         fs_by_count_sorted = fs_by_count.most_common()
-        
+        fs_by_count_sorted = [(fs, count) for fs, count in fs_by_count_sorted if count >= self.min_events_per_fs]
+
         for fs, count in fs_by_count_sorted:
-            mask = (ak.Array(all_events_fs) == fs)
-            events_matching_fs = self.events[mask]
             fs_limited = self._limit_particles_in_fs(fs, threshold=4)
-            yield (fs_limited, events_matching_fs)
+            yield fs_limited
+    
+    def get_events_for_final_state(self, final_state: str) -> ak.Array:
+        """
+        Get events matching a specific final state.
+        Uses the cached all_events_fs class variable.
+        
+        Args:
+            final_state: Final state string to match
+        
+        Returns:
+            Array of events matching the final state
+        """
+        all_events_fs = self._get_all_events_fs()
+        mask = (all_events_fs == final_state)
+        return self.events[mask]
     
     @staticmethod
     def _limit_particles_in_fs(final_state: str, threshold: int = 4) -> str:
@@ -144,7 +176,7 @@ class IMCalculator:
         Limit particle counts in final state string to threshold.
         
         Args:
-            final_state: Final state string like "2e_3m_5j_1p"
+            final_state: Final state string like "2e_3m_5j_1g"
             threshold: Maximum count to allow
             
         Returns:
@@ -169,7 +201,7 @@ class IMCalculator:
         Check if a final state contains enough particles for a combination.
         
         Args:
-            final_state: Final state string like "2e_3m_5j_1p"
+            final_state: Final state string like "2e_3m_5j_1g"
             combination: Dictionary mapping particle types to required counts
                         e.g., {"Electrons": 2, "Jets": 3}
         

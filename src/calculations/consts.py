@@ -12,6 +12,6 @@ KNOWN_MASSES = {
 LETTER_PARTICLE_MAPPING = {
     "e": "Electrons",
     "j": "Jets",
-    "p": "Photons",  # Fixed typo: was "Photos"
+    "g": "Photons",  # Changed from "p" to "g" for gamma
     "m": "Muons"
 }

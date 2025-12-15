@@ -103,7 +103,7 @@ def group_by_final_state(events: ak.Array) -> Iterator[Tuple[str, ak.Array]]:
         
     Yields:
         Tuples of (final_state_string, events_matching_final_state)
-        Final state format: "{e}e_{m}m_{j}j_{p}p" where numbers are counts
+        Final state format: "{e}e_{m}m_{j}j_{g}g" where numbers are counts
         
     Note:
         If a particle type doesn't exist in the events, its count defaults to 0.
@@ -118,9 +118,9 @@ def group_by_final_state(events: ak.Array) -> Iterator[Tuple[str, ak.Array]]:
     e = getattr(particle_counts, "Electrons", zero_array)
     m = getattr(particle_counts, "Muons", zero_array)
     j = getattr(particle_counts, "Jets", zero_array)
-    p = getattr(particle_counts, "Photons", zero_array)
+    g = getattr(particle_counts, "Photons", zero_array)
     
-    all_events_fs = [f"{e}e_{m}m_{j}j_{p}p" for e, m, j, p in zip(e, m, j, p)]
+    all_events_fs = [f"{e}e_{m}m_{j}j_{g}g" for e, m, j, g in zip(e, m, j, g)]
 
     unique_fs = set(all_events_fs)
     
@@ -135,7 +135,7 @@ def limit_particles_in_fs(final_state, threshold):
     Limit particle counts in final state string to threshold.
     
     Args:
-        final_state: Final state string like "2e_3m_5j_1p"
+        final_state: Final state string like "2e_3m_5j_1g"
         threshold: Maximum count to allow
         
     Returns:
@@ -159,7 +159,7 @@ def is_finalstate_contain_combination(final_state, combination):
     Check if a final state contains enough particles for a combination.
     
     Args:
-        final_state: Final state string like "2e_3m_5j_1p"
+        final_state: Final state string like "2e_3m_5j_1g"
         combination: Dictionary mapping particle types to required counts
         
     Returns:

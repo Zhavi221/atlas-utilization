@@ -4,7 +4,7 @@ import argparse
 import yaml
 import json
 from datetime import datetime
-
+import os
 
 CONFIG_PATH = "configs/pipeline_config.yaml"
 
@@ -25,6 +25,8 @@ def main():
     tasks = config["tasks"]
 
     saved_files = []  # Track files saved by parsing for IM calculation
+    created_im_files = []  # Track IM array files created by IM calculation
+    processed_im_files = []  # Track processed IM array files from post-processing
     
     if tasks["do_parsing"]:
         logger.info("Starting parsing task")
@@ -50,14 +52,71 @@ def main():
             if saved_files:
                 logger.info(f"Starting IM calculation on {len(saved_files)} files from parsing")
                 from src.pipelines import im_pipeline
-                im_pipeline.mass_calculate(config["mass_calculate"], file_list=saved_files)
+                created_im_files = im_pipeline.mass_calculate(config["mass_calculate"], file_list=saved_files)
             else:
                 logger.warning("No files were successfully parsed. Skipping IM calculation.")
         else:
             # Parsing is disabled, run IM calculation directly (scans directory)
             logger.info("Starting IM calculation task (scanning input directory)")
             from src.pipelines import im_pipeline
-            im_pipeline.mass_calculate(config["mass_calculate"])
+            created_im_files = im_pipeline.mass_calculate(config["mass_calculate"])
+        
+        if created_im_files is None:
+            created_im_files = []
+        if created_im_files:
+            logger.info(f"IM calculation completed. {len(created_im_files)} IM array files created.")
+    
+    if tasks["do_post_processing"]:
+        post_processing_config = config["post_processing"]
+        if tasks["do_mass_calculating"]:
+            if created_im_files:
+                logger.info(f"Starting post-processing on {len(created_im_files)} IM array files from IM calculation")
+                from src.pipelines import post_processing_pipeline
+                processed_im_files = post_processing_pipeline.process_im_arrays(
+                    post_processing_config, file_list=created_im_files
+                )
+            else:
+                logger.warning("No IM array files were created. Skipping post-processing.")
+        else:
+            # IM calculation is disabled, check if arrays exist and scan directory
+            if check_im_arrays_exist(post_processing_config["input_dir"]):
+                logger.info("Starting post-processing task (scanning input directory)")
+                from src.pipelines import post_processing_pipeline
+                processed_im_files = post_processing_pipeline.process_im_arrays(post_processing_config)
+            else:
+                logger.warning("No IM arrays found. Skipping post-processing.")
+        
+        if processed_im_files is None:
+            processed_im_files = []
+        if processed_im_files:
+            logger.info(f"Post-processing completed. {len(processed_im_files)} processed IM array files created.")
+    
+    if tasks["do_histogram_creation"]:
+        histogram_creation_config = config["histogram_creation"]
+        if tasks["do_post_processing"]:
+            # Use processed files from post-processing
+            if processed_im_files:
+                logger.info(f"Starting histogram creation on {len(processed_im_files)} processed IM array files")
+                from src.pipelines import histograms_pipeline
+                histograms_pipeline.create_histograms(histogram_creation_config, file_list=processed_im_files)
+            else:
+                logger.warning("No processed IM array files available. Skipping histogram creation.")
+        elif tasks["do_mass_calculating"]:
+            # Fallback to raw IM files if post-processing wasn't run
+            if created_im_files:
+                logger.info(f"Starting histogram creation on {len(created_im_files)} IM array files from IM calculation")
+                from src.pipelines import histograms_pipeline
+                histograms_pipeline.create_histograms(histogram_creation_config, file_list=created_im_files)
+            else:
+                logger.warning("No IM array files were created. Skipping histogram creation.")
+        else:
+            # Both IM calculation and post-processing are disabled, check if arrays exist and scan directory
+            if check_im_arrays_exist(histogram_creation_config["input_dir"]):
+                logger.info("Starting histogram creation task (scanning input directory)")
+                from src.pipelines import histograms_pipeline
+                histograms_pipeline.create_histograms(histogram_creation_config)
+            else:   
+                logger.warning("No invariant mass arrays found. Skipping histogram creation.")
 
 def init_logging():
     logging.basicConfig(
@@ -69,6 +128,16 @@ def init_logging():
     main_logger = logging.getLogger(__name__)
 
     return main_logger
+
+def check_im_arrays_exist(im_masses_dir):
+    if os.path.exists(im_masses_dir):
+        im_arrays = os.listdir(im_masses_dir)
+        if len(im_arrays) > 0:
+            return True
+        else:
+            return False
+    else:
+        return False
 
 def load_config(args):
     """Load configuration from YAML file."""

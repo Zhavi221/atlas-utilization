@@ -11,7 +11,7 @@ import yaml
 import sys
 from pathlib import Path
 import random
-
+import logging
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -21,9 +21,9 @@ from src.im_calculator.im_calculator import IMCalculator
 from typing import List
 
 CONFIG_PATH = "configs/pipeline_config.yaml"
-TIME_FOR_WORK_UNIT_SEC = 2  # Estimated time per file+combination+final_state unit
-WALLTIME_PER_JOB_SEC = 24 * 3600  # 24 hours
-SAMPLE_FILES_FOR_FS_ESTIMATE = 5  # Number of files to sample for final state estimation
+TIME_FOR_WORK_UNIT_SEC = 1  # Estimated time per file+combination+final_state unit
+WALLTIME_PER_JOB_SEC = 24 * 3600 * 3 # 3 days
+SAMPLE_FILES_FOR_FS_ESTIMATE = 1  # Number of files to sample for final state estimation
 
 
 def _estimate_avg_final_states(
@@ -50,20 +50,28 @@ def _estimate_avg_final_states(
     for filename in sample_files:
         try:
             file_path = os.path.join(input_dir, filename)
-            particle_arrays = parser.AtlasOpenParser.parse_root_file(file_path)
-            
+            release_year = parser.AtlasOpenParser.extract_release_year_from_filename(filename)
+            particle_arrays = parser.AtlasOpenParser.parse_root_file(
+                file_index=file_path,
+                release_year=release_year,
+                batch_size=None)
+
             if particle_arrays is None or len(particle_arrays) == 0:
                 continue
             
-            calculator = IMCalculator(particle_arrays)
+            calculator = IMCalculator(
+                particle_arrays,
+                min_events_per_fs=config["mass_calculate"]["min_events_per_fs"]
+            )
             # Count unique final states
             unique_fs = set()
-            for fs, _ in calculator.group_by_final_state():
+            for fs in calculator.group_by_final_state():
                 unique_fs.add(fs)
             
             final_state_counts.append(len(unique_fs))
         except Exception as e:
             # Skip files that can't be parsed
+            logging.error(f"Error parsing file: {filename}, error: {e}")
             continue
     
     if not final_state_counts:
@@ -129,9 +137,13 @@ if __name__ == "__main__":
     total_work_units = num_files * num_combinations * avg_final_states_per_file
     
     # Calculate jobs needed
-    work_units_per_job = args.walltime_per_job_sec / args.time_for_work_unit_sec
-    num_jobs = math.ceil(total_work_units / work_units_per_job)
+    num_jobs_list = {i: 0 for i in [0.01, 0.1, 0.5]}
+    for i in [0.01, 0.1, 0.5]:
+        work_units_per_job = 259200 / i
+        num_jobs = math.ceil(total_work_units / work_units_per_job)
+        num_jobs_list[i] = num_jobs
     
+    print(num_jobs_list)
     print(f"Files: {num_files}")
     print(f"Combinations: {num_combinations}")
     print(f"Avg final states per file: {avg_final_states_per_file:.1f} (estimated from {min(args.sample_size, num_files)} samples)")

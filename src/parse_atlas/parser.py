@@ -5,10 +5,6 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 import itertools
 
 import uproot
-import tarfile
-import gzip
-import tempfile
-import shutil
 import requests
 import atlasopenmagic as atom
 
@@ -79,7 +75,6 @@ class AtlasOpenParser():
                 release_years=[],
                 show_available_releases=False,
                 wrapping_logger=None,
-                temp_directory=None,
                 show_progress_bar=True,
                 max_file_retries=3):
         self.files_ids = None
@@ -89,14 +84,6 @@ class AtlasOpenParser():
         
         self.events = None
         self.total_size_kb = 0
-        
-        #SET UP TEMP DIRECTORY
-        if temp_directory is None:
-            self.temp_directory = tempfile.gettempdir()
-        else:
-            self.temp_directory = temp_directory
-            # Create temp directory if it doesn't exist
-            os.makedirs(self.temp_directory, exist_ok=True)
         
         #SET UP RELEASES VARIABLES
         self._fetch_available_releases(show_available_releases)
@@ -332,8 +319,7 @@ class AtlasOpenParser():
                             file_index,
                             self.possible_tree_names,
                             release_year,
-                            40_000,  # batch_size
-                            self.temp_directory  # temp_directory
+                            40_000  # batch_size
                         ): file_index
                         for file_index in file_ids
                     }
@@ -478,32 +464,19 @@ class AtlasOpenParser():
     
     #CHECK check performance of this function, even for big local files its slow
     @staticmethod
-    def parse_root_file(file_index, tree_names=["CollectionTree"], release_year="2024r-pp", batch_size=40_000, temp_directory=None) -> ak.Array:
+    def parse_root_file(file_index, tree_names=["CollectionTree"], release_year="2024r-pp", batch_size=None) -> ak.Array:
         """
         Parse an ATLAS DAOD file in batches if necessary.
         Accumulates raw arrays and zips into vector objects only once per object.
         
         Automatically normalizes release years with _mc suffix for schema lookups.
-        Handles compressed files (.tar.gz, .gz) by extracting to temp directory.
         
         Args:
-            file_index: Path or URI to ROOT file (can be .tar.gz or .gz)
+            file_index: Path or URI to ROOT file
             tree_names: List of possible tree names to search for
             release_year: Release year identifier (e.g., "2024r-pp" or "2024r-pp_mc")
             batch_size: Number of entries to process per batch
-            temp_directory: Directory for extracting compressed files (None = system temp)
         """
-        # Check if file is compressed
-        is_tar_gz = '.tar.gz' in file_index
-        is_gzipped = '.gz' in file_index and not is_tar_gz
-        
-        if is_tar_gz:
-            # Handle tar.gz files
-            return AtlasOpenParser._parse_tar_gz_file(file_index, tree_names, release_year, batch_size, temp_directory)
-        elif is_gzipped:
-            # Handle .gz files
-            return AtlasOpenParser._parse_gzipped_file(file_index, tree_names, release_year, batch_size, temp_directory)
-        
         # Regular ROOT file - parse directly
         with uproot.open(file_index) as root_file:
             root_file_keys = root_file.keys()
@@ -552,189 +525,6 @@ class AtlasOpenParser():
                 })
 
             return ak.zip(obj_events_by_quantities, depth_limit=1)
-    
-    @staticmethod
-    def _parse_tar_gz_file(file_index, tree_names, release_year, batch_size, temp_directory):
-        """
-        Extract tar.gz file and parse ROOT file inside.
-        
-        Args:
-            file_index: URI or path to .tar.gz file
-            tree_names: List of possible tree names
-            release_year: Release year identifier
-            batch_size: Number of entries per batch
-            temp_directory: Directory for extraction (None = system temp)
-            
-        Returns:
-            Parsed awkward array or None if extraction fails
-        """
-        if temp_directory is None:
-            temp_directory = tempfile.gettempdir()
-        
-        # Create unique temp directory for this extraction
-        extract_dir = tempfile.mkdtemp(dir=temp_directory, prefix='atlas_tar_')
-        
-        try:
-            # Download tar.gz if remote
-            if file_index.startswith('root://') or file_index.startswith('http'):
-                tar_path = os.path.join(extract_dir, 'file.tar.gz')
-                logging.info(f"Downloading {file_index} to {tar_path}")
-                
-                if file_index.startswith('http'):
-                    response = requests.get(file_index, stream=True, timeout=300)
-                    response.raise_for_status()
-                    with open(tar_path, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                else:
-                    # For root:// protocol, try to download using xrdcp or fallback
-                    # Try xrdcp first (common on CERN infrastructure)
-                    import subprocess
-                    try:
-                        result = subprocess.run(
-                            ['xrdcp', file_index, tar_path],
-                            capture_output=True,
-                            timeout=600,
-                            check=True
-                        )
-                    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
-                        # Fallback: try using uproot's underlying mechanism
-                        # Note: uproot may not handle tar.gz directly, so we skip
-                        logging.warning(
-                            f"Cannot download root:// tar.gz file {file_index}. "
-                            f"xrdcp not available or failed. Error: {e}"
-                        )
-                        return None
-            else:
-                # Local file
-                tar_path = file_index
-            
-            # Extract tar.gz
-            logging.info(f"Extracting {tar_path}")
-            with tarfile.open(tar_path, 'r:gz') as tar:
-                # Find ROOT file(s) in archive
-                logging.info(f"TAR FILE MEMBERS: {tar.getmembers()}")
-                root_files = [m for m in tar.getmembers() if m.name.endswith('.root') and m.isfile()]
-                if not root_files:
-                    logging.warning(f"No ROOT file found in {file_index}")
-                    return None
-                
-                # Extract first ROOT file
-                root_file_member = root_files[0]
-                tar.extract(root_file_member, extract_dir)
-                extracted_root = os.path.join(extract_dir, root_file_member.name)
-                
-                logging.info(f"Extracted ROOT file: {extracted_root}")
-                
-                # Parse extracted ROOT file
-                result = AtlasOpenParser.parse_root_file(
-                    extracted_root, tree_names, release_year, batch_size, temp_directory
-                )
-                
-                return result
-                
-        except Exception as e:
-            logging.error(f"Error extracting/parsing tar.gz file {file_index}: {e}")
-            return None
-        finally:
-            # Clean up temp directory
-            try:
-                shutil.rmtree(extract_dir)
-                logging.debug(f"Cleaned up temp directory: {extract_dir}")
-            except Exception as e:
-                logging.warning(f"Failed to clean up temp directory {extract_dir}: {e}")
-    
-    @staticmethod
-    def _parse_gzipped_file(file_index, tree_names, release_year, batch_size, temp_directory):
-        """
-        Decompress .gz file and parse ROOT file.
-        
-        Args:
-            file_index: URI or path to .gz file
-            tree_names: List of possible tree names
-            release_year: Release year identifier
-            batch_size: Number of entries per batch
-            temp_directory: Directory for extraction (None = system temp)
-            
-        Returns:
-            Parsed awkward array or None if decompression fails
-        """
-        if temp_directory is None:
-            temp_directory = tempfile.gettempdir()
-        
-        # Create unique temp file for decompressed ROOT file
-        temp_file = tempfile.NamedTemporaryFile(
-            dir=temp_directory, 
-            suffix='.root', 
-            delete=False,
-            prefix='atlas_gz_'
-        )
-        temp_path = temp_file.name
-        temp_file.close()
-        
-        try:
-            # Download and decompress if remote
-            if file_index.startswith('root://') or file_index.startswith('http'):
-                logging.info(f"Downloading and decompressing {file_index}")
-                
-                if file_index.startswith('http'):
-                    response = requests.get(file_index, stream=True, timeout=300)
-                    response.raise_for_status()
-                    with gzip.GzipFile(fileobj=response.raw) as gz_file:
-                        with open(temp_path, 'wb') as f:
-                            for chunk in iter(lambda: gz_file.read(8192), b''):
-                                f.write(chunk)
-                else:
-                    # For root:// protocol, try xrdcp
-                    import subprocess
-                    try:
-                        # Download first to temp location
-                        temp_gz = os.path.join(os.path.dirname(temp_path), 'temp_file.gz')
-                        result = subprocess.run(
-                            ['xrdcp', file_index, temp_gz],
-                            capture_output=True,
-                            timeout=600,
-                            check=True
-                        )
-                        # Decompress
-                        with gzip.open(temp_gz, 'rb') as gz_file:
-                            with open(temp_path, 'wb') as f:
-                                f.write(gz_file.read())
-                        # Clean up temp gz
-                        os.unlink(temp_gz)
-                    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
-                        logging.warning(
-                            f"Cannot download root:// .gz file {file_index}. "
-                            f"xrdcp not available or failed. Error: {e}"
-                        )
-                        return None
-            else:
-                # Local file - decompress directly
-                logging.info(f"Decompressing {file_index}")
-                with gzip.open(file_index, 'rb') as gz_file:
-                    with open(temp_path, 'wb') as f:
-                        f.write(gz_file.read())
-            
-            logging.info(f"Decompressed to: {temp_path}")
-            
-            # Parse decompressed ROOT file
-            result = AtlasOpenParser.parse_root_file(
-                temp_path, tree_names, release_year, batch_size, temp_directory
-            )
-            
-            return result
-            
-        except Exception as e:
-            logging.error(f"Error decompressing/parsing .gz file {file_index}: {e}")
-            return None
-        finally:
-            # Clean up temp file
-            try:
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
-                    logging.debug(f"Cleaned up temp file: {temp_path}")
-            except Exception as e:
-                logging.warning(f"Failed to clean up temp file {temp_path}: {e}")
 
     def _get_parsing_status_for_pbar(self):
         success_rate = (

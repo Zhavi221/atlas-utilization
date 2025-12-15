@@ -1,6 +1,8 @@
 tasks:
-  do_parsing: true
-  do_mass_calculating: false
+  do_parsing: false
+  do_mass_calculating: true
+  do_post_processing: true
+  do_histogram_creation: true
 
 testing_config:
   is_on: false #normal or random
@@ -110,3 +112,22 @@ mass_calculate:
   # ===COUNT FOR EACH PARTICLE IN A COMBINATION=== 
   min_count: 2
   max_count: 4
+  # ===MINIMUM EVENTS PER FINAL STATE===
+  min_events_per_fs: 100
+
+post_processing:
+  # ===INPUT DIRECTORY FOR THE IM ARRAY FILES===
+  input_dir: "/storage/agrp/netalev/data/inv_masses/"
+  # ===OUTPUT DIRECTORY FOR THE PROCESSED ARRAYS===
+  output_dir: "/storage/agrp/netalev/data/inv_masses_processed/"
+  # ===BIN WIDTHS TO USE FOR PEAK DETECTION (in GeV)===
+  bin_widths_gev:
+    - 10
+    # - 10
+
+histogram_creation:
+  input_dir: "/storage/agrp/netalev/data/inv_masses_processed/"
+  output_dir: "/storage/agrp/netalev/data/histograms/"
+  bin_widths_gev:
+    - 10
+    # - 10

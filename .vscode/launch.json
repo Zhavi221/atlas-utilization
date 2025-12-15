@@ -8,7 +8,8 @@
             "name": "Debug main_pipeline",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/main_pipeline.py",
+            // "program": "${workspaceFolder}/main_pipeline.py",
+            "program": "submission/calculate_im_jobs.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}"
         }

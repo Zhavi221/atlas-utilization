@@ -22,7 +22,6 @@ def parse(config):
         release_years=atlasparser_config["release_years"],
         create_dirs=atlasparser_config["create_dirs"],
         possible_tree_names=atlasparser_config["possible_tree_names"],
-        temp_directory=atlasparser_config.get("temp_directory"),
         show_progress_bar=atlasparser_config.get("show_progress_bar", True),
         max_file_retries=pipeline_config["count_retries_failed_files"]
         )
