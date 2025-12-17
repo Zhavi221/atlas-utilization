@@ -282,7 +282,11 @@ def process_single_file(
     # Initialize calculator
     calculator = IMCalculator(
         particle_arrays, 
-        min_events_per_fs=config["min_events_per_fs"]
+        min_events_per_fs=config["min_events_per_fs"],
+        min_k=config["min_k"],
+        max_k=config["max_k"],
+        min_n=config["min_n"],
+        max_n=config["max_n"],
     )
 
     # Track statistics for this file
@@ -456,7 +460,6 @@ def process_final_state(
 def _convert_array_to_gev(inv_mass: ak.Array) -> ak.Array:
     """
     Convert invariant mass array to GeV.
-    
     Args:
         inv_mass: Invariant mass array
     """

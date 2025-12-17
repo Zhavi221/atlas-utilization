@@ -23,7 +23,7 @@ class IMCalculator:
     - Process events in batches for memory efficiency
     """
     
-    def __init__(self, events: ak.Array, min_events_per_fs: int):
+    def __init__(self, events: ak.Array, min_events_per_fs: int, min_k: int, max_k: int, min_n: int, max_n: int):
         """
         Initialize the calculator with particle events.
         
@@ -33,6 +33,10 @@ class IMCalculator:
         """
         self.events = events
         self.min_events_per_fs = min_events_per_fs
+        self.min_k = min_k
+        self.max_k = max_k
+        self.min_n = min_n
+        self.max_n = max_n
         self._all_events_fs = None  # Cache for final state labels
         vector.register_awkward()
     
@@ -127,11 +131,24 @@ class IMCalculator:
             j = ak.to_numpy(getattr(particle_counts, "Jets", zero_array))
             g = ak.to_numpy(getattr(particle_counts, "Photons", zero_array))
             
-            all_events_fs = [f"{e}e_{m}m_{j}j_{g}g" for e, m, j, g in zip(e, m, j, g)]
+            all_events_fs = [
+                f"{e}e_{m}m_{j}j_{g}g" for e, m, j, g in zip(e, m, j, g) if self._is_valid_fs([e, m, j, g])]
             self._all_events_fs = ak.Array(all_events_fs)
         
         return self._all_events_fs
     
+    def _is_valid_fs(self, particle_counts) -> bool:
+        total_particles = len([p for p in particle_counts if p > 0])
+        if total_particles < self.min_n or total_particles > self.max_n:
+            return False
+        
+        particle_counts = [p for p in particle_counts if (p > self.min_k) or (p < self.max_k)]
+        if any(particle_counts):
+            return False
+
+        return True
+        
+
     def group_by_final_state(self) -> Iterator[str]:
         """
         Group events by their final state (particle counts).
