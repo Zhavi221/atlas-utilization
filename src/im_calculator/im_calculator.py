@@ -138,13 +138,14 @@ class IMCalculator:
         return self._all_events_fs
     
     def _is_valid_fs(self, particle_counts) -> bool:
-        total_particles = len([p for p in particle_counts if p > 0])
-        if total_particles < self.min_n or total_particles > self.max_n:
+        total_types = [p for p in particle_counts if p > 0]
+        if len(total_types) < self.min_n or len(total_types) > self.max_n:
             return False
         
-        particle_counts = [p for p in particle_counts if (p > self.min_k) or (p < self.max_k)]
-        if any(particle_counts):
-            return False
+        # Check each non-zero count is within [min_k, max_k]
+        for p in total_types:
+            if p < self.min_k or p > self.max_k:
+                return False
 
         return True
         
