@@ -1,10 +1,11 @@
 #!/bin/bash
 # Submit batch jobs for IM pipeline calculation
 
-NUM_JOBS=$(python submission/calculate_im_jobs.py \
-    --time_for_work_unit_sec 0.01 \
-    --walltime_per_job_sec 259200 | tail -1)
-
+# NUM_JOBS=$(python submission/calculate_im_jobs.py \
+#     --time_for_work_unit_sec 0.01 \
+#     --walltime_per_job_sec 259200 | tail -1)
+NUM_JOBS=15
+CPUS_PER_JOB=1
 echo "Submitting $NUM_JOBS array jobs for IM pipeline"
 
 cat <<EOF > dynamic_im_job.pbs
@@ -12,7 +13,7 @@ cat <<EOF > dynamic_im_job.pbs
 #PBS -q N
 #PBS -o logs/im_job_\$PBS_ARRAY_INDEX.out
 #PBS -e logs/im_job_\$PBS_ARRAY_INDEX.err
-#PBS -l select=1:ncpus=8:mem=20gb
+#PBS -l select=1:ncpus=$CPUS_PER_JOB:mem=20gb
 #PBS -l io=5
 #PBS -l walltime=72:00:00
 #PBS -J 1-$NUM_JOBS

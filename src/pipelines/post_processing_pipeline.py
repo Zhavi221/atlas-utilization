@@ -73,6 +73,14 @@ def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> Li
         if not im_array_files:
             logger.warning(f"No .npy files found in {input_dir}")
             return []
+        
+        # Handle batch separation if configured (only when scanning directory)
+        batch_job_index = config.get("batch_job_index")
+        total_batch_jobs = config.get("total_batch_jobs")
+        
+        if batch_job_index is not None and total_batch_jobs is not None:
+            im_array_files = get_batch_files(im_array_files, batch_job_index, total_batch_jobs)
+            logger.info(f"Batch {batch_job_index}/{total_batch_jobs}: Processing {len(im_array_files)} files")
     
     total_arrays = len(im_array_files)
     logger.info(f"Processing {total_arrays} IM arrays for peak removal and splitting...")
@@ -270,6 +278,37 @@ def split_by_first_empty_bin(
                 f"main={len(main_array)}, outliers={len(outliers_array)}")
     
     return main_array, outliers_array
+
+
+def get_batch_files(
+    files: List[str],
+    batch_index: int,
+    total_batches: int
+) -> List[str]:
+    """
+    Split files into batches for distributed processing.
+    
+    Args:
+        files: List of all file names
+        batch_index: Current batch index (1-indexed)
+        total_batches: Total number of batches
+        
+    Returns:
+        List of files for this batch
+    """
+    batch_index = int(batch_index)
+    total_batches = int(total_batches)
+    
+    total_files = len(files)
+    files_per_batch = total_files // total_batches
+    start_idx = (batch_index - 1) * files_per_batch
+    
+    if batch_index == total_batches:
+        end_idx = total_files
+    else:
+        end_idx = start_idx + files_per_batch
+    
+    return files[start_idx:end_idx]
 
 
 def init_logging() -> logging.Logger:

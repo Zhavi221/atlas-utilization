@@ -283,10 +283,10 @@ def process_single_file(
     calculator = IMCalculator(
         particle_arrays, 
         min_events_per_fs=config["min_events_per_fs"],
-        min_k=config["min_k"],
-        max_k=config["max_k"],
-        min_n=config["min_n"],
-        max_n=config["max_n"],
+        min_k=config["min_count"],
+        max_k=config["max_count"],
+        min_n=config["min_particles"],
+        max_n=config["max_particles"],
     )
 
     # Track statistics for this file

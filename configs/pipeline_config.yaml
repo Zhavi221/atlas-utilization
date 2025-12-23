@@ -1,6 +1,6 @@
 tasks:
   do_parsing: false
-  do_mass_calculating: true
+  do_mass_calculating: false
   do_post_processing: true
   do_histogram_creation: true
 
@@ -93,7 +93,7 @@ mass_calculate:
   # ===OUTPUT DIRECTORY FOR THE INVARIANT MASS ARRAYS===
   output_dir: "/storage/agrp/netalev/data/inv_masses/"
   # ===USE MULTIPROCESSING FOR PARALLEL FILE PROCESSING===
-  use_multiprocessing: false
+  use_multiprocessing: true
   # ===NUMBER OF WORKER PROCESSES (only used if use_multiprocessing is true)===
   max_workers: 4  # null = use CPU count
   # ===BATCH JOB CONFIGURATION (for distributed processing)===
@@ -131,3 +131,6 @@ histogram_creation:
   bin_widths_gev:
     - 10
     # - 10
+  # ===SINGLE OUTPUT FILE MODE (for batch jobs writing to shared file)===
+  single_output_file: true
+  output_filename: "all_histograms.root"
