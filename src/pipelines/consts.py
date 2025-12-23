@@ -1,0 +1,1 @@
+OPEN_DATA_SIZE_MB = 60 * (1024 * 1024)

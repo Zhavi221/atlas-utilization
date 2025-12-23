@@ -1,30 +1,71 @@
 tasks:
-  do_parsing: true
-  do_mass_calculating: true
+  do_parsing: false
+  do_mass_calculating: false
+  do_post_processing: true
+  do_histogram_creation: true
 
-parsing:
-  parse_in_subprocess: true #important for cluster processing
-  random_files: false #for testing
-  release_year: '2024'
-  all_years: false #TODO implement this maybe remove parameter from fetch records
-  max_threads: 4
-  max_process_memory_mb: 8192
-  max_chunk_size_bytes: 1000000000 #1GB 
-  # max_chunk_size_bytes: 50000000 #50MB for testing
-  file_limit: 100
-  output_path: 'data/root_files'
-  logging_path: 'logs/'
-  # crashed_files: 'crashed_files.json'
+testing_config:
+  is_on: false #normal or random
+  test_run_index: null
+  testing_jobs_path: "testing/testing_runs_bigger.json"
+
+parsing_config:
+  run_metadata:
+    # ===BATCH JOB INDEX===
+    batch_job_index: null
+    run_name: null
+    total_batch_jobs: null
+
+  pipeline_config:
+    # ===USE A MULTIPROCESSING WHILE PARSING
+    parse_in_multiprocessing: true #important for cluster processing
+    # ===ADD FAILED FILES TO QUEUE OF FILES===
+    count_retries_failed_files: 3 
+    # ===AMOUNT OF PROCESSES TO PARSE FILES===
+    max_parallel_workers: 4
+    # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
+    limit_files_per_year: null #FOR TESTING - limit number of files per year
+    # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
+    fetching_metadata_timeout: 60
+    # ===PATH FOR OUTPUTTING THE DATA===
+    output_path: "/storage/agrp/netalev/data/root_files/"
+    file_urls_path: "/storage/agrp/netalev/data/batch_job_file_ids.json"
+    parse_mc: false
+  
+  atlasparser_config:
+    # max_environment_memory_mb: 8192
+      # ===RELEVANT WHEN USED IN A RESTRICTED MEMORY ENV (A CLUSTER)===
+    max_environment_memory_mb: 20000 
+    # ===RELEASE YEARS TO PARSE THE FILES FROM (IF EMPTY FETCHES ALL)===  
+    release_years:
+    - 2024r-hi
+    - 2024r-pp
+    # ===AMOUNT OF THREADS TO USE MULTITHREADING WITH, 4 IS A STABLE AMOUNT===
+    max_threads: 8
+    # ===A THRESHOLD FOR PREVENTING MEMORY OVERLOAD===
+    chunk_yield_threshold_bytes: 5000000000 #?1GB CURRENTLY BUT 300MB PROVED ITSELF IN TESTING
+    # chunk_yield_threshold_bytes: 100000000 #FOR TESTING - 50MB for testing
+    # ===PATH FOR OUTPUTTING THE LOGS===
+    logging_path: "/storage/agrp/netalev/logs/"
+    # ===SHOULD CREATE LOGGING AND DATA DIRECTORIES===
+    create_dirs: true
+    # ===THE NAMES FOR THE DATA TREES INSIDE THE ROOT FILES, CHANGES FROM EDU TO RESEARCH RELEASES===
+    possible_tree_names:
+    - CollectionTree
+    - mini
+    - analysis
+    temp_directory: /storage/agrp/netalev/data/temp_zipped_files/
+    show_progress_bar: false
 
   particle_counts:
     Electrons:
-      min: 1
+      min: 0
       max: 6
     Muons:
-      min: 1
+      min: 0
       max: 6
     Jets:
-      min: 2
+      min: 0
       max: 8
     Photons:
       min: 0
@@ -41,14 +82,55 @@ parsing:
       max: 3.141592653589793
 
 mass_calculate:
-  input_dir: 'data/root_files'
-  output_dir: 'data/inv_masses'
+  # ===SLICE EVENTS AT TOP X PARTICLES BY THIS FIELD===
+  field_to_slice_by: "pt" 
+  # ===LIMIT COMBINATIONS CALCULATED, MAINLY FOR TESTING===
+  limit_combinations: null
+  # ===THRESHOLD FOR EMPTYING THE FS MAPPING (in bytes)===
+  fs_mapping_threshold_bytes: 50000000  # 50MB default
+  # ===INPUT DIRECTORY FOR THE ROOT FILES TO CALCULATE FROM===
+  input_dir: "/storage/agrp/netalev/data/root_files/"
+  # ===OUTPUT DIRECTORY FOR THE INVARIANT MASS ARRAYS===
+  output_dir: "/storage/agrp/netalev/data/inv_masses/"
+  # ===USE MULTIPROCESSING FOR PARALLEL FILE PROCESSING===
+  use_multiprocessing: true
+  # ===NUMBER OF WORKER PROCESSES (only used if use_multiprocessing is true)===
+  max_workers: 4  # null = use CPU count
+  # ===BATCH JOB CONFIGURATION (for distributed processing)===
+  batch_job_index: null  # Set when running as batch job
+  total_batch_jobs: null  # Set when running as batch job
+  # ===PARTICLES TO CALCULATE INVARIANT MASS OUT OF===
   objects_to_calculate:
       - Electrons
       - Muons
       - Jets
       - Photons
+  # ===COMBINATORICS===
+  # ===MINIMUM AND MAXIMUM PARTICLES IN A COMBINATION===
   min_particles: 2
   max_particles: 4
+  # ===COUNT FOR EACH PARTICLE IN A COMBINATION=== 
   min_count: 2
   max_count: 4
+  # ===MINIMUM EVENTS PER FINAL STATE===
+  min_events_per_fs: 100
+
+post_processing:
+  # ===INPUT DIRECTORY FOR THE IM ARRAY FILES===
+  input_dir: "/storage/agrp/netalev/data/inv_masses/"
+  # ===OUTPUT DIRECTORY FOR THE PROCESSED ARRAYS===
+  output_dir: "/storage/agrp/netalev/data/inv_masses_processed/"
+  # ===BIN WIDTHS TO USE FOR PEAK DETECTION (in GeV)===
+  bin_widths_gev:
+    - 10
+    # - 10
+
+histogram_creation:
+  input_dir: "/storage/agrp/netalev/data/inv_masses_processed/"
+  output_dir: "/storage/agrp/netalev/data/histograms/"
+  bin_widths_gev:
+    - 10
+    # - 10
+  # ===SINGLE OUTPUT FILE MODE (for batch jobs writing to shared file)===
+  single_output_file: true
+  output_filename: "all_histograms.root"
