@@ -8,7 +8,7 @@ NUM_JOBS=15
 CPUS_PER_JOB=1
 echo "Submitting $NUM_JOBS array jobs for IM pipeline"
 
-cat <<EOF > dynamic_im_job.pbs
+qsub <<EOF
 #!/bin/bash
 #PBS -q N
 #PBS -o logs/im_job_\$PBS_ARRAY_INDEX.out
@@ -32,6 +32,4 @@ python main_pipeline.py \
     > "/storage/agrp/netalev/logs/im_job_\${PBS_ARRAY_INDEX}.out" \
     2> "/storage/agrp/netalev/logs/im_job_\${PBS_ARRAY_INDEX}.err"
 EOF
-
-qsub dynamic_im_job.pbs
 

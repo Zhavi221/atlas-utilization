@@ -4,7 +4,7 @@ import time
 import multiprocessing as mp
 from multiprocessing import Process, Queue
 from src.parse_atlas import parser, schemas
-from src.calculations import combinatorics, physics_calcs, math_utils
+from src.utils.calculations import combinatorics, physics_calcs, math_utils
 from . import consts
 import awkward as ak
 from tqdm import tqdm
@@ -74,6 +74,8 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
                 "worker_num": worker_num
             }
         
+        specific_record_ids = atlasparser_config.get("specific_record_ids", None)
+        logger.info(f"Worker {worker_num}: Config specific_record_ids value: {specific_record_ids} (type: {type(specific_record_ids)})")
         atlasparser = parser.AtlasOpenParser(
             max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
             chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
@@ -82,7 +84,8 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             possible_tree_names=atlasparser_config["possible_tree_names"],
             wrapping_logger=logger,
             show_progress_bar=atlasparser_config.get("show_progress_bar", True),
-            max_file_retries=pipeline_config["count_retries_failed_files"]
+            max_file_retries=pipeline_config["count_retries_failed_files"],
+            specific_record_ids=specific_record_ids
         )
         
         # Parse until we get ONE chunk (using filtered file list)
@@ -185,6 +188,8 @@ def parse_with_per_chunk_subprocess(config):
     run_metadata = config["run_metadata"]
 
     # Get file list upfront (in main process)
+    specific_record_ids = atlasparser_config.get("specific_record_ids", None)
+    logger.info(f"Config specific_record_ids value: {specific_record_ids} (type: {type(specific_record_ids)})")
     temp_parser = parser.AtlasOpenParser(
         max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
         chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
@@ -194,15 +199,22 @@ def parse_with_per_chunk_subprocess(config):
         create_dirs=atlasparser_config["create_dirs"],
         possible_tree_names=atlasparser_config["possible_tree_names"],
         show_progress_bar=atlasparser_config.get("show_progress_bar", True),
-        max_file_retries=pipeline_config["count_retries_failed_files"]
+        max_file_retries=pipeline_config["count_retries_failed_files"],
+        specific_record_ids=specific_record_ids
     )
     
     release_years_file_ids = {}
     file_urls_path = pipeline_config["file_urls_path"]
     lock_file_path = file_urls_path + ".lock"
     
-    # First, try to read existing file (for all jobs, including job 1)
-    if os.path.exists(file_urls_path):
+    # If specific_record_ids is set, skip cache and always fetch fresh
+    # (since cached file might have been created without specific_record_ids)
+    skip_cache = specific_record_ids and (isinstance(specific_record_ids, list) and len(specific_record_ids) > 0)
+    if skip_cache:
+        logger.info(f"specific_record_ids is set, skipping cache and fetching fresh file URLs")
+        whole_file_ids = None
+    elif os.path.exists(file_urls_path):
+        # First, try to read existing file (for all jobs, including job 1)
         try:
             with open(file_urls_path, "r") as f:
                 whole_file_ids = json.load(f)
@@ -241,10 +253,14 @@ def parse_with_per_chunk_subprocess(config):
                 lock_acquired = True
                 try:
                     logger.info("Acquired lock - fetching file URLs...")
+                    if skip_cache:
+                        logger.info(f"Fetching with specific_record_ids: {specific_record_ids}")
                     whole_file_ids = temp_parser.fetch_record_ids(
                         timeout=pipeline_config["fetching_metadata_timeout"], 
                         seperate_mc=True
                     )
+                    if skip_cache:
+                        logger.info(f"Fetched {len(whole_file_ids)} release year(s) with specific_record_ids")
                     if not pipeline_config["parse_mc"]:
                         whole_file_ids = {
                             k: v for k, v in whole_file_ids.items() 
