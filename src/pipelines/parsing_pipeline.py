@@ -7,7 +7,7 @@ For multiprocessing mode, see multiprocessing_pipeline.py
 import logging
 import sys
 from src.parse_atlas import parser
-from src.calculations import physics_calcs
+from src.utils.calculations import physics_calcs
 
 def parse(config):
     logger = init_logging()
@@ -23,7 +23,8 @@ def parse(config):
         create_dirs=atlasparser_config["create_dirs"],
         possible_tree_names=atlasparser_config["possible_tree_names"],
         show_progress_bar=atlasparser_config.get("show_progress_bar", True),
-        max_file_retries=pipeline_config["count_retries_failed_files"]
+        max_file_retries=pipeline_config["count_retries_failed_files"],
+        specific_record_ids=atlasparser_config["specific_record_ids"]
         )
 
     release_years_file_ids = atlasparser.fetch_record_ids(pipeline_config["fetching_metadata_timeout"])

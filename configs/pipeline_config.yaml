@@ -1,8 +1,8 @@
 tasks:
-  do_parsing: false
+  do_parsing: true
   do_mass_calculating: false
-  do_post_processing: true
-  do_histogram_creation: true
+  do_post_processing: false
+  do_histogram_creation: false
 
 testing_config:
   is_on: false #normal or random
@@ -17,12 +17,11 @@ parsing_config:
     total_batch_jobs: null
 
   pipeline_config:
-    # ===USE A MULTIPROCESSING WHILE PARSING
-    parse_in_multiprocessing: true #important for cluster processing
-    # ===ADD FAILED FILES TO QUEUE OF FILES===
-    count_retries_failed_files: 3 
+    parse_in_multiprocessing: false #important for cluster processing
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
+    # ===ADD FAILED FILES TO QUEUE OF FILES===
+    count_retries_failed_files: 3 
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
     limit_files_per_year: null #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
@@ -33,13 +32,16 @@ parsing_config:
     parse_mc: false
   
   atlasparser_config:
-    # max_environment_memory_mb: 8192
-      # ===RELEVANT WHEN USED IN A RESTRICTED MEMORY ENV (A CLUSTER)===
+    # ===RELEVANT WHEN USED IN A RESTRICTED MEMORY ENV (A CLUSTER)===
     max_environment_memory_mb: 20000 
+    # === SPECIFIC RECORD IDS ===
+    specific_record_ids:
+      - 30512 #https://opendata.cern.ch/record/30512
+      - 30546 #https://opendata.cern.ch/record/30546
     # ===RELEASE YEARS TO PARSE THE FILES FROM (IF EMPTY FETCHES ALL)===  
     release_years:
-    - 2024r-hi
-    - 2024r-pp
+    # - 2024r-hi
+    # - 2024r-pp
     # ===AMOUNT OF THREADS TO USE MULTITHREADING WITH, 4 IS A STABLE AMOUNT===
     max_threads: 8
     # ===A THRESHOLD FOR PREVENTING MEMORY OVERLOAD===
@@ -54,8 +56,9 @@ parsing_config:
     - CollectionTree
     - mini
     - analysis
+    - Events
     temp_directory: /storage/agrp/netalev/data/temp_zipped_files/
-    show_progress_bar: false
+    show_progress_bar: true
 
   particle_counts:
     Electrons:

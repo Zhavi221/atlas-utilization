@@ -28,7 +28,7 @@ import tracemalloc
 import hashlib
 from pathlib import Path
 
-from . import schemas
+from . import schemas, consts
 from src.utils import memory_utils
 
 class AtlasOpenParser():
@@ -76,7 +76,8 @@ class AtlasOpenParser():
                 show_available_releases=False,
                 wrapping_logger=None,
                 show_progress_bar=True,
-                max_file_retries=3):
+                max_file_retries=3,
+                specific_record_ids=None):
         self.files_ids = None
         self.file_parsed_count = 0
         self.cur_chunk = 0
@@ -88,6 +89,25 @@ class AtlasOpenParser():
         #SET UP RELEASES VARIABLES
         self._fetch_available_releases(show_available_releases)
         self._setup_release_years(release_years)
+        
+        #SET UP SPECIFIC RECORD IDS
+        self.specific_record_ids = specific_record_ids
+        # Map file URIs to their record IDs (for schema lookup)
+        self.file_uri_to_record_id = {}
+        if self.specific_record_ids and (isinstance(self.specific_record_ids, list) and len(self.specific_record_ids) > 0):
+            logging.info(f"Using specific_record_ids: {self.specific_record_ids}")
+            # Pre-extract schemas for all record IDs
+            for record_id in self.specific_record_ids:
+                try:
+                    schema = schemas.extract_schema_from_record_id(record_id)
+                    schema_key = f"record_{record_id}"
+                    schemas.RELEASE_SCHEMAS[schema_key] = schema
+                    schemas.RECORD_ID_TO_RELEASE[record_id] = schema_key
+                    logging.info(f"Extracted and cached schema for record {record_id}")
+                except Exception as e:
+                    logging.warning(f"Could not extract schema for record {record_id}: {e}. Will try on-the-fly.")
+        else:
+            logging.info(f"specific_record_ids is None or empty: {self.specific_record_ids}")
         
         #SET UP PROGRESS BAR CONFIGURATION
         self.show_progress_bar = show_progress_bar
@@ -184,6 +204,10 @@ class AtlasOpenParser():
                 self.available_releases = atom.available_releases()
                 
     def _setup_release_years(self, release_years):
+        if not release_years:
+            self.input_release_years = []
+            return
+
         invalid_releases = [year for year in release_years if year not in self.available_releases]
         if invalid_releases:
             formatted_releases = list(self.available_releases.keys())
@@ -197,14 +221,21 @@ class AtlasOpenParser():
             Returns a list of file URIs.
         '''
         release_years = []
-        if self.input_release_years:
-            release_years = self.input_release_years
+        release_files_uris = {}
+        # Check if specific_record_ids is provided and not empty
+        if self.specific_record_ids and len(self.specific_record_ids) > 0:
+            logging.info(f"Fetching URIs from specific_record_ids: {self.specific_record_ids}")
+            release_files_uris = self.fetch_uris_from_specific_record_ids(
+                self.specific_record_ids)
         else:
-            release_years = self.available_releases
-        
-        release_files_uris: dict = AtlasOpenParser.fetch_record_ids_for_release_years(
-            release_years,
-            timeout=timeout)
+            if self.input_release_years:
+                release_years = self.input_release_years
+            else:
+                release_years = self.available_releases
+            
+            release_files_uris: dict = AtlasOpenParser.fetch_uris_for_release_years(
+                release_years,
+                timeout=timeout)
 
         #CHECK seperate mc feature
         if seperate_mc:
@@ -212,6 +243,31 @@ class AtlasOpenParser():
         
         return release_files_uris
     
+    def fetch_uris_from_specific_record_ids(self, specific_record_ids) -> dict:
+        """
+        Fetch file URIs from specific record IDs and organize them by record ID.
+        Also maps file URIs to record IDs for schema lookup.
+        """
+        release_files_uris = {}
+        for record_id in specific_record_ids:
+            r = requests.get(consts.CMS_RECID_FILEPAGE_URL.format(record_id))
+            json_r = json.loads(r.text)
+            files_list = []
+            for file in json_r["index_files"]["files"]:
+                for f in file["files"]:
+                    file_uri = f["uri"]
+                    files_list.append(file_uri)
+                    # Map file URI to record ID for schema lookup
+                    self.file_uri_to_record_id[file_uri] = record_id
+            
+            # Use record_id as the key (will be converted to schema key in get_schema_for_release)
+            # Format: "record_{record_id}" to match schema keys
+            record_key = f"record_{record_id}"
+            release_files_uris[record_key] = files_list
+            logging.info(f"Fetched {len(files_list)} files from record {record_id}")
+        
+        return release_files_uris
+
     @staticmethod
     def _seperate_mc_files(release_files_uris):
         """
@@ -246,7 +302,7 @@ class AtlasOpenParser():
         return seperated_release_files_uris
 
     @staticmethod
-    def fetch_record_ids_for_release_years(release_years, timeout=60) -> dict:
+    def fetch_uris_for_release_years(release_years, timeout=60) -> dict:
         release_years_file_ids = {}
         with ThreadPoolExecutor(max_workers=1) as executor:
             for year in release_years:
@@ -385,7 +441,14 @@ class AtlasOpenParser():
                         f"✅ File processed: {file_size_mb:.2f} MB logical size, " 
                         f"{events_in_file:,} events."
                     )
-                cur_file_data = AtlasOpenParser._normalize_fields(cur_file_data, release_year)
+                # Extract record_id from release_year if it's in "record_*" format
+                record_id = None
+                if release_year and release_year.startswith("record_"):
+                    try:
+                        record_id = int(release_year.split("_")[1])
+                    except (ValueError, IndexError):
+                        pass
+                cur_file_data = AtlasOpenParser._normalize_fields(cur_file_data, release_year, record_id=record_id)
                 self._concatenate_events(cur_file_data)
 
         except TimeoutError as e:
@@ -600,11 +663,19 @@ class AtlasOpenParser():
         
         root_ready = {}
 
+        # Extract record_id from release_year if it's in "record_*" format
+        record_id = None
+        if release_year and release_year.startswith("record_"):
+            try:
+                record_id = int(release_year.split("_")[1])
+            except (ValueError, IndexError):
+                pass
+
         for obj_name in awk_arr.fields:
             obj = awk_arr[obj_name]
 
             cur_obj_branch_name = AtlasOpenParser._prepare_obj_branch_name(
-                obj_name, release_year=release_year) 
+                obj_name, release_year=release_year, record_id=record_id) 
 
             if cur_obj_branch_name is None:
                 cur_obj_branch_name = obj_name
@@ -854,7 +925,14 @@ class AtlasOpenParser():
             release_year: Release year identifier (e.g., "2024r-pp" or "2024r-pp_mc")
         """
         try:
-            schema_config = schemas.get_schema_for_release(release_year)
+            # Extract record_id from release_year if it's in "record_*" format
+            record_id = None
+            if release_year.startswith("record_"):
+                try:
+                    record_id = int(release_year.split("_")[1])
+                except (ValueError, IndexError):
+                    pass
+            schema_config = schemas.get_schema_for_release(release_year, record_id=record_id)
         except KeyError:
             # Fallback: try to auto-detect branch names
             logging.warning(f"Release year '{release_year}' not found in schemas. Attempting auto-detection.")
@@ -968,7 +1046,7 @@ class AtlasOpenParser():
         return obj_branches
     
     @staticmethod
-    def _prepare_obj_branch_name(obj_name, release_year="2024r-pp", field=None):
+    def _prepare_obj_branch_name(obj_name, release_year="2024r-pp", field=None, record_id=None):
         """
         Prepare object branch name using release-specific template.
         
@@ -977,8 +1055,9 @@ class AtlasOpenParser():
         
         Args:
             obj_name: Canonical object name (e.g., "Electrons", "Muons")
-            release_year: Release year identifier (e.g., "2024r-pp" or "2024r-pp_mc")
+            release_year: Release year identifier (e.g., "2024r-pp" or "2024r-pp_mc" or "record_30512")
             field: Optional field name (required for flat naming pattern)
+            record_id: Optional record ID for schema lookup when release_year is "record_*"
             
         Returns:
             Branch name:
@@ -986,7 +1065,13 @@ class AtlasOpenParser():
             - For flat naming: "lep_pt" (full name with field if provided, else just "lep")
         """
         try:
-            schema = schemas.get_schema_for_release(release_year)
+            # Extract record_id from release_year if it's in "record_*" format
+            if release_year.startswith("record_") and record_id is None:
+                try:
+                    record_id = int(release_year.split("_")[1])
+                except (ValueError, IndexError):
+                    pass
+            schema = schemas.get_schema_for_release(release_year, record_id=record_id)
             naming_pattern = schema.get("naming_pattern", "dotted")
             object_mappings = schema.get("object_mappings", {})
             
@@ -1009,7 +1094,7 @@ class AtlasOpenParser():
             return "Analysis" + obj_name + "AuxDyn"
 
     @staticmethod
-    def _normalize_fields(ak_array, release_year="2024r-pp"):
+    def _normalize_fields(ak_array, release_year="2024r-pp", record_id=None):
         """
         Normalize fields in awkward array to match schema.
         Ensures all expected objects are present (even if empty).
@@ -1018,10 +1103,17 @@ class AtlasOpenParser():
         
         Args:
             ak_array: Awkward array to normalize
-            release_year: Release year identifier (e.g., "2024r-pp" or "2024r-pp_mc")
+            release_year: Release year identifier (e.g., "2024r-pp" or "2024r-pp_mc" or "record_30512")
+            record_id: Optional record ID for schema lookup when release_year is "record_*"
         """
         try:
-            schema_config = schemas.get_schema_for_release(release_year)
+            # Extract record_id from release_year if it's in "record_*" format
+            if release_year.startswith("record_") and record_id is None:
+                try:
+                    record_id = int(release_year.split("_")[1])
+                except (ValueError, IndexError):
+                    pass
+            schema_config = schemas.get_schema_for_release(release_year, record_id=record_id)
             expected_objects = schema_config["objects"].keys()
         except KeyError:
             # Fallback to legacy schema

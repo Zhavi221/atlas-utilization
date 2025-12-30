@@ -20,7 +20,7 @@ import numpy as np
 from tqdm import tqdm
 import ROOT
 
-from src.calculations import combinatorics, physics_calcs
+from src.utils.calculations import combinatorics, physics_calcs
 from src.parse_atlas import parser
 from src.im_calculator.im_calculator import IMCalculator
 from src.utils import memory_utils

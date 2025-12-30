@@ -11,7 +11,7 @@ else
 fi
 
 if [ "$JOB_TYPE" = "array" ]; then
-    cat <<EOF > dynamic_job.pbs
+    qsub <<EOF
 #!/bin/bash
 #PBS -q N
 #PBS -o logs/parse_job_default.out
@@ -36,7 +36,7 @@ python main_pipeline.py --batch_job_index \$PBS_ARRAY_INDEX --total_batch_jobs $
     2> "/storage/agrp/netalev/logs/real_job_\${PBS_ARRAY_INDEX}.err"
 EOF
 else
-    cat <<EOF > dynamic_job.pbs
+    qsub <<EOF
 #!/bin/bash
 #PBS -q N
 #PBS -N test_skipping_files
@@ -61,6 +61,3 @@ python main_pipeline.py --batch_job_index 1 --total_batch_jobs $NUM_JOBS \
     2> "/storage/agrp/netalev/logs/test_skipping_files.err"
 EOF
 fi
-
-# Submit it
-qsub dynamic_job.pbs

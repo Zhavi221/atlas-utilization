@@ -9,7 +9,7 @@ import vector
 from typing import Dict, Iterator, Tuple, Optional, List
 from collections import Counter
 
-from src.calculations import consts, physics_calcs
+from src.utils.calculations import consts, physics_calcs
 
 
 class IMCalculator:

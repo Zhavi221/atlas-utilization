@@ -12,9 +12,9 @@ import numpy as np
 import vector
 import gc
 from typing import Dict, Iterator, Tuple, Optional
-from src.calculations import consts
+from src.utils.calculations import consts
 
-vector.register_awkward()
+# vector.register_awkward()
 
 def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
     """

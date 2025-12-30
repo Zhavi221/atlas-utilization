@@ -1,0 +1,1 @@
+CMS_RECID_FILEPAGE_URL = "https://opendata.cern.ch/record/{0}/filepage/1?group=1"
