@@ -8,6 +8,18 @@ import os
 
 CONFIG_PATH = "configs/pipeline_config.yaml"
 
+
+def log_task_boundary(logger, task_name: str):
+    """Log task boundary for consistent formatting."""
+    logger.info("=" * 60)
+    logger.info(f"{task_name}")
+    logger.info("=" * 60)
+
+
+def normalize_list(value):
+    """Normalize None to empty list."""
+    return value if value is not None else []
+
 def parse_args():
     """Parse command line arguments."""
     arg_parser = argparse.ArgumentParser()
@@ -20,124 +32,135 @@ def parse_args():
 def main():
     """Main entry point for the pipeline."""
     logger = init_logging()
-    args = parse_args()  # Get args to access config path
+    args = parse_args()
     config = load_config(args)
     tasks = config["tasks"]
 
-    saved_files = []  # Track files saved by parsing for IM calculation
-    created_im_files = []  # Track IM array files created by IM calculation
-    processed_im_files = []  # Track processed IM array files from post-processing
+    parsed_files = []
+    im_files = []
+    processed_im_files = []
     
     if tasks["do_parsing"]:
-        logger.info("Starting parsing task")
-        parsing_config = config["parsing_config"]
-        pipeline_config = parsing_config["pipeline_config"]
-            
-        if pipeline_config["parse_in_multiprocessing"]:
-            logger.info("Parsing with multiprocessing")
-            from src.pipelines import multiprocessing_pipeline
-            saved_files = multiprocessing_pipeline.parse_with_per_chunk_subprocess(parsing_config)   
-        else:
-            logger.info("Parsing without a subprocess")
-            from src.pipelines import parsing_pipeline
-            saved_files = parsing_pipeline.parse(parsing_config)
-        
-        if saved_files is None:
-            saved_files = []
-        logger.info(f"Parsing completed. {len(saved_files)} files saved for IM calculation.")
-            
+        parsed_files = parsing_task(config["parsing_config"], logger)
+    
     if tasks["do_mass_calculating"]:
-        if tasks["do_parsing"]:
-            # Sequential processing: IM calculation on files parsed in this job
-            if saved_files:
-                logger.info(f"Starting IM calculation on {len(saved_files)} files from parsing")
-                from src.pipelines import im_pipeline
-                created_im_files = im_pipeline.mass_calculate(config["mass_calculate"], file_list=saved_files)
-            else:
-                logger.warning("No files were successfully parsed. Skipping IM calculation.")
-        else:
-            # Parsing is disabled, run IM calculation directly (scans directory)
-            logger.info("Starting IM calculation task (scanning input directory)")
-            from src.pipelines import im_pipeline
-            created_im_files = im_pipeline.mass_calculate(config["mass_calculate"])
-        
-        if created_im_files is None:
-            created_im_files = []
-        if created_im_files:
-            logger.info(f"IM calculation completed. {len(created_im_files)} IM array files created.")
+        im_files = mass_calculation_task(config["mass_calculate"], logger, parsed_files)
     
     if tasks["do_post_processing"]:
-        post_processing_config = config["post_processing"]
-        if tasks["do_mass_calculating"]:
-            if created_im_files:
-                logger.info(f"Starting post-processing on {len(created_im_files)} IM array files from IM calculation")
-                from src.pipelines import post_processing_pipeline
-                processed_im_files = post_processing_pipeline.process_im_arrays(
-                    post_processing_config, file_list=created_im_files
-                )
-            else:
-                logger.warning("No IM array files were created. Skipping post-processing.")
-        else:
-            # IM calculation is disabled, check if arrays exist and scan directory
-            if check_im_arrays_exist(post_processing_config["input_dir"]):
-                logger.info("Starting post-processing task (scanning input directory)")
-                from src.pipelines import post_processing_pipeline
-                processed_im_files = post_processing_pipeline.process_im_arrays(post_processing_config)
-            else:
-                logger.warning("No IM arrays found. Skipping post-processing.")
-        
-        if processed_im_files is None:
-            processed_im_files = []
-        if processed_im_files:
-            logger.info(f"Post-processing completed. {len(processed_im_files)} processed IM array files created.")
+        processed_im_files = post_processing_task(
+            config["post_processing"], 
+            logger, 
+            tasks["do_mass_calculating"], 
+            im_files
+        )
     
     if tasks["do_histogram_creation"]:
-        histogram_creation_config = config["histogram_creation"]
-        if tasks["do_post_processing"]:
-            # Use processed files from post-processing
-            if processed_im_files:
-                logger.info(f"Starting histogram creation on {len(processed_im_files)} processed IM array files")
-                from src.pipelines import histograms_pipeline
-                histograms_pipeline.create_histograms(histogram_creation_config, file_list=processed_im_files)
-            else:
-                logger.warning("No processed IM array files available. Skipping histogram creation.")
-        elif tasks["do_mass_calculating"]:
-            # Fallback to raw IM files if post-processing wasn't run
-            if created_im_files:
-                logger.info(f"Starting histogram creation on {len(created_im_files)} IM array files from IM calculation")
-                from src.pipelines import histograms_pipeline
-                histograms_pipeline.create_histograms(histogram_creation_config, file_list=created_im_files)
-            else:
-                logger.warning("No IM array files were created. Skipping histogram creation.")
-        else:
-            # Both IM calculation and post-processing are disabled, check if arrays exist and scan directory
-            if check_im_arrays_exist(histogram_creation_config["input_dir"]):
-                logger.info("Starting histogram creation task (scanning input directory)")
-                from src.pipelines import histograms_pipeline
-                histograms_pipeline.create_histograms(histogram_creation_config)
-            else:   
-                logger.warning("No invariant mass arrays found. Skipping histogram creation.")
+        histogram_creation_task(
+            config["histogram_creation"],
+            logger,
+            tasks["do_post_processing"],
+            tasks["do_mass_calculating"],
+            processed_im_files,
+            im_files
+        )
+
+
+def parsing_task(parsing_config, logger):
+    """Parse ROOT files and extract particle data."""
+    log_task_boundary(logger, "Starting parsing task")
+    
+    pipeline_config = parsing_config["pipeline_config"]
+    
+    if pipeline_config["parse_in_multiprocessing"]:
+        logger.info("Using multiprocessing mode")
+        from src.pipelines import multiprocessing_pipeline
+        parsed_files = multiprocessing_pipeline.parse_with_per_chunk_subprocess(parsing_config)
+    else:
+        logger.info("Using single-process mode")
+        from src.pipelines import parsing_pipeline
+        parsed_files = parsing_pipeline.parse(parsing_config)
+    
+    parsed_files = normalize_list(parsed_files)
+    logger.info(f"Parsed {len(parsed_files)} files")
+    return parsed_files
+         
+            
+def mass_calculation_task(mass_calculate_config, logger, parsed_files):
+    """Calculate invariant masses from parsed ROOT files."""
+    log_task_boundary(logger, "Starting IM calculation task")
+    
+    from src.pipelines import im_pipeline
+    im_files = im_pipeline.mass_calculate(mass_calculate_config, file_list=parsed_files)
+    im_files = normalize_list(im_files)
+    
+    logger.info(f"Created {len(im_files)} IM array files")
+    return im_files
+
+
+def post_processing_task(post_processing_config, logger, do_mass_calculating, im_files):
+    """Post-process invariant mass arrays."""
+    log_task_boundary(logger, "Starting post-processing task")
+    
+    from src.pipelines import post_processing_pipeline
+    
+    if do_mass_calculating and im_files:
+        logger.info(f"Processing {len(im_files)} IM files from calculation")
+        processed_files = post_processing_pipeline.process_im_arrays(
+            post_processing_config, file_list=im_files
+        )
+    elif check_im_arrays_exist(post_processing_config["input_dir"]):
+        logger.info("Scanning input directory for IM arrays")
+        processed_files = post_processing_pipeline.process_im_arrays(post_processing_config)
+    else:
+        logger.warning("No IM arrays available. Skipping post-processing.")
+        return []
+    
+    processed_files = normalize_list(processed_files)
+    if processed_files:
+        logger.info(f"Processed {len(processed_files)} IM array files")
+    return processed_files
+
+
+def histogram_creation_task(
+    histogram_creation_config, 
+    logger, 
+    do_post_processing, 
+    do_mass_calculating, 
+    processed_im_files, 
+    im_files
+):
+    """Create histograms from invariant mass arrays."""
+    log_task_boundary(logger, "Starting histogram creation task")
+    
+    from src.pipelines import histograms_pipeline
+    
+    # Priority: processed > raw > directory scan
+    if do_post_processing and processed_im_files:
+        logger.info(f"Creating histograms from {len(processed_im_files)} processed files")
+        histograms_pipeline.create_histograms(histogram_creation_config, file_list=processed_im_files)
+    elif do_mass_calculating and im_files:
+        logger.info(f"Creating histograms from {len(im_files)} raw IM files")
+        histograms_pipeline.create_histograms(histogram_creation_config, file_list=im_files)
+    elif check_im_arrays_exist(histogram_creation_config["input_dir"]):
+        logger.info("Scanning input directory for IM arrays")
+        histograms_pipeline.create_histograms(histogram_creation_config)
+    else:
+        logger.warning("No IM arrays found. Skipping histogram creation.")
+
 
 def init_logging():
+    """Initialize logging configuration."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)]
     )
+    return logging.getLogger(__name__)
 
-    main_logger = logging.getLogger(__name__)
-
-    return main_logger
 
 def check_im_arrays_exist(im_masses_dir):
-    if os.path.exists(im_masses_dir):
-        im_arrays = os.listdir(im_masses_dir)
-        if len(im_arrays) > 0:
-            return True
-        else:
-            return False
-    else:
-        return False
+    """Check if IM arrays exist in the given directory."""
+    return os.path.exists(im_masses_dir) and bool(os.listdir(im_masses_dir))
 
 def load_config(args):
     """Load configuration from YAML file."""
@@ -146,54 +169,55 @@ def load_config(args):
         config = yaml.safe_load(f)
     
     if config["testing_config"]["is_on"]:
-        if args.test_run_index:
-            test_run_index = int(args.test_run_index)
-        else:
-            test_run_index = config["testing_config"]["test_run_index"]
-
-        with open(config["testing_config"]["testing_jobs_path"]) as f:
-            testing_runs = json.load(f)
-            cur_run_config = testing_runs[test_run_index]
-
-            # Update pipeline_config
-        if "pipeline_config" in cur_run_config:
-            for key, value in cur_run_config["pipeline_config"].items():
-                config["parsing_config"]["pipeline_config"][key] = value
-
-        # Update atlasparser_config
-        if "atlasparser_config" in cur_run_config:
-            for key, value in cur_run_config["atlasparser_config"].items():
-                config["parsing_config"]["atlasparser_config"][key] = value
-
-        config["parsing_config"]["run_metadata"] = cur_run_config["run_metadata"]
+        _load_testing_config(config, args)
     else:
-        ts = datetime.now()
-        run_time = ts.strftime("%d_%m_%Y_%H:%M")
-        if args.batch_job_index is not None:
-            batch_job_index = int(args.batch_job_index) 
-            total_batch_jobs = int(args.total_batch_jobs) if args.total_batch_jobs else None
-
-            run_name = f"job_idx{batch_job_index}_{run_time}" if config["parsing_config"]["run_metadata"]["run_name"] is None else config["parsing_config"]["run_metadata"]["run_name"]
-            
-            # Also set batch job info for IM pipeline if it exists
-            # For IM pipeline, batching is based on file+combination pairs
-            if "mass_calculate" in config:
-                config["mass_calculate"]["batch_job_index"] = batch_job_index
-                config["mass_calculate"]["total_batch_jobs"] = total_batch_jobs
-
-        else:
-            batch_job_index = None
-            run_name = config["parsing_config"]["run_metadata"]["run_name"] if config["parsing_config"]["run_metadata"]["run_name"] is None else f"run_{run_time}"
-            total_batch_jobs = None
-        
-        config["parsing_config"]["run_metadata"] = {
-            "batch_job_index": batch_job_index,
-            "run_name": run_name,
-            "total_batch_jobs": total_batch_jobs
-        }
-                
+        _load_production_config(config, args)
+    
     return config
 
+
+def _load_testing_config(config, args):
+    """Load testing configuration."""
+    test_run_index = int(args.test_run_index) if args.test_run_index else config["testing_config"]["test_run_index"]
+    
+    with open(config["testing_config"]["testing_jobs_path"]) as f:
+        testing_runs = json.load(f)
+        cur_run_config = testing_runs[test_run_index]
+    
+    if "pipeline_config" in cur_run_config:
+        config["parsing_config"]["pipeline_config"].update(cur_run_config["pipeline_config"])
+    
+    if "atlasparser_config" in cur_run_config:
+        config["parsing_config"]["atlasparser_config"].update(cur_run_config["atlasparser_config"])
+    
+    config["parsing_config"]["run_metadata"] = cur_run_config["run_metadata"]
+
+
+def _load_production_config(config, args):
+    """Load production configuration."""
+    run_time = datetime.now().strftime("%d_%m_%Y_%H:%M")
+    
+    if args.batch_job_index is not None:
+        batch_job_index = int(args.batch_job_index)
+        total_batch_jobs = int(args.total_batch_jobs) if args.total_batch_jobs else None
+        run_name = (
+            config["parsing_config"]["run_metadata"]["run_name"] 
+            or f"job_idx{batch_job_index}_{run_time}"
+        )
+        
+        if "mass_calculate" in config:
+            config["mass_calculate"]["batch_job_index"] = batch_job_index
+            config["mass_calculate"]["total_batch_jobs"] = total_batch_jobs
+    else:
+        batch_job_index = None
+        total_batch_jobs = None
+        run_name = config["parsing_config"]["run_metadata"]["run_name"] or f"run_{run_time}"
+    
+    config["parsing_config"]["run_metadata"] = {
+        "batch_job_index": batch_job_index,
+        "run_name": run_name,
+        "total_batch_jobs": total_batch_jobs
+    }
 
 
 if __name__ == "__main__":
