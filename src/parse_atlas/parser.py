@@ -92,22 +92,6 @@ class AtlasOpenParser():
         
         #SET UP SPECIFIC RECORD IDS
         self.specific_record_ids = specific_record_ids
-        # Map file URIs to their record IDs (for schema lookup)
-        self.file_uri_to_record_id = {}
-        if self.specific_record_ids and (isinstance(self.specific_record_ids, list) and len(self.specific_record_ids) > 0):
-            logging.info(f"Using specific_record_ids: {self.specific_record_ids}")
-            # Pre-extract schemas for all record IDs
-            for record_id in self.specific_record_ids:
-                try:
-                    schema = schemas.extract_schema_from_record_id(record_id)
-                    schema_key = f"record_{record_id}"
-                    schemas.RELEASE_SCHEMAS[schema_key] = schema
-                    schemas.RECORD_ID_TO_RELEASE[record_id] = schema_key
-                    logging.info(f"Extracted and cached schema for record {record_id}")
-                except Exception as e:
-                    logging.warning(f"Could not extract schema for record {record_id}: {e}. Will try on-the-fly.")
-        else:
-            logging.info(f"specific_record_ids is None or empty: {self.specific_record_ids}")
         
         #SET UP PROGRESS BAR CONFIGURATION
         self.show_progress_bar = show_progress_bar
@@ -257,8 +241,6 @@ class AtlasOpenParser():
                 for f in file["files"]:
                     file_uri = f["uri"]
                     files_list.append(file_uri)
-                    # Map file URI to record ID for schema lookup
-                    self.file_uri_to_record_id[file_uri] = record_id
             
             # Use record_id as the key (will be converted to schema key in get_schema_for_release)
             # Format: "record_{record_id}" to match schema keys
@@ -553,14 +535,51 @@ class AtlasOpenParser():
                 all_tree_branches, release_year=release_year)
             
             if not obj_branches_and_quantities.values():
+                logging.warning(f"After parsing file {file_index}: No particles found in schema")
                 return None
             
             all_branches = set(itertools.chain.from_iterable(obj_branches_and_quantities.values()))
 
-            # 2. Initialize storage for raw batches
+            # 2. Test branch accessibility before processing
+            # This ensures we only report particles that we can actually read
+            test_branches = {}
+            for obj_name, branch_mapping in obj_branches_and_quantities.items():
+                accessible_branches = {}
+                for branch_path in branch_mapping.keys():
+                    # Test if branch is accessible
+                    try:
+                        test_arr = tree.arrays(branch_path, entry_start=0, entry_stop=1, library="ak")
+                        if branch_path in test_arr.fields:
+                            accessible_branches[branch_path] = branch_mapping[branch_path]
+                    except Exception:
+                        # Branch doesn't exist or isn't accessible
+                        continue
+                
+                if accessible_branches and AtlasOpenParser._can_calculate_inv_mass(list(accessible_branches.values())):
+                    test_branches[obj_name] = accessible_branches
+            
+            # Update obj_branches_and_quantities to only include accessible branches
+            obj_branches_and_quantities = test_branches
+            all_branches = set(itertools.chain.from_iterable(obj_branches_and_quantities.values()))
+            
+            # Log what particles were actually found (after testing accessibility)
+            if obj_branches_and_quantities:
+                found_particles = list(obj_branches_and_quantities.keys())
+                if "Electrons" in found_particles or "Muons" in found_particles or "Photons" in found_particles:
+                    logging.info(f"Found Electrons or Muons or Photons in file {file_index}")
+
+                fields_found = {obj: list(branch_map.values()) for obj, branch_map in obj_branches_and_quantities.items()}
+                logging.info(f"After parsing file {file_index}: Found particles: {found_particles}")
+                for obj_name, fields in fields_found.items():
+                    logging.info(f"  {obj_name}: fields = {fields}")
+            else:
+                logging.warning(f"After parsing file {file_index}: No accessible particles found")
+                return None
+
+            # 3. Initialize storage for raw batches
             obj_events_by_quantities = {obj_name: [] for obj_name in obj_branches_and_quantities.keys()}
 
-            # 3. Define entry ranges
+            # 4. Define entry ranges
             entry_ranges = []
             if is_file_big:
                 entry_ranges = [
@@ -570,14 +589,21 @@ class AtlasOpenParser():
             else: #If file not big entry_ranges is the entire file
                 entry_ranges = [(0, n_entries)]
 
-            # 4. Read batches
+            # 5. Read batches with only accessible branches
             for entry_start, entry_stop in entry_ranges:
-                batch_data = tree.arrays(all_branches, entry_start=entry_start, entry_stop=entry_stop)
+                try:
+                    batch_data = tree.arrays(all_branches, entry_start=entry_start, entry_stop=entry_stop, library="ak")
+                except Exception as e:
+                    logging.warning(f"Error reading batch {entry_start}-{entry_stop}: {e}")
+                    continue
                 
                 for obj_name, branch_mapping in obj_branches_and_quantities.items():
-                    subset = batch_data[list(branch_mapping.keys())]  # Get branches as list
-                    if len(subset) > 0:
-                        obj_events_by_quantities[obj_name].append(subset)
+                    # All branches in branch_mapping should be accessible, but double-check
+                    available_branches = [b for b in branch_mapping.keys() if b in batch_data.fields]
+                    if available_branches:
+                        subset = batch_data[available_branches]
+                        if len(subset) > 0:
+                            obj_events_by_quantities[obj_name].append(subset)
 
             for obj_name, chunks in obj_events_by_quantities.items():
                 concatenated = ak.concatenate(chunks)
@@ -959,16 +985,42 @@ class AtlasOpenParser():
                     }
             else:
                 # Dotted naming: object.field (e.g., AnalysisElectronsAuxDyn.pt)
+                # For CMS: patElectrons_slimmedElectrons__PAT.obj.m_state.p4Polar_.fCoordinates.fPt
                 cur_obj_branch_name = AtlasOpenParser._prepare_obj_branch_name(obj_name, release_year=release_year)
-                obj_available_physical_quantities = [
-                    f for f in fields if f"{cur_obj_branch_name}.{f}" in tree_branches
-                ]
-
-                if AtlasOpenParser._can_calculate_inv_mass(obj_available_physical_quantities):
-                    obj_branches[obj_name] = {
-                        f"{cur_obj_branch_name}.{quantity}": quantity
-                        for quantity in obj_available_physical_quantities
-                    }
+                logging.info(f"ATLAS-style naming for {obj_name}, branch base: {cur_obj_branch_name}")
+                
+                # Check if schema has field_paths (CMS-style nested paths)
+                field_paths = schema_config.get("field_paths", {})
+                obj_field_paths = field_paths.get(obj_name, {})
+                
+                if obj_field_paths:
+                    # CMS-style: use nested field paths
+                    branch_mappings = AtlasOpenParser._find_cms_branches(
+                        cur_obj_branch_name, fields, obj_field_paths, tree_branches
+                    )
+                    if branch_mappings:
+                        obj_branches[obj_name] = branch_mappings
+                else:
+                    # ATLAS-style: simple dotted naming (e.g., AnalysisElectronsAuxDyn.pt)
+                    # Map field names: "mass" -> "m" for ATLAS branches
+                    obj_available_physical_quantities = []
+                    branch_to_quantity = {}
+                    
+                    for field in fields:
+                        # Try the field name as-is first
+                        branch_name = f"{cur_obj_branch_name}.{field}"
+                        if branch_name in tree_branches:
+                            obj_available_physical_quantities.append(field)
+                            branch_to_quantity[branch_name] = field
+                        # If not found and field is "mass", try "m"
+                        elif field == "mass":
+                            mass_branch = f"{cur_obj_branch_name}.m"
+                            if mass_branch in tree_branches:
+                                obj_available_physical_quantities.append(field)
+                                branch_to_quantity[mass_branch] = field
+ 
+                    if AtlasOpenParser._can_calculate_inv_mass(obj_available_physical_quantities):
+                        obj_branches[obj_name] = branch_to_quantity
 
         return obj_branches
 
@@ -979,6 +1031,99 @@ class AtlasOpenParser():
         """
         available_fields = set(available_fields)
         return ref_system.issubset(available_fields)
+    
+    @staticmethod
+    def _find_cms_branches(base_branch_name, fields, obj_field_paths, tree_branches):
+        """
+        Find CMS-style nested branches for a given object.
+        
+        CMS branch structure: {base}/{base}obj/{base}obj.{field_path}
+        Example: patJets_slimmedJets__PAT./patJets_slimmedJets__PAT.obj/patJets_slimmedJets__PAT.obj.m_state.p4Polar_.fCoordinates.fPt
+        
+        Args:
+            base_branch_name: Base branch name (e.g., "patJets_slimmedJets__PAT.")
+            fields: List of field names to find (e.g., ["pt", "eta", "phi", "mass"])
+            obj_field_paths: Dict mapping field names to their nested paths (e.g., {"pt": "obj.m_state.p4Polar_.fCoordinates.fPt"})
+            tree_branches: Set of all available branch names (may not include all nested branches)
+            
+        Returns:
+            Dict mapping full branch paths to field names, or empty dict if no matches found
+        """
+        branch_mappings = {}
+        available_fields = []
+        
+        # Check if the .obj container exists (indicates CMS nested structure)
+        base_obj = f"{base_branch_name}obj"
+        obj_container_patterns = [
+            base_obj,  # Direct: "patElectrons_slimmedElectrons__PAT.obj"
+            f"{base_branch_name}/{base_obj}",  # Nested: "patElectrons_slimmedElectrons__PAT./patElectrons_slimmedElectrons__PAT.obj"
+        ]
+        
+        has_obj_container = any(
+            pattern in branch for branch in tree_branches for pattern in obj_container_patterns
+        )
+        
+        if not has_obj_container:
+            return {}
+        
+        # Strategy: Construct expected paths based on Jets pattern and test them
+        # The pattern for Jets is: base/base.obj/base.obj.m_state.p4Polar_.fCoordinates.fField
+        # We'll try the same pattern for other particles
+        
+        for field in fields:
+            if field not in obj_field_paths:
+                continue
+            
+            field_path = obj_field_paths[field]  # e.g., "obj.m_state.p4Polar_.fCoordinates.fPt"
+            field_indicator = consts.CMS_FIELD_INDICATORS.get(field)
+            if not field_indicator:
+                continue
+            
+            # Remove "obj." prefix from field_path since we're constructing the full path
+            field_path_suffix = field_path[4:] if field_path.startswith("obj.") else field_path
+            
+            # Construct expected path following Jets pattern
+            # Pattern: base/base.obj/base.obj.field_path_suffix
+            expected_path = f"{base_branch_name}/{base_obj}/{base_obj}.{field_path_suffix}"
+            
+            # First, check if this exact path exists
+            if expected_path in tree_branches:
+                branch_mappings[expected_path] = field
+                available_fields.append(field)
+                continue
+            
+            # Fallback: Search for branches matching the pattern
+            matching = [
+                branch for branch in tree_branches
+                if branch.startswith(base_branch_name) 
+                and f"{base_obj}/" in branch 
+                and field_indicator in branch
+            ]
+            
+            if matching:
+                # Use the longest (most specific) matching branch
+                full_path = max(matching, key=len)
+                branch_mappings[full_path] = field
+                available_fields.append(field)
+                continue
+            
+            # Last resort: Try accessing via arrays() with field selection (like Jets)
+            # Pattern: base.obj.field_path (without the / separators)
+            # This works for Jets: patJets_slimmedJets__PAT.obj.m_state.p4Polar_.fCoordinates.fPt
+            # Note: For some particles (Electrons, Muons, Photons), the C++ object structure
+            # may not be fully exposed in the ROOT tree, making them inaccessible via uproot.
+            # This is a known limitation of CMS MiniAOD format - CMS recommends NanoAOD for 2016 data.
+            field_selection_path = f"{base_obj}.{field_path_suffix}"
+            branch_mappings[field_selection_path] = field
+            available_fields.append(field)
+        
+        # Only return if we have enough fields for invariant mass calculation
+        if AtlasOpenParser._can_calculate_inv_mass(available_fields):
+            return branch_mappings
+        else:
+            return {}
+        
+        return {}
     
     @staticmethod
     def _auto_detect_branches(tree_branches):

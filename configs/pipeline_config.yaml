@@ -13,7 +13,7 @@ parsing_config:
   run_metadata:
     # ===BATCH JOB INDEX===
     batch_job_index: null
-    run_name: null
+    run_name: "cms-opendata-SingleElectronSingleMuon"
     total_batch_jobs: null
 
   pipeline_config:
@@ -36,8 +36,10 @@ parsing_config:
     max_environment_memory_mb: 20000 
     # === SPECIFIC RECORD IDS ===
     specific_record_ids:
-      - 30512 #https://opendata.cern.ch/record/30512
-      - 30546 #https://opendata.cern.ch/record/30546
+      - 30529
+      - 30562 
+      - 30530 
+      - 30563
     # ===RELEASE YEARS TO PARSE THE FILES FROM (IF EMPTY FETCHES ALL)===  
     release_years:
     # - 2024r-hi

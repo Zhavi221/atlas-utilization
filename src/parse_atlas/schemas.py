@@ -19,9 +19,11 @@ BASE_OBJECTS = {
 
 # Mapping from specific record IDs to their release year/schema identifier
 # This will be populated when schemas are extracted from record IDs
-RECORD_ID_TO_RELEASE = {
-    30512: "cms-opendata",
-    30546: "cms-opendata"
+RECORD_ID_TO_SCHEMA = {
+    30529: "cms-nanoaod",  # NanoAOD format
+    30562: "cms-nanoaod",  # NanoAOD format
+    30530: "cms-nanoaod",  # NanoAOD format
+    30563: "cms-nanoaod",  # NanoAOD format
 }
 
 # Release-specific branch naming templates
@@ -44,43 +46,21 @@ RELEASE_SCHEMAS = {
         },
         "objects": BASE_OBJECTS.copy()
     },
-    "cms-opendata": {
-        "naming_pattern": "dotted",  # patElectrons_slimmedElectrons__PAT./patElectrons_slimmedElectrons__PAT.obj/...
-        "branch_prefix": "pat",
-        "branch_suffix": "__PAT.",
+    "cms-nanoaod": {
+        "naming_pattern": "flat",  # Electron_pt, Electron_eta, Muon_pt, etc.
+        "branch_prefix": "",
+        "branch_suffix": "",
         "object_mappings": {
-            "Electrons": "Electrons_slimmedElectrons",
-            "Muons": "Muons_slimmedMuons",
-            "Jets": "Jets_slimmedJets",
-            "Photons": "Photons_slimmedPhotons"
+            "Electrons": "Electron",  # Maps to Electron_pt, Electron_eta, etc.
+            "Muons": "Muon",          # Maps to Muon_pt, Muon_eta, etc.
+            "Jets": "Jet",            # Maps to Jet_pt, Jet_eta, etc.
+            "Photons": "Photon"       # Maps to Photon_pt, Photon_eta, etc.
         },
-        "objects": BASE_OBJECTS.copy(),
-        "field_paths": {
-            # CMS uses nested paths: base.obj.m_state.p4Polar_.fCoordinates.fPt
-            # Full path example: patJets_slimmedJets__PAT./patJets_slimmedJets__PAT.obj/patJets_slimmedJets__PAT.obj.m_state.p4Polar_.fCoordinates.fPt
-            "Electrons": {
-                "pt": "obj.m_state.p4Polar_.fCoordinates.fPt",
-                "eta": "obj.m_state.p4Polar_.fCoordinates.fEta",
-                "phi": "obj.m_state.p4Polar_.fCoordinates.fPhi",
-                "mass": "obj.m_state.p4Polar_.fCoordinates.fM"
-            },
-            "Muons": {
-                "pt": "obj.m_state.p4Polar_.fCoordinates.fPt",
-                "eta": "obj.m_state.p4Polar_.fCoordinates.fEta",
-                "phi": "obj.m_state.p4Polar_.fCoordinates.fPhi",
-                "mass": "obj.m_state.p4Polar_.fCoordinates.fM"
-            },
-            "Jets": {
-                "pt": "obj.m_state.p4Polar_.fCoordinates.fPt",
-                "eta": "obj.m_state.p4Polar_.fCoordinates.fEta",
-                "phi": "obj.m_state.p4Polar_.fCoordinates.fPhi",
-                "mass": "obj.m_state.p4Polar_.fCoordinates.fM"
-            },
-            "Photons": {
-                "pt": "obj.m_state.p4Polar_.fCoordinates.fPt",
-                "eta": "obj.m_state.p4Polar_.fCoordinates.fEta",
-                "phi": "obj.m_state.p4Polar_.fCoordinates.fPhi"
-            }
+        "objects": {
+            "Electrons": ["pt", "eta", "phi", "mass"],
+            "Muons": ["pt", "eta", "phi", "mass"],
+            "Jets": ["pt", "eta", "phi", "mass"],
+            "Photons": ["pt", "eta", "phi", "mass"]  # NanoAOD includes Photon_mass
         }
     },
     "2024r-hi": {
@@ -274,7 +254,7 @@ def extract_schema_from_record_id(record_id: int, sample_file_uri: str = None) -
             }
             
             if naming_pattern == "dotted":
-                # Dotted naming: AnalysisElectronsAuxDyn.pt
+                # Dotted naming: AnalysisElectronsAuxDyn.pt or patElectrons_slimmedElectrons__PAT./...
                 # Find common prefixes and suffixes
                 dotted_branches = [b for b in all_branches if "." in b]
                 
@@ -287,78 +267,140 @@ def extract_schema_from_record_id(record_id: int, sample_file_uri: str = None) -
                     base_branches[base].append(field)
                 
                 # Detect prefix and suffix patterns
-                prefixes = set()
-                suffixes = set()
                 object_names = {}
+                cms_pattern_detected = False
                 
+                # First, try to detect CMS pattern: pat{Object}_slimmed{Object}__PAT.
                 for base in base_branches.keys():
-                    # Try to extract prefix and suffix
-                    # Common patterns: AnalysisElectronsAuxDyn, MuonsAuxDyn
-                    if "Electron" in base or "electron" in base.lower():
-                        obj_name = "Electrons"
-                        # Extract prefix (e.g., "Analysis")
-                        if base.startswith("Analysis"):
-                            schema["branch_prefix"] = "Analysis"
-                            remaining = base[len("Analysis"):]
+                    # Check for CMS pattern: pat{Object}_slimmed{Object}__PAT.
+                    if base.startswith("pat") and "__PAT." in base:
+                        cms_pattern_detected = True
+                        schema["branch_prefix"] = "pat"
+                        schema["branch_suffix"] = "__PAT."
+                        
+                        # Extract object name from pattern like: patJets_slimmedJets__PAT.
+                        # The base might be: patJets_slimmedJets__PAT. or patJets_slimmedJets__PAT./patJets_slimmedJets__PAT.obj/...
+                        # Find the first occurrence of __PAT. to extract the object name
+                        pat_index = base.find("__PAT.")
+                        if pat_index > 0:
+                            # Extract: patJets_slimmedJets (everything before __PAT.)
+                            remaining = base[len("pat"):pat_index]
                         else:
-                            remaining = base
-                        # Extract suffix (e.g., "AuxDyn")
-                        if remaining.endswith("AuxDyn"):
-                            schema["branch_suffix"] = "AuxDyn"
-                            obj_branch = remaining[:-6]  # Remove "AuxDyn"
-                        else:
-                            obj_branch = remaining
-                        object_names[obj_name] = obj_branch
-                    elif "Muon" in base or "muon" in base.lower():
-                        obj_name = "Muons"
-                        if base.startswith("Analysis"):
-                            schema["branch_prefix"] = "Analysis"
-                            remaining = base[len("Analysis"):]
-                        else:
-                            remaining = base
-                        if remaining.endswith("AuxDyn"):
-                            schema["branch_suffix"] = "AuxDyn"
-                            obj_branch = remaining[:-6]
-                        else:
-                            obj_branch = remaining
-                        object_names[obj_name] = obj_branch
-                    elif "Jet" in base or "jet" in base.lower():
-                        obj_name = "Jets"
-                        if base.startswith("Analysis"):
-                            schema["branch_prefix"] = "Analysis"
-                            remaining = base[len("Analysis"):]
-                        else:
-                            remaining = base
-                        if remaining.endswith("AuxDyn"):
-                            schema["branch_suffix"] = "AuxDyn"
-                            obj_branch = remaining[:-6]
-                        else:
-                            obj_branch = remaining
-                        object_names[obj_name] = obj_branch
-                    elif "Photon" in base or "photon" in base.lower():
-                        obj_name = "Photons"
-                        if base.startswith("Analysis"):
-                            schema["branch_prefix"] = "Analysis"
-                            remaining = base[len("Analysis"):]
-                        else:
-                            remaining = base
-                        if remaining.endswith("AuxDyn"):
-                            schema["branch_suffix"] = "AuxDyn"
-                            obj_branch = remaining[:-6]
-                        else:
-                            obj_branch = remaining
-                        object_names[obj_name] = obj_branch
+                            # Fallback: remove pat prefix
+                            remaining = base[len("pat"):]
+                            if remaining.endswith("__PAT."):
+                                remaining = remaining[:-6]  # Remove "__PAT."
+                        
+                        # Pattern matching for all particle types using the same template
+                        particle_patterns = [
+                            ("Electron", "Electrons", "Electrons_slimmedElectrons"),
+                            ("Muon", "Muons", "Muons_slimmedMuons"),
+                            ("Photon", "Photons", "Photons_slimmedPhotons"),
+                            ("Jet", "Jets", "Jets_slimmedJets")
+                        ]
+                        
+                        for pattern, obj_name, default_mapping in particle_patterns:
+                            if pattern in remaining or pattern.lower() in remaining.lower():
+                                # Handle variants: prefer standard over variants (e.g., slimmedJets over slimmedJetsPuppi)
+                                if obj_name not in object_names:
+                                    object_names[obj_name] = remaining
+                                elif "Puppi" not in remaining or "Puppi" in object_names.get(obj_name, ""):
+                                    # Prefer non-Puppi variant, or keep current if both are Puppi
+                                    if "Puppi" not in remaining:
+                                        object_names[obj_name] = remaining
+                                break
+                
+                # If CMS pattern not detected, try ATLAS pattern
+                if not cms_pattern_detected:
+                    for base in base_branches.keys():
+                        # ATLAS patterns: AnalysisElectronsAuxDyn, MuonsAuxDyn
+                        particle_patterns = [
+                            ("Electron", "Electrons"),
+                            ("Muon", "Muons"),
+                            ("Jet", "Jets"),
+                            ("Photon", "Photons")
+                        ]
+                        
+                        for pattern, obj_name in particle_patterns:
+                            if pattern in base or pattern.lower() in base.lower():
+                                # Extract prefix (e.g., "Analysis")
+                                if base.startswith("Analysis"):
+                                    schema["branch_prefix"] = "Analysis"
+                                    remaining = base[len("Analysis"):]
+                                else:
+                                    remaining = base
+                                
+                                # Extract suffix (e.g., "AuxDyn")
+                                if remaining.endswith("AuxDyn"):
+                                    schema["branch_suffix"] = "AuxDyn"
+                                    obj_branch = remaining[:-6]  # Remove "AuxDyn"
+                                else:
+                                    obj_branch = remaining
+                                
+                                if obj_name not in object_names:
+                                    object_names[obj_name] = obj_branch
+                                break
                 
                 # Build object mappings and objects dict
+                # Initialize field_paths for CMS patterns
+                if cms_pattern_detected:
+                    schema["field_paths"] = {}
+                
                 for obj_name, obj_branch in object_names.items():
                     schema["object_mappings"][obj_name] = obj_branch
                     # Get available fields for this object
                     base_branch = f"{schema['branch_prefix']}{obj_branch}{schema['branch_suffix']}"
-                    available_fields = base_branches.get(base_branch, [])
-                    # Filter to only include relevant fields
-                    relevant_fields = [f for f in available_fields if f in ["pt", "eta", "phi", "mass"]]
-                    if relevant_fields:
-                        schema["objects"][obj_name] = relevant_fields
+                    
+                    if cms_pattern_detected:
+                        # For CMS, fields are nested: patJets_slimmedJets__PAT.obj.m_state.p4Polar_.fCoordinates.fPt
+                        # Check if base branch exists and look for nested field patterns
+                        relevant_fields = []
+                        field_paths = {}
+                        has_matching_branches = False
+                        
+                        # Check for standard CMS field patterns in branches
+                        for branch in dotted_branches:
+                            if branch.startswith(base_branch):
+                                has_matching_branches = True
+                                # Check for standard CMS field patterns
+                                if "fPt" in branch or "fCoordinates.fPt" in branch:
+                                    if "pt" not in relevant_fields:
+                                        relevant_fields.append("pt")
+                                        field_paths["pt"] = "obj.m_state.p4Polar_.fCoordinates.fPt"
+                                if "fEta" in branch or "fCoordinates.fEta" in branch:
+                                    if "eta" not in relevant_fields:
+                                        relevant_fields.append("eta")
+                                        field_paths["eta"] = "obj.m_state.p4Polar_.fCoordinates.fEta"
+                                if "fPhi" in branch or "fCoordinates.fPhi" in branch:
+                                    if "phi" not in relevant_fields:
+                                        relevant_fields.append("phi")
+                                        field_paths["phi"] = "obj.m_state.p4Polar_.fCoordinates.fPhi"
+                                if "fM" in branch or "fCoordinates.fM" in branch:
+                                    if "mass" not in relevant_fields:
+                                        relevant_fields.append("mass")
+                                        field_paths["mass"] = "obj.m_state.p4Polar_.fCoordinates.fM"
+                        
+                        # If no fields detected but we have matching branches, use default CMS field paths
+                        if not relevant_fields and has_matching_branches:
+                            # Default CMS field paths for all standard fields
+                            relevant_fields = ["pt", "eta", "phi", "mass"]
+                            field_paths = {
+                                "pt": "obj.m_state.p4Polar_.fCoordinates.fPt",
+                                "eta": "obj.m_state.p4Polar_.fCoordinates.fEta",
+                                "phi": "obj.m_state.p4Polar_.fCoordinates.fPhi",
+                                "mass": "obj.m_state.p4Polar_.fCoordinates.fM"
+                            }
+                        
+                        if relevant_fields:
+                            schema["objects"][obj_name] = relevant_fields
+                            schema["field_paths"][obj_name] = field_paths
+                    else:
+                        # For ATLAS, fields are direct: AnalysisElectronsAuxDyn.pt
+                        available_fields = base_branches.get(base_branch, [])
+                        # Filter to only include relevant fields
+                        relevant_fields = [f for f in available_fields if f in ["pt", "eta", "phi", "mass"]]
+                        if relevant_fields:
+                            schema["objects"][obj_name] = relevant_fields
                 
             else:  # flat naming
                 # Flat naming: lep_pt, jet_pt
@@ -411,34 +453,38 @@ def get_schema_for_release(release_year: str, record_id: int = None) -> dict:
     Get the schema configuration for a specific release year or record ID.
     
     Automatically normalizes release years with _mc suffix (e.g., "2024r-pp_mc" -> "2024r-pp").
-    If record_id is provided and release_year is "specific_records", will look up the schema
-    for that record ID.
+    If release_year is in "record_{record_id}" format, will look up the schema for that record ID
+    from the RECORD_ID_TO_SCHEMA mapping.
     
     Args:
-        release_year: The release year identifier (e.g., "2024r-pp" or "2024r-pp_mc" or "specific_records")
-        record_id: Optional record ID to use when release_year is "specific_records"
+        release_year: The release year identifier (e.g., "2024r-pp", "2024r-pp_mc", or "record_30512")
+        record_id: Optional record ID. If None and release_year starts with "record_", will extract from release_year
         
     Returns:
         Dictionary with 'branch_prefix', 'branch_suffix', and 'objects' keys
         
     Raises:
-        KeyError: If release_year (after normalization) is not found in RELEASE_SCHEMAS
+        KeyError: If release_year (after normalization) is not found in RELEASE_SCHEMAS,
+                 or if record_id is not found in RECORD_ID_TO_SCHEMA mapping
     """
-    # Handle specific record IDs
-    if release_year == "specific_records" and record_id is not None:
-        # Check if we have a mapping for this record ID
-        if record_id in RECORD_ID_TO_RELEASE:
-            release_year = RECORD_ID_TO_RELEASE[record_id]
-        else:
-            # Try to extract schema on the fly (this will be slow)
-            import logging
-            logging.warning(f"Record ID {record_id} not in mapping, extracting schema on the fly...")
-            schema = extract_schema_from_record_id(record_id)
-            # Create a unique identifier for this record ID's schema
-            schema_key = f"record_{record_id}"
-            RELEASE_SCHEMAS[schema_key] = schema
-            RECORD_ID_TO_RELEASE[record_id] = schema_key
-            return schema
+    # Handle record IDs (release_year format: "record_{record_id}")
+    if release_year.startswith("record_"):
+        # Extract record_id from release_year if not provided
+        if record_id is None:
+            try:
+                record_id = int(release_year.split("_")[1])
+            except (ValueError, IndexError):
+                pass
+        
+        if record_id is not None:
+            # Check if we have a mapping for this record ID
+            if record_id in RECORD_ID_TO_SCHEMA:
+                release_year = RECORD_ID_TO_SCHEMA[record_id]
+            else:
+                raise KeyError(
+                    f"Record ID {record_id} not found in RECORD_ID_TO_SCHEMA mapping. "
+                    f"Available record IDs: {list(RECORD_ID_TO_SCHEMA.keys())}"
+                )
     
     normalized_year = normalize_release_year(release_year)
     if normalized_year not in RELEASE_SCHEMAS:
@@ -457,9 +503,9 @@ def build_branch_name(obj_name: str, release_year: str = "2024r-pp", field: str 
     
     Args:
         obj_name: Canonical object name (e.g., "Electrons", "Muons")
-        release_year: Release year identifier (e.g., "2024r-pp" or "2024r-pp_mc" or "specific_records")
+        release_year: Release year identifier (e.g., "2024r-pp", "2024r-pp_mc", or "record_30512")
         field: Optional field name (e.g., "pt", "eta") - required for flat naming
-        record_id: Optional record ID to use when release_year is "specific_records"
+        record_id: Optional record ID. If None and release_year starts with "record_", will extract from release_year
         
     Returns:
         Full branch name:

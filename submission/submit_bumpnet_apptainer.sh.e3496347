@@ -1,631 +1,0 @@
-WARNING: Could not find any nv files on this host!
-INFO:    squashfuse not found, will not be able to mount SIF or other squashfs files
-INFO:    gocryptfs not found, will not be able to use gocryptfs
-INFO:    Converting SIF file to temporary sandbox...
-source: /opt/conda/envs/ddp/etc/conda/activate.d/activate-binutils_linux-64.sh:10:40: parameter expansion requires a literal
-source: /opt/conda/envs/ddp/etc/conda/activate.d/activate-gcc_linux-64.sh:10:40: parameter expansion requires a literal
-source: /opt/conda/envs/ddp/etc/conda/activate.d/activate-gfortran_linux-64.sh:10:40: parameter expansion requires a literal
-source: /opt/conda/envs/ddp/etc/conda/activate.d/activate-gxx_linux-64.sh:10:40: parameter expansion requires a literal
-C system headers (glibc/Xcode/Windows SDK) must be installed.
-In file included from input_line_4:36:
-/opt/conda/envs/ddp/bin/../lib/gcc/x86_64-conda-linux-gnu/13.3.0/include/c++/cassert:44:10: fatal error: 'assert.h' file not found
-#include <assert.h>
-         ^~~~~~~~~~
-Loading histograms:   0%|          | 0/300 [00:00<?, ?it/s]Loading histograms:  22%|██▏       | 67/300 [00:00<00:00, 669.19it/s]Loading histograms: 100%|██████████| 300/300 [00:00<00:00, 1710.35it/s]
-Smoothing histograms:   0%|          | 0/300 [00:00<?, ?it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   0%|          | 1/300 [00:20<1:44:10, 20.91s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   1%|          | 2/300 [00:21<43:33,  8.77s/it]  /opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   2%|▏         | 5/300 [00:43<37:59,  7.73s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   2%|▏         | 7/300 [00:46<25:25,  5.21s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   3%|▎         | 9/300 [01:01<29:42,  6.12s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   3%|▎         | 10/300 [01:05<27:49,  5.76s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   4%|▍         | 12/300 [01:09<20:28,  4.26s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   4%|▍         | 13/300 [01:22<29:26,  6.15s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   5%|▍         | 14/300 [01:24<25:02,  5.25s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   5%|▌         | 15/300 [01:26<21:06,  4.44s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   6%|▌         | 17/300 [01:34<19:57,  4.23s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   6%|▋         | 19/300 [01:35<13:22,  2.85s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   7%|▋         | 20/300 [01:36<10:49,  2.32s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   7%|▋         | 21/300 [01:42<14:40,  3.16s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   7%|▋         | 22/300 [01:44<13:54,  3.00s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   8%|▊         | 23/300 [01:48<14:29,  3.14s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   8%|▊         | 25/300 [01:51<11:33,  2.52s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   9%|▊         | 26/300 [01:55<13:21,  2.92s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:   9%|▉         | 27/300 [01:57<12:22,  2.72s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3035: RuntimeWarning: overflow encountered in scalar multiply
-  elif (w - wlim)*(wlim - xc) >= 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:   9%|▉         | 28/300 [01:58<10:10,  2.25s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3035: RuntimeWarning: overflow encountered in scalar multiply
-  elif (w - wlim)*(wlim - xc) >= 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  10%|▉         | 29/300 [02:04<14:45,  3.27s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  10%|█         | 30/300 [02:05<11:06,  2.47s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  10%|█         | 31/300 [02:07<10:19,  2.30s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  11%|█         | 32/300 [02:07<08:13,  1.84s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  11%|█         | 33/300 [02:11<10:38,  2.39s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  11%|█▏        | 34/300 [02:13<10:36,  2.39s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  12%|█▏        | 35/300 [02:14<08:13,  1.86s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  12%|█▏        | 36/300 [02:16<08:06,  1.84s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  12%|█▏        | 37/300 [02:19<10:06,  2.31s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  13%|█▎        | 38/300 [02:21<09:33,  2.19s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  13%|█▎        | 39/300 [02:23<09:37,  2.21s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  13%|█▎        | 40/300 [02:24<07:45,  1.79s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  14%|█▎        | 41/300 [02:27<08:52,  2.06s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3019: RuntimeWarning: overflow encountered in scalar multiply
-  if (w - xc) * (xb - w) > 0.0:
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:3011: RuntimeWarning: overflow encountered in scalar multiply
-  w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: overflow encountered in scalar multiply
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2503: RuntimeWarning: invalid value encountered in scalar subtract
-  p = (x - v) * tmp2 - (x - w) * tmp1
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_optimize.py:2511: RuntimeWarning: overflow encountered in scalar multiply
-  if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-Smoothing histograms:  14%|█▍        | 42/300 [02:30<09:53,  2.30s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  14%|█▍        | 43/300 [02:32<09:47,  2.29s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  15%|█▍        | 44/300 [02:33<07:42,  1.81s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  15%|█▌        | 45/300 [02:37<11:18,  2.66s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  18%|█▊        | 55/300 [02:38<02:13,  1.83it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  19%|█▉        | 57/300 [02:40<02:26,  1.66it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  20%|█▉        | 59/300 [02:40<02:03,  1.95it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  20%|██        | 61/300 [03:13<16:57,  4.26s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  21%|██        | 62/300 [03:14<14:54,  3.76s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  21%|██        | 63/300 [03:18<14:44,  3.73s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  22%|██▏       | 65/300 [03:47<28:22,  7.25s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  23%|██▎       | 68/300 [03:52<19:11,  4.97s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  23%|██▎       | 69/300 [04:16<31:24,  8.16s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  23%|██▎       | 70/300 [04:19<27:40,  7.22s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  24%|██▎       | 71/300 [04:22<24:01,  6.30s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  24%|██▍       | 72/300 [04:26<21:15,  5.59s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  24%|██▍       | 73/300 [04:49<38:03, 10.06s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  25%|██▍       | 74/300 [04:52<31:06,  8.26s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  25%|██▌       | 75/300 [04:55<24:55,  6.65s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  30%|███       | 91/300 [05:02<04:35,  1.32s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  31%|███       | 92/300 [05:20<08:38,  2.49s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  31%|███       | 93/300 [05:28<10:28,  3.04s/it]Smoothing histograms:  35%|███▌      | 105/300 [05:32<04:32,  1.40s/it]Smoothing histograms:  35%|███▌      | 106/300 [05:52<08:36,  2.66s/it]Smoothing histograms:  36%|███▋      | 109/300 [05:57<07:44,  2.43s/it]Smoothing histograms:  37%|███▋      | 110/300 [06:12<11:33,  3.65s/it]Smoothing histograms:  37%|███▋      | 111/300 [06:18<12:09,  3.86s/it]Smoothing histograms:  38%|███▊      | 113/300 [06:23<11:02,  3.54s/it]Smoothing histograms:  38%|███▊      | 114/300 [06:38<16:20,  5.27s/it]Smoothing histograms:  38%|███▊      | 115/300 [06:42<15:48,  5.13s/it]Smoothing histograms:  39%|███▉      | 117/300 [06:48<13:14,  4.34s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  39%|███▉      | 118/300 [07:01<18:29,  6.09s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  40%|███▉      | 119/300 [07:05<17:04,  5.66s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  40%|████      | 120/300 [07:05<13:07,  4.38s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  41%|████      | 122/300 [07:17<14:30,  4.89s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  41%|████      | 123/300 [07:22<14:33,  4.93s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  42%|████▏     | 125/300 [07:22<09:07,  3.13s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  42%|████▏     | 126/300 [07:33<13:57,  4.81s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  42%|████▏     | 127/300 [07:39<14:10,  4.92s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  43%|████▎     | 129/300 [07:40<08:59,  3.16s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  43%|████▎     | 130/300 [07:49<12:56,  4.57s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  44%|████▎     | 131/300 [07:52<12:02,  4.28s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  44%|████▍     | 132/300 [07:54<10:20,  3.69s/it]Smoothing histograms:  44%|████▍     | 133/300 [07:55<08:13,  2.96s/it]Smoothing histograms:  45%|████▍     | 134/300 [08:05<13:36,  4.92s/it]Smoothing histograms:  45%|████▌     | 135/300 [08:09<12:04,  4.39s/it]Smoothing histograms:  45%|████▌     | 136/300 [08:19<16:23,  6.00s/it]Smoothing histograms:  46%|████▌     | 138/300 [08:30<15:59,  5.92s/it]Smoothing histograms:  46%|████▋     | 139/300 [08:33<13:50,  5.16s/it]Smoothing histograms:  47%|████▋     | 140/300 [08:42<16:29,  6.19s/it]Smoothing histograms:  47%|████▋     | 142/300 [08:55<16:42,  6.35s/it]Smoothing histograms:  48%|████▊     | 143/300 [08:58<14:20,  5.48s/it]Smoothing histograms:  48%|████▊     | 144/300 [09:08<17:09,  6.60s/it]Smoothing histograms:  48%|████▊     | 145/300 [09:08<12:55,  5.00s/it]Smoothing histograms:  49%|████▊     | 146/300 [09:22<18:39,  7.27s/it]Smoothing histograms:  49%|████▉     | 147/300 [09:23<14:18,  5.61s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  49%|████▉     | 148/300 [09:34<18:00,  7.11s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  50%|█████     | 150/300 [09:45<16:15,  6.50s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  50%|█████     | 151/300 [09:56<18:42,  7.53s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  51%|█████     | 152/300 [10:02<17:42,  7.18s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  51%|█████▏    | 154/300 [10:15<16:31,  6.79s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  52%|█████▏    | 155/300 [10:30<21:09,  8.75s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  52%|█████▏    | 156/300 [10:36<19:02,  7.94s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  52%|█████▏    | 157/300 [10:40<16:41,  7.01s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  53%|█████▎    | 158/300 [10:54<20:58,  8.86s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  53%|█████▎    | 159/300 [10:59<18:32,  7.89s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  53%|█████▎    | 160/300 [11:05<17:00,  7.29s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  54%|█████▎    | 161/300 [11:15<18:47,  8.11s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  54%|█████▍    | 162/300 [11:26<20:20,  8.84s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  54%|█████▍    | 163/300 [11:36<21:08,  9.26s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  55%|█████▍    | 164/300 [11:45<20:56,  9.24s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  55%|█████▌    | 165/300 [11:50<18:11,  8.08s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  56%|█████▌    | 167/300 [11:58<13:26,  6.07s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  56%|█████▌    | 168/300 [12:06<14:29,  6.59s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  56%|█████▋    | 169/300 [12:08<11:36,  5.32s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  57%|█████▋    | 170/300 [12:11<10:35,  4.89s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  57%|█████▋    | 171/300 [12:17<10:48,  5.03s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  57%|█████▋    | 172/300 [12:32<16:41,  7.82s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  58%|█████▊    | 175/300 [12:38<09:52,  4.74s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  59%|█████▊    | 176/300 [12:45<10:40,  5.16s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  59%|█████▉    | 177/300 [12:51<10:51,  5.30s/it]Smoothing histograms:  60%|█████▉    | 179/300 [12:58<09:20,  4.63s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  60%|██████    | 180/300 [13:04<09:59,  4.99s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  70%|███████   | 211/300 [13:28<01:43,  1.16s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  71%|███████   | 212/300 [13:29<01:40,  1.14s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  72%|███████▏  | 215/300 [13:47<02:40,  1.88s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  72%|███████▏  | 217/300 [13:52<02:38,  1.92s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  73%|███████▎  | 218/300 [13:56<02:51,  2.09s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  73%|███████▎  | 219/300 [14:06<03:53,  2.88s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  73%|███████▎  | 220/300 [14:09<03:51,  2.90s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  74%|███████▎  | 221/300 [14:14<04:21,  3.31s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  74%|███████▍  | 222/300 [14:16<03:53,  2.99s/it]Smoothing histograms:  74%|███████▍  | 223/300 [14:34<07:59,  6.23s/it]Smoothing histograms:  75%|███████▌  | 225/300 [14:41<06:27,  5.16s/it]Smoothing histograms:  78%|███████▊  | 235/300 [14:43<01:42,  1.57s/it]Smoothing histograms:  79%|███████▊  | 236/300 [14:43<01:32,  1.44s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  79%|███████▉  | 237/300 [14:45<01:30,  1.44s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  80%|███████▉  | 239/300 [14:47<01:24,  1.38s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  80%|████████  | 240/300 [14:48<01:15,  1.25s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  83%|████████▎ | 248/300 [14:48<00:24,  2.14it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  83%|████████▎ | 250/300 [14:48<00:20,  2.43it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  84%|████████▍ | 252/300 [14:49<00:18,  2.61it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  85%|████████▍ | 254/300 [14:49<00:15,  3.04it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  85%|████████▌ | 256/300 [14:51<00:21,  2.03it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  86%|████████▌ | 257/300 [14:52<00:21,  2.04it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  87%|████████▋ | 260/300 [14:53<00:20,  1.94it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  87%|████████▋ | 261/300 [14:54<00:24,  1.61it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  88%|████████▊ | 264/300 [14:56<00:21,  1.69it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  89%|████████▊ | 266/300 [14:57<00:19,  1.75it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  89%|████████▉ | 268/300 [14:57<00:13,  2.29it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  90%|████████▉ | 269/300 [14:59<00:21,  1.47it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  90%|█████████ | 270/300 [15:00<00:20,  1.49it/s]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  90%|█████████ | 271/300 [15:13<01:41,  3.49s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  91%|█████████ | 272/300 [15:17<01:35,  3.40s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  91%|█████████▏| 274/300 [15:17<00:57,  2.20s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  92%|█████████▏| 275/300 [15:31<02:00,  4.82s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  92%|█████████▏| 276/300 [15:33<01:36,  4.01s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  92%|█████████▏| 277/300 [15:33<01:11,  3.12s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  93%|█████████▎| 278/300 [15:35<00:58,  2.65s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  93%|█████████▎| 279/300 [15:49<02:02,  5.82s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  93%|█████████▎| 280/300 [15:50<01:32,  4.61s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  94%|█████████▍| 282/300 [15:52<00:52,  2.91s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  94%|█████████▍| 283/300 [16:05<01:32,  5.46s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  95%|█████████▌| 285/300 [16:07<00:52,  3.50s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  95%|█████████▌| 286/300 [16:20<01:18,  5.61s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  96%|█████████▌| 287/300 [16:35<01:43,  7.97s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  96%|█████████▌| 288/300 [16:38<01:20,  6.71s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  96%|█████████▋| 289/300 [16:41<01:02,  5.71s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  97%|█████████▋| 290/300 [16:53<01:14,  7.49s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  97%|█████████▋| 291/300 [17:11<01:33, 10.43s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  98%|█████████▊| 293/300 [17:12<00:42,  6.10s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  98%|█████████▊| 294/300 [17:27<00:49,  8.24s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  98%|█████████▊| 295/300 [17:44<00:52, 10.48s/it]/opt/conda/envs/ddp/lib/python3.10/site-packages/scipy/optimize/_minpack_py.py:542: RuntimeWarning: overflow encountered in multiply
-  return transform * (func(xdata, *params) - ydata)
-Smoothing histograms:  99%|█████████▉| 297/300 [17:48<00:20,  6.74s/it]Smoothing histograms:  99%|█████████▉| 298/300 [17:59<00:15,  7.73s/it]Smoothing histograms: 100%|█████████▉| 299/300 [18:08<00:08,  8.03s/it]Smoothing histograms: 100%|██████████| 300/300 [18:08<00:00,  3.63s/it]
-Saving + Plotting Histograms:   0%|          | 0/300 [00:00<?, ?it/s]Saving + Plotting Histograms:   0%|          | 0/300 [00:00<?, ?it/s]
-Traceback (most recent call last):
-  File "/srv01/agrp/netalev/BumpNet-main/DDP.py", line 31, in <module>
-    smooth.smooth(config_smooth)
-  File "/srv01/agrp/netalev/BumpNet-main/sample_generation/smooth.py", line 702, in smooth
-    plot_histogram(hist_name_raw, bin_edges_raw, bin_content_raw, bkg, bin_errors_raw, true_z,
-  File "/srv01/agrp/netalev/BumpNet-main/sample_generation/smooth.py", line 412, in plot_histogram
-    signature, observable  = get_signature_and_observable(hist_name)
-  File "/srv01/agrp/netalev/BumpNet-main/utilities/signatures.py", line 133, in get_signature_and_observable
-    return signature, observable
-UnboundLocalError: local variable 'signature' referenced before assignment
-INFO:    Cleaning up image...

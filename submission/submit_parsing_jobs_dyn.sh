@@ -16,7 +16,7 @@ if [ "$JOB_TYPE" = "array" ]; then
 #PBS -q N
 #PBS -o logs/parse_job_default.out
 #PBS -e logs/parse_job_default.err
-#PBS -l select=1:ncpus=10:mem=20gb
+#PBS -l select=1:ncpus=4:mem=20gb
 #PBS -l io=5
 #PBS -l walltime=25:00:00
 #PBS -J 1-$NUM_JOBS 
@@ -42,7 +42,7 @@ else
 #PBS -N test_skipping_files
 #PBS -o logs/parse_job_default.out
 #PBS -e logs/parse_job_default.err
-#PBS -l select=1:ncpus=10:mem=20gb
+#PBS -l select=1:ncpus=4:mem=20gb
 #PBS -l io=5
 #PBS -l walltime=25:00:00
 
