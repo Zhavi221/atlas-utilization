@@ -8,33 +8,15 @@ import os
 
 CONFIG_PATH = "configs/pipeline_config.yaml"
 
-
-def log_task_boundary(logger, task_name: str):
-    """Log task boundary for consistent formatting."""
-    logger.info("=" * 60)
-    logger.info(f"{task_name}")
-    logger.info("=" * 60)
-
-
-def normalize_list(value):
-    """Normalize None to empty list."""
-    return value if value is not None else []
-
-def parse_args():
-    """Parse command line arguments."""
-    arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--config", help="Config file", default=CONFIG_PATH)
-    arg_parser.add_argument("--test_run_index", help="Config file", default=None)
-    arg_parser.add_argument("--batch_job_index", default=None)
-    arg_parser.add_argument("--total_batch_jobs", default=None)
-    return arg_parser.parse_args()
-
 def main():
     """Main entry point for the pipeline."""
     logger = init_logging()
     args = parse_args()
     config = load_config(args)
     tasks = config["tasks"]
+
+    # Initialize directories
+    initialize_directories(config, logger)
 
     parsed_files = []
     im_files = []
@@ -63,6 +45,27 @@ def main():
             processed_im_files,
             im_files
         )
+
+
+def log_task_boundary(logger, task_name: str):
+    """Log task boundary for consistent formatting."""
+    logger.info("=" * 60)
+    logger.info(f"{task_name}")
+    logger.info("=" * 60)
+
+
+def normalize_list(value):
+    """Normalize None to empty list."""
+    return value if value is not None else []
+
+def parse_args():
+    """Parse command line arguments."""
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--config", help="Config file", default=CONFIG_PATH)
+    arg_parser.add_argument("--test_run_index", help="Config file", default=None)
+    arg_parser.add_argument("--batch_job_index", default=None)
+    arg_parser.add_argument("--total_batch_jobs", default=None)
+    return arg_parser.parse_args()
 
 
 def parsing_task(parsing_config, logger):
@@ -161,6 +164,77 @@ def init_logging():
 def check_im_arrays_exist(im_masses_dir):
     """Check if IM arrays exist in the given directory."""
     return os.path.exists(im_masses_dir) and bool(os.listdir(im_masses_dir))
+
+
+def initialize_directories(config, logger):
+    """
+    Initialize all data and log directories if they don't exist.
+    
+    Creates directories for:
+    - Parsing output and logs
+    - Invariant mass calculation input/output
+    - Post-processing input/output
+    - Histogram creation input/output
+    """
+    directories_to_create = []
+    
+    # Parsing directories
+    if "parsing_config" in config:
+        parsing_config = config["parsing_config"]
+        
+        if "pipeline_config" in parsing_config:
+            pipeline_config = parsing_config["pipeline_config"]
+            if "output_path" in pipeline_config:
+                directories_to_create.append(pipeline_config["output_path"])
+        
+        if "atlasparser_config" in parsing_config:
+            atlasparser_config = parsing_config["atlasparser_config"]
+            if "logging_path" in atlasparser_config:
+                directories_to_create.append(atlasparser_config["logging_path"])
+    
+    # Mass calculation directories
+    if "mass_calculate" in config:
+        mass_config = config["mass_calculate"]
+        if "input_dir" in mass_config:
+            directories_to_create.append(mass_config["input_dir"])
+        if "output_dir" in mass_config:
+            directories_to_create.append(mass_config["output_dir"])
+    
+    # Post-processing directories
+    if "post_processing" in config:
+        post_config = config["post_processing"]
+        if "input_dir" in post_config:
+            directories_to_create.append(post_config["input_dir"])
+        if "output_dir" in post_config:
+            directories_to_create.append(post_config["output_dir"])
+    
+    # Histogram creation directories
+    if "histogram_creation" in config:
+        hist_config = config["histogram_creation"]
+        if "input_dir" in hist_config:
+            directories_to_create.append(hist_config["input_dir"])
+        if "output_dir" in hist_config:
+            directories_to_create.append(hist_config["output_dir"])
+    
+    # Remove duplicates and None values
+    directories_to_create = list(set(d for d in directories_to_create if d))
+    
+    # Create directories
+    created_count = 0
+    for directory in directories_to_create:
+        if not os.path.exists(directory):
+            try:
+                os.makedirs(directory, exist_ok=True)
+                logger.info(f"Created directory: {directory}")
+                created_count += 1
+            except Exception as e:
+                logger.warning(f"Could not create directory {directory}: {e}")
+    
+    if created_count > 0:
+        logger.info(f"Initialized {created_count} directories")
+    else:
+        logger.debug("All directories already exist")
+
 
 def load_config(args):
     """Load configuration from YAML file."""
