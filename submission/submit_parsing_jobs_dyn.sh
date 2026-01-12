@@ -1,7 +1,7 @@
 #!/bin/bash
 NUM_JOBS=$(
     python submission/calculate_jobs_amount.py --time_for_file_sec 20 --walltime_per_job_sec 259200 | tail -1)
-
+NUM_JOBS=1
 if [ "$NUM_JOBS" -eq 1 ]; then
     echo "Submitting 1 single job (not an array)"
     JOB_TYPE="single"
@@ -14,8 +14,9 @@ if [ "$JOB_TYPE" = "array" ]; then
     qsub <<EOF
 #!/bin/bash
 #PBS -q N
-#PBS -o logs/parse_job_default.out
-#PBS -e logs/parse_job_default.err
+#PBS -N job
+#PBS -o logs/job_\${PBS_ARRAY_INDEX}.out
+#PBS -e logs/job_\${PBS_ARRAY_INDEX}.err
 #PBS -l select=1:ncpus=4:mem=20gb
 #PBS -l io=5
 #PBS -l walltime=25:00:00
@@ -32,16 +33,16 @@ echo "Running job index: \$PBS_ARRAY_INDEX"
 python create_folder_for_run.py
 
 python main_pipeline.py --batch_job_index \$PBS_ARRAY_INDEX --total_batch_jobs $NUM_JOBS \
-    > "/storage/agrp/netalev/logs/real_job_\${PBS_ARRAY_INDEX}.out" \
-    2> "/storage/agrp/netalev/logs/real_job_\${PBS_ARRAY_INDEX}.err"
+    > "/storage/agrp/netalev/logs/job_\${PBS_ARRAY_INDEX}.out" \
+    2> "/storage/agrp/netalev/logs/job_\${PBS_ARRAY_INDEX}.err"
 EOF
 else
     qsub <<EOF
 #!/bin/bash
 #PBS -q N
-#PBS -N test_skipping_files
-#PBS -o logs/parse_job_default.out
-#PBS -e logs/parse_job_default.err
+#PBS -N job
+#PBS -o logs/job_1.out
+#PBS -e logs/job_1.err
 #PBS -l select=1:ncpus=4:mem=20gb
 #PBS -l io=5
 #PBS -l walltime=25:00:00

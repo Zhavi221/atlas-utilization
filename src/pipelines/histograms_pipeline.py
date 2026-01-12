@@ -3,7 +3,9 @@ import sys
 import os
 import fcntl
 import time
+import re
 from typing import Dict
+from collections import defaultdict
 import numpy as np
 import ROOT
 import math
@@ -18,6 +20,8 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
     os.makedirs(output_dir, exist_ok=True)
 
     bin_widths_gev = histograms_config["bin_widths_gev"]
+    use_bumpnet_naming = histograms_config.get("use_bumpnet_naming", False)
+    exclude_outliers = histograms_config.get("exclude_outliers", False)
     
     # Get list of IM array files
     if file_list is not None:
@@ -62,16 +66,211 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
             im_array_files = get_batch_files(im_array_files, batch_job_index, total_batch_jobs)
             logger.info(f"Batch {batch_job_index}/{total_batch_jobs}: Processing {len(im_array_files)} files")
     
+    # Filter out outlier files if configured
+    if exclude_outliers:
+        before_count = len(im_array_files)
+        im_array_files = [f for f in im_array_files if "_outliers" not in f]
+        excluded_count = before_count - len(im_array_files)
+        if excluded_count > 0:
+            logger.info(f"Excluded {excluded_count} outlier files (exclude_outliers=true)")
+    
     total_im_arrays = len(im_array_files)
-    logger.info(f"Making {total_im_arrays} histograms...")
+    logger.info(f"Found {total_im_arrays} IM array files to process")
     
     single_output_file = histograms_config.get("single_output_file", False)
     output_filename = histograms_config.get("output_filename", "all_histograms.root")
     
-    process_im_arrays(
-        input_dir, output_dir, bin_widths_gev, logger, im_array_files,
-        single_output_file=single_output_file, output_filename=output_filename
-    )
+    if use_bumpnet_naming:
+        logger.info("Using BumpNet naming mode: grouping files by signature and merging")
+        process_im_arrays_bumpnet(
+            input_dir, output_dir, bin_widths_gev, logger, im_array_files,
+            single_output_file=single_output_file, output_filename=output_filename
+        )
+    else:
+        logger.info("Using standard naming mode")
+        process_im_arrays(
+            input_dir, output_dir, bin_widths_gev, logger, im_array_files,
+            single_output_file=single_output_file, output_filename=output_filename
+        )
+
+def group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
+    """
+    Group .npy files by their FS + IM signature (ignoring hash/batch info).
+    
+    Args:
+        im_files: List of .npy filenames
+        
+    Returns:
+        Dictionary mapping BumpNet-compatible names to list of source files
+    """
+    groups = defaultdict(list)
+    
+    for filename in im_files:
+        # Extract FS and IM parts: ..._FS_<final_state>_IM_<combination>...
+        match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)', filename)
+        if match:
+            fs_str, im_str = match.groups()
+            bumpnet_name = convert_to_bumpnet_name(fs_str, im_str)
+            groups[bumpnet_name].append(filename)
+    
+    return dict(groups)
+
+
+def convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
+    """
+    Convert FS/IM strings to BumpNet naming format.
+    
+    Args:
+        fs_str: Final state string (e.g., "0e_2m_3j_1g")
+        im_str: Invariant mass combination string (e.g., "0e_2m_0j_1g")
+        
+    Returns:
+        BumpNet-compatible name (e.g., "mass_m2g1_cat_0ex_2mx_3jx_1gx")
+    """
+    # Parse IM for combination (e.g., "0e_2m_0j_1g" -> "m2g1")
+    # Only include particles with non-zero counts
+    particles = re.findall(r'(\d+)([emjg])', im_str)
+    combo_parts = [f"{p}{c}" for c, p in particles if c != '0']
+    combo = "".join(combo_parts) if combo_parts else "none"
+    
+    # Parse FS for final state (e.g., "0e_2m_3j_1g" -> "0ex_2mx_3jx_1gx")
+    fs_particles = re.findall(r'(\d+)([emjg])', fs_str)
+    fs_formatted = "_".join(f"{c}{p}x" for c, p in fs_particles)
+    
+    return f"mass_{combo}_cat_{fs_formatted}"
+
+
+def process_im_arrays_bumpnet(
+    im_arrays_dir: str, 
+    output_dir: str, 
+    bin_widths_gev: list, 
+    logger: logging.Logger, 
+    im_array_files: List[str],
+    single_output_file: bool = False,
+    output_filename: str = "all_histograms.root"
+):
+    """
+    Process IM arrays with BumpNet-compatible naming and merging.
+    
+    Groups files by signature, merges arrays, and creates histograms with
+    BumpNet naming format (mass_<combo>_cat_<final_state>).
+    
+    Args:
+        im_arrays_dir: Directory containing .npy files
+        output_dir: Directory to save ROOT files
+        bin_widths_gev: List of bin widths to use
+        logger: Logger instance
+        im_array_files: List of .npy filenames to process
+        single_output_file: If True, write all histograms to single ROOT file
+        output_filename: Filename for single output file mode
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Group files by their FS+IM signature
+    grouped_files = group_im_files_by_signature(im_array_files)
+    logger.info(f"Grouped {len(im_array_files)} files into {len(grouped_files)} unique signatures")
+    
+    if single_output_file:
+        root_filepath = os.path.join(output_dir, output_filename)
+        hist_count = 0
+        
+        for bumpnet_name, matching_files in grouped_files.items():
+            logger.info(f"Processing {bumpnet_name}: merging {len(matching_files)} files")
+            
+            hists = create_merged_histograms_streaming(
+                matching_files, im_arrays_dir, bumpnet_name, bin_widths_gev, logger
+            )
+            
+            if hists:
+                write_hists_to_shared_file(hists, root_filepath, logger)
+                hist_count += len(hists)
+        
+        logger.info(f"Wrote {hist_count} histograms to shared file {root_filepath}")
+    else:
+        # One ROOT file per signature
+        for bumpnet_name, matching_files in grouped_files.items():
+            logger.info(f"Processing {bumpnet_name}: merging {len(matching_files)} files")
+            
+            hists = create_merged_histograms_streaming(
+                matching_files, im_arrays_dir, bumpnet_name, bin_widths_gev, logger
+            )
+            
+            if hists:
+                root_filename = f"{bumpnet_name}_hists.root"
+                root_filepath = os.path.join(output_dir, root_filename)
+                root_file = ROOT.TFile(root_filepath, "RECREATE")
+                for hist in hists:
+                    hist.Write()
+                root_file.Close()
+                logger.debug(f"Saved {len(hists)} histograms to {root_filepath}")
+
+
+def create_merged_histograms_streaming(
+    files: List[str], 
+    directory: str, 
+    hist_name_base: str, 
+    bin_widths_gev: list,
+    logger: logging.Logger
+) -> List[ROOT.TH1F]:
+    """
+    Create histograms by streaming through files - memory efficient.
+    
+    Loads one array at a time to avoid memory issues with large datasets.
+    
+    Args:
+        files: List of .npy filenames to merge
+        directory: Directory containing the files
+        hist_name_base: Base name for histograms (BumpNet format)
+        bin_widths_gev: List of bin widths
+        logger: Logger instance
+        
+    Returns:
+        List of ROOT.TH1F histograms (one per bin width)
+    """
+    # First pass: find global min/max for consistent binning
+    global_min, global_max = float('inf'), float('-inf')
+    total_entries = 0
+    
+    for f in files:
+        try:
+            arr = np.load(os.path.join(directory, f))
+            if len(arr) > 0:
+                global_min = min(global_min, np.min(arr))
+                global_max = max(global_max, np.max(arr))
+                total_entries += len(arr)
+            del arr  # Free memory
+        except Exception as e:
+            logger.warning(f"Error reading {f} for min/max: {e}")
+            continue
+    
+    if global_min == float('inf') or global_max == float('-inf'):
+        logger.warning(f"No valid data found for {hist_name_base}")
+        return []
+    
+    logger.debug(f"{hist_name_base}: {total_entries} entries, range [{global_min:.2f}, {global_max:.2f}]")
+    
+    # Create histograms for each bin width
+    histograms = []
+    for bin_width in bin_widths_gev:
+        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
+        hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
+        hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+        histograms.append(hist)
+    
+    # Second pass: fill histograms one file at a time
+    for f in files:
+        try:
+            arr = np.load(os.path.join(directory, f))
+            for hist in histograms:
+                for val in arr:
+                    hist.Fill(val)
+            del arr  # Free memory immediately
+        except Exception as e:
+            logger.warning(f"Error filling from {f}: {e}")
+            continue
+    
+    return histograms
+
 
 def process_im_arrays(
     im_arrays_dir: str, 

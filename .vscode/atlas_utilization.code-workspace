@@ -10,5 +10,7 @@
 			"path": "../../../../../storage/agrp/netalev"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"workbench.editor.wrapTabs": true
+	}
 }

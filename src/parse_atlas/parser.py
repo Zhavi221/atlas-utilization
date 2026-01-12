@@ -562,17 +562,8 @@ class AtlasOpenParser():
             obj_branches_and_quantities = test_branches
             all_branches = set(itertools.chain.from_iterable(obj_branches_and_quantities.values()))
             
-            # Log what particles were actually found (after testing accessibility)
-            if obj_branches_and_quantities:
-                found_particles = list(obj_branches_and_quantities.keys())
-                if "Electrons" in found_particles or "Muons" in found_particles or "Photons" in found_particles:
-                    logging.info(f"Found Electrons or Muons or Photons in file {file_index}")
-
-                fields_found = {obj: list(branch_map.values()) for obj, branch_map in obj_branches_and_quantities.items()}
-                logging.info(f"After parsing file {file_index}: Found particles: {found_particles}")
-                for obj_name, fields in fields_found.items():
-                    logging.info(f"  {obj_name}: fields = {fields}")
-            else:
+            # Check if we found any accessible particles
+            if not obj_branches_and_quantities:
                 logging.warning(f"After parsing file {file_index}: No accessible particles found")
                 return None
 
