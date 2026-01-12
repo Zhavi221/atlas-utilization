@@ -1,3 +1,24 @@
+# ===PATH CONFIGURATION===
+# All paths used throughout the pipeline are defined here for consistency
+# These paths follow the pipeline flow: root_files -> inv_masses -> inv_masses_processed -> histograms
+paths:  
+  # Pipeline flow paths
+  root_files_path: &root_files_path "/storage/agrp/netalev/data/root_files/"
+  inv_masses_path: &inv_masses_path "/storage/agrp/netalev/data/inv_masses/"
+  inv_masses_processed_path: &inv_masses_processed_path "/storage/agrp/netalev/data/inv_masses_processed/"
+  histograms_path: &histograms_path "/storage/agrp/netalev/data/histograms/"
+  
+  # Supporting paths
+  batch_job_file_ids_path: &batch_job_file_ids_path "/storage/agrp/netalev/data/batch_job_file_ids.json"
+  testing_jobs_path: &testing_jobs_path "testing/testing_runs_bigger.json"
+  logs_path: &logs_path "/storage/agrp/netalev/logs/"
+
+# ===NAMES CONFIGURATION===
+# Global names used throughout the pipeline
+names:
+  run_name: &run_name "cms-opendata-SingleElectronSingleMuon"
+  output_filename: &output_filename "all_histograms.root"
+
 tasks:
   do_parsing: false
   do_mass_calculating: false
@@ -7,34 +28,35 @@ tasks:
 testing_config:
   is_on: false #normal or random
   test_run_index: null
-  testing_jobs_path: "testing/testing_runs_bigger.json"
+  testing_jobs_path: *testing_jobs_path
 
 parsing_config:
   run_metadata:
     # ===BATCH JOB INDEX===
     batch_job_index: null
-    run_name: "cms-opendata-SingleElectronSingleMuon"
+    run_name: *run_name
     total_batch_jobs: null
 
   pipeline_config:
+    parse_mc: false
+    
     parse_in_multiprocessing: false #important for cluster processing
     # ===AMOUNT OF PROCESSES TO PARSE FILES===
     max_parallel_workers: 4
-    # ===ADD FAILED FILES TO QUEUE OF FILES===
     count_retries_failed_files: 3 
     # ===AMOUNT OF FILES TO LIMIT EACH YEAR (MAINLY TESTING PURPOSES)===
     limit_files_per_year: null #FOR TESTING - limit number of files per year
     # ===SOMETIMES FETCHING METADATA CAN BE LONG, SO SET A TIMEOUT===
     fetching_metadata_timeout: 60
-    # ===PATH FOR OUTPUTTING THE DATA===
-    output_path: "/storage/agrp/netalev/data/root_files/"
-    file_urls_path: "/storage/agrp/netalev/data/batch_job_file_ids.json"
-    parse_mc: false
+
+    output_path: *root_files_path
+    file_urls_path: *batch_job_file_ids_path
+    
   
   atlasparser_config:
     # ===RELEVANT WHEN USED IN A RESTRICTED MEMORY ENV (A CLUSTER)===
     max_environment_memory_mb: 20000 
-    # === SPECIFIC RECORD IDS ===
+    # === SPECIFIC RECORD IDS (IF SPECIFIED, WILL IGNORE THE RELEASE YEARS) ===
     specific_record_ids:
       - 30529
       - 30562 
@@ -44,22 +66,22 @@ parsing_config:
     release_years:
     # - 2024r-hi
     # - 2024r-pp
-    # ===AMOUNT OF THREADS TO USE MULTITHREADING WITH, 4 IS A STABLE AMOUNT===
+    
     max_threads: 8
+
     # ===A THRESHOLD FOR PREVENTING MEMORY OVERLOAD===
     chunk_yield_threshold_bytes: 5000000000 # 5GB 
-    # chunk_yield_threshold_bytes: 100000000 #FOR TESTING - 50MB for testing
-    # ===PATH FOR OUTPUTTING THE LOGS===
-    logging_path: "/storage/agrp/netalev/logs/"
+
+    logging_path: *logs_path
     # ===SHOULD CREATE LOGGING AND DATA DIRECTORIES===
     create_dirs: true
+    
     # ===THE NAMES FOR THE DATA TREES INSIDE THE ROOT FILES, CHANGES FROM EDU TO RESEARCH RELEASES===
     possible_tree_names:
     - CollectionTree
     - mini
     - analysis
     - Events
-    temp_directory: /storage/agrp/netalev/data/temp_zipped_files/
     show_progress_bar: true
 
   particle_counts:
@@ -94,9 +116,9 @@ mass_calculate:
   # ===THRESHOLD FOR EMPTYING THE FS MAPPING (in bytes)===
   fs_mapping_threshold_bytes: 50000000  # 50MB default
   # ===INPUT DIRECTORY FOR THE ROOT FILES TO CALCULATE FROM===
-  input_dir: "/storage/agrp/netalev/data/root_files/"
+  input_dir: *root_files_path
   # ===OUTPUT DIRECTORY FOR THE INVARIANT MASS ARRAYS===
-  output_dir: "/storage/agrp/netalev/data/inv_masses/"
+  output_dir: *inv_masses_path
   # ===USE MULTIPROCESSING FOR PARALLEL FILE PROCESSING===
   use_multiprocessing: true
   # ===NUMBER OF WORKER PROCESSES (only used if use_multiprocessing is true)===
@@ -122,25 +144,25 @@ mass_calculate:
 
 post_processing:
   # ===INPUT DIRECTORY FOR THE IM ARRAY FILES===
-  input_dir: "/storage/agrp/netalev/data/inv_masses/"
+  input_dir: *inv_masses_path
   # ===OUTPUT DIRECTORY FOR THE PROCESSED ARRAYS===
-  output_dir: "/storage/agrp/netalev/data/inv_masses_processed/"
+  output_dir: *inv_masses_processed_path
   # ===BIN WIDTHS TO USE FOR PEAK DETECTION (in GeV)===
   bin_widths_gev:
     - 10
     # - 10
 
 histogram_creation:
-  # input_dir: "/storage/agrp/netalev/data/inv_masses_processed/"
-  input_dir: "/storage/agrp/netalev/archive/first_full_run/data/inv_masses_processed/"
-  output_dir: "/storage/agrp/netalev/data/histograms/"
+  input_dir: *inv_masses_processed_path
+  output_dir: *histograms_path
   bin_widths_gev:
     - 10
-    # - 10
+
   # ===SINGLE OUTPUT FILE MODE (for batch jobs writing to shared file)===
   single_output_file: true
+  output_filename: *output_filename
+  
   exclude_outliers: true
-  output_filename: "all_histograms.root"
   # ===BUMPNET COMPATIBILITY MODE===
   # When enabled: groups files by FS+IM signature, merges into single histogram,
   # and outputs BumpNet-compatible naming format (mass_<combo>_cat_<final_state>)
