@@ -194,20 +194,6 @@ def initialize_directories(config, logger):
                 if "archive" not in jobs_logs_path:
                     directories_to_create.append(jobs_logs_path)
     
-<<<<<<< HEAD
-=======
-    # Logging directory (always create, regardless of which tasks are enabled)
-    if "parsing_task_config" in config:
-        parsing_config = config["parsing_task_config"]
-        if "atlasparser_config" in parsing_config:
-            atlasparser_config = parsing_config["atlasparser_config"]
-            if "jobs_logs_path" in atlasparser_config:
-                jobs_logs_path = atlasparser_config["jobs_logs_path"]
-                # Skip archived paths
-                if "archive" not in jobs_logs_path:
-                    directories_to_create.append(jobs_logs_path)
-    
->>>>>>> 0a2010a (changed refrences and more config improvs, should be very clear now)
     # Parsing directories (only if parsing is enabled)
     if tasks.get("do_parsing", False):
         if "parsing_task_config" in config:
