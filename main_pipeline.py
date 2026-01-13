@@ -283,24 +283,26 @@ def _load_testing_config(config, args):
 
 
 def _append_run_folder_to_path(path, run_folder):
-    """Append run folder to a data/logs path, inserting it after the base directory.
+    """Append run folder to a data path, inserting it after the base directory.
+    
+    For logs, the run folder contains a "logs" subdirectory.
     
     Example:
         Input:  "/storage/agrp/netalev/data/root_files/"
         Output: "/storage/agrp/netalev/data/{run_folder}/root_files/"
         
-        Input:  "/storage/agrp/netalev/logs/"
-        Output: "/storage/agrp/netalev/logs/{run_folder}/"
+        Input:  "/storage/agrp/netalev/data/logs/"
+        Output: "/storage/agrp/netalev/data/{run_folder}/logs/"
     """
     if not path or not run_folder:
         return path
     
-    # Check if path is absolute and contains "data" or "logs"
+    # Check if path is absolute and contains "data"
     has_trailing_slash = path.endswith('/')
     is_absolute = path.startswith('/')
     
-    # Skip relative paths that don't contain data/logs directories
-    if not is_absolute and "data" not in path and "logs" not in path:
+    # Skip relative paths that don't contain data directory
+    if not is_absolute and "data" not in path:
         return path
     
     # Normalize path (remove trailing slash temporarily)
@@ -309,22 +311,20 @@ def _append_run_folder_to_path(path, run_folder):
     # Split path into components
     parts = [p for p in path_normalized.split('/') if p]  # Remove empty strings
     
-    # Find where "data" or "logs" appears in the path
-    target_dir = None
+    # Find where "data" appears in the path
     target_index = None
     for i, part in enumerate(parts):
-        if part in ("data", "logs"):
-            target_dir = part
+        if part == "data":
             target_index = i
             break
     
     if target_index is not None:
-        # Insert run_folder after "data" or "logs"
+        # Insert run_folder after "data"
         new_parts = parts[:target_index + 1] + [run_folder] + parts[target_index + 1:]
         result = '/' + '/'.join(new_parts)
         return result + '/' if has_trailing_slash else result
     
-    # Fallback: if absolute path but no data/logs found, append at end
+    # Fallback: if absolute path but no data found, append at end
     if is_absolute:
         return os.path.join(path_normalized, run_folder) + ('/' if has_trailing_slash else '')
     

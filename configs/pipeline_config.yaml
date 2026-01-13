@@ -12,7 +12,7 @@ paths:
   # Supporting paths
   batch_job_file_ids_path: &batch_job_file_ids_path "/storage/agrp/netalev/data/batch_job_file_ids.json"
   testing_jobs_path: &testing_jobs_path "testing/testing_runs_bigger.json"
-  logs_path: &logs_path "/storage/agrp/netalev/logs/"
+  logs_path: &logs_path "/storage/agrp/netalev/data/logs/"
 
 # ===NAMES CONFIGURATION===
 # Global names used throughout the pipeline
