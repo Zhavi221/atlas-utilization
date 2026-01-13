@@ -26,7 +26,7 @@ from src.im_calculator.im_calculator import IMCalculator
 from src.utils import memory_utils
 
 
-def mass_calculate(config: Dict, file_list: Optional[List[str]] = None) -> List[str]:
+def mass_calculate(config: Dict, testing_config: Dict = None, file_list: Optional[List[str]] = None) -> List[str]:
     """
     Main entry point for invariant mass calculation pipeline.
     
@@ -59,13 +59,15 @@ def mass_calculate(config: Dict, file_list: Optional[List[str]] = None) -> List[
     os.makedirs(output_dir, exist_ok=True)
     
     # Get all combinations
+    if testing_config is None:
+        testing_config = {}
     all_combinations: List[Dict[str, int]] = combinatorics.get_all_combinations(
         config["objects_to_calculate"],
-        min_particles=config["min_particles"],
-        max_particles=config["max_particles"],
-        min_count=config["min_count"],
-        max_count=config["max_count"],
-        limit=config.get("limit_combinations")
+        min_particles=config["min_particles_in_combination"],
+        max_particles=config["max_particles_in_combination"],
+        min_count=config["min_count_particle_in_combination"],
+        max_count=config["max_count_particle_in_combination"],
+        limit=testing_config.get("limit_combinations")
     )
     
     logger.info(f"Generated {len(all_combinations)} combinations to process")
@@ -115,7 +117,7 @@ def mass_calculate(config: Dict, file_list: Optional[List[str]] = None) -> List[
     
     # Process files
     use_multiprocessing = config["use_multiprocessing"]
-    max_workers = config.get("max_workers")
+    max_workers = config.get("parallel_processes")
     if max_workers is None:
         max_workers = mp.cpu_count()
     
@@ -283,10 +285,10 @@ def process_single_file(
     calculator = IMCalculator(
         particle_arrays, 
         min_events_per_fs=config["min_events_per_fs"],
-        min_k=config["min_count"],
-        max_k=config["max_count"],
-        min_n=config["min_particles"],
-        max_n=config["max_particles"],
+        min_k=config["min_count_particle_in_combination"],
+        max_k=config["max_count_particle_in_combination"],
+        min_n=config["min_particles_in_combination"],
+        max_n=config["max_particles_in_combination"],
     )
 
     # Track statistics for this file
@@ -383,7 +385,7 @@ def process_final_state(
     logger.info(f"{prefix} [{filename}] Computing final state '{final_state}': "
                 f"{len(fs_events):,} events, {num_combinations} combinations")
     
-    fs_mapping_threshold_bytes = config["fs_mapping_threshold_bytes"]
+    fs_mapping_threshold_bytes = config["fs_chunk_threshold_bytes"]
     fs_im_mapping: Dict[str, Dict[str, ak.Array]] = {}
     
     # Track statistics for this final state

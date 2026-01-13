@@ -31,16 +31,17 @@ _buf = io.StringIO()
 with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_buf):
     temp_parser = parser.AtlasOpenParser(
         chunk_yield_threshold_bytes=0, max_threads=0, logging_path=None,
-        release_years=config["parsing_config"]["atlasparser_config"]["release_years"])
+        release_years=config["parsing_task_config"]["atlasparser_config"]["release_years"])
     release_year_file_ids: dict = temp_parser.fetch_record_ids(
         timeout=160, seperate_mc=True
     )
-    if not config["parsing_config"]["pipeline_config"]["parse_mc"]:
+    if not config["parsing_task_config"]["pipeline_config"]["parse_mc"]:
             release_year_file_ids = {k: v for k, v in release_year_file_ids.items() if "mc" not in k}
 
-    if config["parsing_config"]["pipeline_config"]["limit_files_per_year"]:
+    testing_config = config.get("testing_config", {})
+    if testing_config.get("limit_files_per_year"):
         parser.AtlasOpenParser.limit_files_per_year(release_year_file_ids, 
-        config["parsing_config"]["pipeline_config"]["limit_files_per_year"])
+        testing_config["limit_files_per_year"])
 
 all_file_ids = set(itertools.chain.from_iterable(release_year_file_ids.values()))
 num_files = len(all_file_ids)

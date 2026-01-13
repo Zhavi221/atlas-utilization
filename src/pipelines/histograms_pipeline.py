@@ -19,7 +19,12 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
     output_dir = histograms_config["output_dir"]    
     os.makedirs(output_dir, exist_ok=True)
 
-    bin_widths_gev = histograms_config["bin_widths_gev"]
+    bin_width_gev = histograms_config["bin_width_gev"]
+    # Convert to list if single value provided
+    if isinstance(bin_width_gev, (int, float)):
+        bin_widths_gev = [bin_width_gev]
+    else:
+        bin_widths_gev = bin_width_gev
     use_bumpnet_naming = histograms_config.get("use_bumpnet_naming", False)
     exclude_outliers = histograms_config.get("exclude_outliers", False)
     

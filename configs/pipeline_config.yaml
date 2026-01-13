@@ -5,14 +5,13 @@ paths:
   # Pipeline flow paths
   root_files_path: &root_files_path "/storage/agrp/netalev/data/root_files/"
   inv_masses_path: &inv_masses_path "/storage/agrp/netalev/data/inv_masses/"
-  # inv_masses_processed_path: &inv_masses_processed_path "/storage/agrp/netalev/data/inv_masses_processed/"
-  inv_masses_processed_path: &inv_masses_processed_path "/storage/agrp/netalev/archive/first_full_run/data/inv_masses_processed/"
+  inv_masses_processed_path: &inv_masses_processed_path "/storage/agrp/netalev/data/inv_masses_processed/"
   histograms_path: &histograms_path "/storage/agrp/netalev/data/histograms/"
   
   # Supporting paths
   batch_job_file_ids_path: &batch_job_file_ids_path "/storage/agrp/netalev/data/batch_job_file_ids.json"
   testing_jobs_path: &testing_jobs_path "testing/testing_runs_bigger.json"
-  logs_path: &logs_path "/storage/agrp/netalev/data/logs/"
+  jobs_logs_path: &jobs_logs_path "/storage/agrp/netalev/data/logs/"
 
 # ===NAMES CONFIGURATION===
 # Global names used throughout the pipeline
@@ -20,23 +19,25 @@ names:
   run_name: &run_name "atlas_existing_im_only_hist"
   output_filename: &output_filename "atlas_existing_im_only_hist.root"
 
+# ===RUN METADATA===
+# Runtime metadata for the pipeline execution
+run_metadata:
+  run_name: *run_name
+
 tasks:
-  do_parsing: false
-  do_mass_calculating: false
-  do_post_processing: false
+  do_parsing: true
+  do_mass_calculating: true
+  do_post_processing: true
   do_histogram_creation: true
 
 testing_config:
-  is_on: false #normal or random
+  is_on: false 
   test_run_index: null
   testing_jobs_path: *testing_jobs_path
+  limit_files_per_year: null #FOR TESTING - limit number of files per year
+  limit_combinations: null #FOR TESTING - limit number of combinations to calculate
 
-parsing_config:
-  run_metadata:
-    # ===BATCH JOB INDEX===
-    batch_job_index: null
-    run_name: *run_name
-    total_batch_jobs: null
+parsing_task_config:
 
   pipeline_config:
     # ===PATHS===
@@ -45,25 +46,21 @@ parsing_config:
     
     # ===PROCESSING CONFIGURATION===
     parse_mc: false
-    parse_in_multiprocessing: false #important for cluster processing
-    max_parallel_workers: 4
+    use_multiprocessing: false #important for cluster processing
+    parallel_processes: 4
     count_retries_failed_files: 3
     fetching_metadata_timeout: 60
-    
-    # ===TESTING/LIMITS===
-    limit_files_per_year: null #FOR TESTING - limit number of files per year
     
   
   atlasparser_config:
     # ===PATHS===
-    logging_path: *logs_path
+    jobs_logs_path: *jobs_logs_path
     
     # ===MEMORY AND PERFORMANCE===
-    max_environment_memory_mb: 20000
+    env_threshold_memory_mb: 20000
     chunk_yield_threshold_bytes: 5000000000 # 5GB
-    max_threads: 8
+    threads: 8
     
-    # ===DATA SOURCE CONFIGURATION===
     specific_record_ids:
       - 30529
       - 30562 
@@ -72,7 +69,9 @@ parsing_config:
     release_years:
     # - 2024r-hi
     # - 2024r-pp
-    possible_tree_names:
+    
+    # ===THE TREE NAME OF WHERE THE DATA CAN BE FOUND IN THE ROOT FILES===
+    possible_data_tree_names:
       - CollectionTree
       - mini
       - analysis
@@ -106,7 +105,7 @@ parsing_config:
       min: -3.141592653589793
       max: 3.141592653589793
 
-mass_calculate:
+mass_calculate_task_config:
   # ===PATHS===
   input_dir: *root_files_path
   output_dir: *inv_masses_path
@@ -114,12 +113,8 @@ mass_calculate:
   # ===PROCESSING CONFIGURATION===
   field_to_slice_by: "pt"
   use_multiprocessing: true
-  max_workers: 4
-  fs_mapping_threshold_bytes: 50000000  # 50MB default
-  
-  # ===BATCH JOB CONFIGURATION===
-  batch_job_index: null
-  total_batch_jobs: null
+  parallel_processes: 4
+  fs_chunk_threshold_bytes: 500000000  # 500MB default
   
   # ===OBJECTS AND COMBINATORICS===
   objects_to_calculate:
@@ -127,36 +122,36 @@ mass_calculate:
     - Muons
     - Jets
     - Photons
-  min_particles: 2
-  max_particles: 4
-  min_count: 2
-  max_count: 4
-  min_events_per_fs: 100
   
-  # ===TESTING/LIMITS===
-  limit_combinations: null
+  # ===COMBINATORICS CONFIGURATION===
+  min_particles_in_combination: 2
+  max_particles_in_combination: 4
+  min_count_particle_in_combination: 2
+  max_count_particle_in_combination: 4
+  min_events_per_fs: 100
 
-post_processing:
+post_processing_task_config:
   # ===PATHS===
   input_dir: *inv_masses_path
   output_dir: *inv_masses_processed_path
   
   # ===PROCESSING CONFIGURATION===
-  bin_widths_gev:
-    - 10
-    # - 10
+  # Bin width (in GeV) for peak detection and removal in post-processing
+  peak_detection_bin_width_gev: 10
 
-histogram_creation:
+histogram_creation_task_config:
   # ===PATHS===
   input_dir: *inv_masses_processed_path
   output_dir: *histograms_path
   
   # ===PROCESSING CONFIGURATION===
-  bin_widths_gev:
-    - 10
+  # Bin width (in GeV) for histogram binning
+  bin_width_gev: 10
   
   # ===OUTPUT CONFIGURATION===
   single_output_file: true
   output_filename: *output_filename
   exclude_outliers: true
+  # When enabled, adapts histogram naming format for BumpNet input compatibility
+  # Outputs histograms with naming: mass_<combo>_cat_<final_state>
   use_bumpnet_naming: true

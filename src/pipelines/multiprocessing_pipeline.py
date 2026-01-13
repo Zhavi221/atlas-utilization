@@ -25,15 +25,16 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
     logger = init_logging(worker_num)
     pipeline_config = config["pipeline_config"]
     atlasparser_config = config["atlasparser_config"]
+    run_metadata = config.get("run_metadata", {})
     
     try:
         # Filter out files that have exceeded retries before processing
         # Load retry counts from crashed_files.json if it exists
         crashed_files_name = "crashed_files.json"
-        if pipeline_config.get("run_metadata", {}).get("batch_job_index") is not None:
-            batch_job_index = pipeline_config["run_metadata"]["batch_job_index"]
+        if run_metadata.get("batch_job_index") is not None:
+            batch_job_index = run_metadata["batch_job_index"]
             crashed_files_name = f"crashed_files_{batch_job_index}.json"
-        crashed_files_path = atlasparser_config["logging_path"] + crashed_files_name
+        crashed_files_path = atlasparser_config["jobs_logs_path"] + crashed_files_name
         
         worker_retry_counts = {}
         if os.path.exists(crashed_files_path):
@@ -77,11 +78,11 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
         specific_record_ids = atlasparser_config.get("specific_record_ids", None)
         logger.info(f"Worker {worker_num}: Config specific_record_ids value: {specific_record_ids} (type: {type(specific_record_ids)})")
         atlasparser = parser.AtlasOpenParser(
-            max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
+            max_environment_memory_mb=atlasparser_config["env_threshold_memory_mb"],
             chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
-            max_threads=atlasparser_config["max_threads"],
-            logging_path=atlasparser_config["logging_path"],
-            possible_tree_names=atlasparser_config["possible_tree_names"],
+            max_threads=atlasparser_config["threads"],
+            logging_path=atlasparser_config["jobs_logs_path"],
+            possible_tree_names=atlasparser_config["possible_data_tree_names"],
             wrapping_logger=logger,
             show_progress_bar=atlasparser_config.get("show_progress_bar", True),
             max_file_retries=pipeline_config["count_retries_failed_files"],
@@ -173,7 +174,7 @@ def worker_parse_and_process_one_chunk(config, worker_num, release_years_file_id
             "message": str(e)
         }
 
-def parse_with_per_chunk_subprocess(config):
+def parse_with_per_chunk_subprocess(config, testing_config=None):
     """
     Main process orchestrator.
     - Gets file list
@@ -185,19 +186,19 @@ def parse_with_per_chunk_subprocess(config):
     logger = init_logging()
     pipeline_config = config["pipeline_config"]
     atlasparser_config = config["atlasparser_config"]
-    run_metadata = config["run_metadata"]
+    run_metadata = config.get("run_metadata", {})
 
     # Get file list upfront (in main process)
     specific_record_ids = atlasparser_config.get("specific_record_ids", None)
     logger.info(f"Config specific_record_ids value: {specific_record_ids} (type: {type(specific_record_ids)})")
     temp_parser = parser.AtlasOpenParser(
-        max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
+        max_environment_memory_mb=atlasparser_config["env_threshold_memory_mb"],
         chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
-        max_threads=atlasparser_config["max_threads"],
-        logging_path=atlasparser_config["logging_path"],
+        max_threads=atlasparser_config["threads"],
+        logging_path=atlasparser_config["jobs_logs_path"],
         release_years=atlasparser_config["release_years"],
         create_dirs=atlasparser_config["create_dirs"],
-        possible_tree_names=atlasparser_config["possible_tree_names"],
+        possible_tree_names=atlasparser_config["possible_data_tree_names"],
         show_progress_bar=atlasparser_config.get("show_progress_bar", True),
         max_file_retries=pipeline_config["count_retries_failed_files"],
         specific_record_ids=specific_record_ids
@@ -267,10 +268,11 @@ def parse_with_per_chunk_subprocess(config):
                             if "mc" not in k
                         }
                     
-                    parser.AtlasOpenParser.limit_files_per_year(
-                        whole_file_ids, 
-                        pipeline_config["limit_files_per_year"]
-                    )
+                    if testing_config and testing_config.get("limit_files_per_year"):
+                        parser.AtlasOpenParser.limit_files_per_year(
+                            whole_file_ids, 
+                            testing_config["limit_files_per_year"]
+                        )
                     
                     # Write atomically using temp file + rename
                     temp_file_path = file_urls_path + ".tmp"
@@ -340,8 +342,8 @@ def parse_with_per_chunk_subprocess(config):
 
     crashed_files_path = atlasparser_config["logging_path"] + crashed_files_name
     
-    if pipeline_config["limit_files_per_year"]:
-        parser.AtlasOpenParser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
+    if testing_config and testing_config.get("limit_files_per_year"):
+        parser.AtlasOpenParser.limit_files_per_year(release_years_file_ids, testing_config["limit_files_per_year"])
     
     count_retries_failed_files = pipeline_config["count_retries_failed_files"]
     chunk_count = 0
@@ -349,7 +351,7 @@ def parse_with_per_chunk_subprocess(config):
     
     all_stats = []
     all_saved_files = []  # Track all successfully saved ROOT files for IM pipeline
-    max_parallel_workers = pipeline_config["max_parallel_workers"]
+    max_parallel_workers = pipeline_config["parallel_processes"]
     show_progress_bar = atlasparser_config.get("show_progress_bar", True)
     
     for release_year, file_ids in release_years_file_ids.items():
@@ -374,7 +376,7 @@ def parse_with_per_chunk_subprocess(config):
         
         # Filter initial file list to exclude files that have already exceeded retries
         # Load retry counts from crashed_files.json if it exists
-        crashed_files_path = atlasparser_config["logging_path"] + crashed_files_name
+        crashed_files_path = atlasparser_config["jobs_logs_path"] + crashed_files_name
         initial_retry_counts = {}
         if os.path.exists(crashed_files_path):
             try:
@@ -681,7 +683,7 @@ def parse_with_per_chunk_subprocess(config):
             pbar.close()
 
     if all_stats:
-        aggregate_statistics(all_stats, atlasparser_config["logging_path"], pipeline_config, atlasparser_config, run_metadata)    
+        aggregate_statistics(all_stats, atlasparser_config["jobs_logs_path"], pipeline_config, atlasparser_config, run_metadata, testing_config)    
     else:
         logging.info(f"No stats to aggregate.")
 
@@ -732,7 +734,7 @@ def chunk_list(lst, n):
     k, m = divmod(len(lst), n)
     return [lst[i*k+min(i,m):(i+1)*k+min(i+1,m)] for i in range(n)]
 
-def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_config, run_metadata):
+def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_config, run_metadata, testing_config=None):
     """Combine statistics from all worker chunks into consolidated metrics"""   
     total_chunks = len(stats_list)
     
@@ -831,9 +833,9 @@ def aggregate_statistics(stats_list, output_path, pipeline_config, atlasparser_c
         },
         "config_variables":{
             "config_yield_threshold_mb": config_yield_threshold_mb,
-            "max_parallel_workers": pipeline_config["max_parallel_workers"],
-            "limit_files_per_year": pipeline_config["limit_files_per_year"],
-            "max_threads": atlasparser_config["max_threads"],
+            "parallel_processes": pipeline_config["parallel_processes"],
+            "limit_files_per_year": testing_config.get("limit_files_per_year") if testing_config else None,
+            "threads": atlasparser_config["threads"],
         },
         "for_all_data":{
             "days_to_parse":

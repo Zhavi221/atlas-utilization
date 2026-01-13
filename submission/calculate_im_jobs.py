@@ -61,7 +61,7 @@ def _estimate_avg_final_states(
             
             calculator = IMCalculator(
                 particle_arrays,
-                min_events_per_fs=config["mass_calculate"]["min_events_per_fs"]
+                min_events_per_fs=config["mass_calculate_task_config"]["min_events_per_fs"]
             )
             # Count unique final states
             unique_fs = set()
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(f)
     
     # Get input directory
-    input_dir = args.input_dir or config["mass_calculate"]["input_dir"]
+    input_dir = args.input_dir or config["mass_calculate_task_config"]["input_dir"]
     
     if not os.path.exists(input_dir):
         print(f"Error: Input directory '{input_dir}' does not exist", file=sys.stderr)
@@ -116,14 +116,15 @@ if __name__ == "__main__":
         sys.exit(1)
     
     # Get number of combinations
-    im_config = config["mass_calculate"]
+    im_config = config["mass_calculate_task_config"]
+    testing_config = config.get("testing_config", {})
     all_combinations = combinatorics.get_all_combinations(
         im_config["objects_to_calculate"],
-        min_particles=im_config["min_particles"],
-        max_particles=im_config["max_particles"],
-        min_count=im_config["min_count"],
-        max_count=im_config["max_count"],
-        limit=im_config.get("limit_combinations")
+        min_particles=im_config["min_particles_in_combination"],
+        max_particles=im_config["max_particles_in_combination"],
+        min_count=im_config["min_count_particle_in_combination"],
+        max_count=im_config["max_count_particle_in_combination"],
+        limit=testing_config.get("limit_combinations")
     )
     num_combinations = len(all_combinations)
     

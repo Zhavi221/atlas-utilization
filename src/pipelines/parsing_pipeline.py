@@ -9,19 +9,19 @@ import sys
 from src.parse_atlas import parser
 from src.utils.calculations import physics_calcs
 
-def parse(config):
+def parse(config, testing_config=None):
     logger = init_logging()
     pipeline_config = config["pipeline_config"]
     atlasparser_config = config["atlasparser_config"]
 
     atlasparser = parser.AtlasOpenParser(
-        max_environment_memory_mb=atlasparser_config["max_environment_memory_mb"],
+        max_environment_memory_mb=atlasparser_config["env_threshold_memory_mb"],
         chunk_yield_threshold_bytes=atlasparser_config["chunk_yield_threshold_bytes"],
-        max_threads=atlasparser_config["max_threads"],
-        logging_path=atlasparser_config["logging_path"],
+        max_threads=atlasparser_config["threads"],
+        logging_path=atlasparser_config["jobs_logs_path"],
         release_years=atlasparser_config["release_years"],
         create_dirs=atlasparser_config["create_dirs"],
-        possible_tree_names=atlasparser_config["possible_tree_names"],
+        possible_tree_names=atlasparser_config["possible_data_tree_names"],
         show_progress_bar=atlasparser_config.get("show_progress_bar", True),
         max_file_retries=pipeline_config["count_retries_failed_files"],
         specific_record_ids=atlasparser_config["specific_record_ids"]
@@ -29,8 +29,12 @@ def parse(config):
 
     release_years_file_ids = atlasparser.fetch_record_ids(pipeline_config["fetching_metadata_timeout"])
 
-    if pipeline_config["limit_files_per_year"]:
-        parser.AtlasOpenParser.limit_files_per_year(release_years_file_ids, pipeline_config["limit_files_per_year"])
+    # Check testing_config for limit_files_per_year
+    if testing_config and testing_config.get("limit_files_per_year"):
+        parser.AtlasOpenParser.limit_files_per_year(
+            release_years_file_ids, 
+            testing_config["limit_files_per_year"]
+        )
     
 
     saved_files = []  # Track successfully saved ROOT files for IM pipeline

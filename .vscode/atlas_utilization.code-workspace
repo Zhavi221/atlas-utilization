@@ -7,7 +7,8 @@
 			"path": "../../atlas_utilization"
 		},
 		{
-			"path": "../../../../../storage/agrp/netalev"
+			"path": "../../../../../storage/agrp/netalev",
+			"name": "Storage"
 		}
 	],
 	"settings": {
