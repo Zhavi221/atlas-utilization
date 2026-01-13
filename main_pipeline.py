@@ -168,53 +168,68 @@ def check_im_arrays_exist(im_masses_dir):
 
 def initialize_directories(config, logger):
     """
-    Initialize all data and log directories if they don't exist.
+    Initialize only the output directories needed for enabled tasks.
     
-    Creates directories for:
-    - Parsing output and logs
-    - Invariant mass calculation input/output
-    - Post-processing input/output
-    - Histogram creation input/output
+    Only creates:
+    - Output directories for enabled tasks (not input directories)
+    - Skips archived paths (paths containing "archive")
+    - Logging directories for parsing if enabled
     """
+    tasks = config.get("tasks", {})
     directories_to_create = []
     
-    # Parsing directories
-    if "parsing_config" in config:
-        parsing_config = config["parsing_config"]
-        
-        if "pipeline_config" in parsing_config:
-            pipeline_config = parsing_config["pipeline_config"]
-            if "output_path" in pipeline_config:
-                directories_to_create.append(pipeline_config["output_path"])
-        
-        if "atlasparser_config" in parsing_config:
-            atlasparser_config = parsing_config["atlasparser_config"]
-            if "logging_path" in atlasparser_config:
-                directories_to_create.append(atlasparser_config["logging_path"])
+    # Parsing directories (only if parsing is enabled)
+    if tasks.get("do_parsing", False):
+        if "parsing_config" in config:
+            parsing_config = config["parsing_config"]
+            
+            # Output directory for parsed root files
+            if "pipeline_config" in parsing_config:
+                pipeline_config = parsing_config["pipeline_config"]
+                if "output_path" in pipeline_config:
+                    output_path = pipeline_config["output_path"]
+                    # Skip archived paths
+                    if "archive" not in output_path:
+                        directories_to_create.append(output_path)
+            
+            # Logging directory
+            if "atlasparser_config" in parsing_config:
+                atlasparser_config = parsing_config["atlasparser_config"]
+                if "logging_path" in atlasparser_config:
+                    logging_path = atlasparser_config["logging_path"]
+                    # Skip archived paths
+                    if "archive" not in logging_path:
+                        directories_to_create.append(logging_path)
     
-    # Mass calculation directories
-    if "mass_calculate" in config:
-        mass_config = config["mass_calculate"]
-        if "input_dir" in mass_config:
-            directories_to_create.append(mass_config["input_dir"])
-        if "output_dir" in mass_config:
-            directories_to_create.append(mass_config["output_dir"])
+    # Mass calculation directories (only if enabled)
+    if tasks.get("do_mass_calculating", False):
+        if "mass_calculate" in config:
+            mass_config = config["mass_calculate"]
+            # Only create output directory, input should already exist
+            if "output_dir" in mass_config:
+                output_dir = mass_config["output_dir"]
+                if "archive" not in output_dir:
+                    directories_to_create.append(output_dir)
     
-    # Post-processing directories
-    if "post_processing" in config:
-        post_config = config["post_processing"]
-        if "input_dir" in post_config:
-            directories_to_create.append(post_config["input_dir"])
-        if "output_dir" in post_config:
-            directories_to_create.append(post_config["output_dir"])
+    # Post-processing directories (only if enabled)
+    if tasks.get("do_post_processing", False):
+        if "post_processing" in config:
+            post_config = config["post_processing"]
+            # Only create output directory, input should already exist
+            if "output_dir" in post_config:
+                output_dir = post_config["output_dir"]
+                if "archive" not in output_dir:
+                    directories_to_create.append(output_dir)
     
-    # Histogram creation directories
-    if "histogram_creation" in config:
-        hist_config = config["histogram_creation"]
-        if "input_dir" in hist_config:
-            directories_to_create.append(hist_config["input_dir"])
-        if "output_dir" in hist_config:
-            directories_to_create.append(hist_config["output_dir"])
+    # Histogram creation directories (only if enabled)
+    if tasks.get("do_histogram_creation", False):
+        if "histogram_creation" in config:
+            hist_config = config["histogram_creation"]
+            # Only create output directory, input should already exist (or is archived)
+            if "output_dir" in hist_config:
+                output_dir = hist_config["output_dir"]
+                if "archive" not in output_dir:
+                    directories_to_create.append(output_dir)
     
     # Remove duplicates and None values
     directories_to_create = list(set(d for d in directories_to_create if d))
@@ -379,29 +394,37 @@ def _load_production_config(config, args):
                 mass_config["output_dir"], run_folder
             )
     
-    # Update post-processing paths
+    # Update post-processing paths (skip archived paths)
     if "post_processing" in config:
         post_config = config["post_processing"]
         if "input_dir" in post_config:
-            post_config["input_dir"] = _append_run_folder_to_path(
-                post_config["input_dir"], run_folder
-            )
+            # Only append run folder if not an archived path
+            if "archive" not in post_config["input_dir"]:
+                post_config["input_dir"] = _append_run_folder_to_path(
+                    post_config["input_dir"], run_folder
+                )
         if "output_dir" in post_config:
-            post_config["output_dir"] = _append_run_folder_to_path(
-                post_config["output_dir"], run_folder
-            )
+            # Only append run folder if not an archived path
+            if "archive" not in post_config["output_dir"]:
+                post_config["output_dir"] = _append_run_folder_to_path(
+                    post_config["output_dir"], run_folder
+                )
     
-    # Update histogram creation paths
+    # Update histogram creation paths (skip archived paths)
     if "histogram_creation" in config:
         hist_config = config["histogram_creation"]
         if "input_dir" in hist_config:
-            hist_config["input_dir"] = _append_run_folder_to_path(
-                hist_config["input_dir"], run_folder
-            )
+            # Only append run folder if not an archived path
+            if "archive" not in hist_config["input_dir"]:
+                hist_config["input_dir"] = _append_run_folder_to_path(
+                    hist_config["input_dir"], run_folder
+                )
         if "output_dir" in hist_config:
-            hist_config["output_dir"] = _append_run_folder_to_path(
-                hist_config["output_dir"], run_folder
-            )
+            # Only append run folder if not an archived path
+            if "archive" not in hist_config["output_dir"]:
+                hist_config["output_dir"] = _append_run_folder_to_path(
+                    hist_config["output_dir"], run_folder
+                )
 
 
 if __name__ == "__main__":
