@@ -18,11 +18,11 @@ python main_pipeline.py --config configs/pipeline_config.yaml
 ```
 
 Main components
-- `src/parse_atlas/parser.py`: `AtlasOpenParser` — fetch metadata, parse files (`parse_root_file`), yield memory-aware chunks (`parse_files`), and prepare ROOT-friendly output (`flatten_for_root`).
+- `src/ParseAtlas/parser.py`: `AtlasOpenParser` — fetch metadata, parse files (`parse_root_file`), yield memory-aware chunks (`parse_files`), and prepare ROOT-friendly output (`flatten_for_root`).
 - `src/pipelines/parsing_pipeline.py`: threaded parse → filter → save flow.
 - `src/pipelines/multiprocessing_pipeline.py`: subprocess-per-chunk mode for lower resident memory.
 - `src/pipelines/im_pipeline.py`: calculate and save invariant masses from saved ROOT files.
-- `src/calculations/physics_calcs.py`: filtering, grouping, and invariant-mass helpers.
+- `src/utils/calculations/physics_calcs.py`: filtering, grouping, and invariant-mass helpers.
 
 Config notes
 - Edit `configs/pipeline_config.yaml` for timeouts, file limits, `chunk_yield_threshold_bytes`, and `max_environment_memory_mb`.

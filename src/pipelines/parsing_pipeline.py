@@ -6,7 +6,7 @@ For multiprocessing mode, see multiprocessing_pipeline.py
 """
 import logging
 import sys
-from src.parse_atlas import parser
+from src.ParseAtlas import parser
 from src.utils.calculations import physics_calcs
 
 def parse(config, testing_config=None):

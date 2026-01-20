@@ -16,8 +16,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.utils.calculations import combinatorics
-from src.parse_atlas import parser
-from src.im_calculator.im_calculator import IMCalculator
+from src.ParseAtlas import parser
+from src.ImCalculator.im_calculator import IMCalculator
 from typing import List
 
 CONFIG_PATH = "configs/pipeline_config.yaml"

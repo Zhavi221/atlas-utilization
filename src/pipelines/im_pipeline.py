@@ -21,8 +21,8 @@ from tqdm import tqdm
 import ROOT
 
 from src.utils.calculations import combinatorics, physics_calcs
-from src.parse_atlas import parser
-from src.im_calculator.im_calculator import IMCalculator
+from src.ParseAtlas import parser
+from src.ImCalculator.im_calculator import IMCalculator
 from src.utils import memory_utils
 
 
