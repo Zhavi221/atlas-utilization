@@ -6,16 +6,18 @@
 #     --walltime_per_job_sec 259200 | tail -1)
 NUM_JOBS=1
 CPUS_PER_JOB=1
+MEM_PER_JOB=20gb
 echo "Submitting $NUM_JOBS array jobs"
 
 if [ "$NUM_JOBS" -eq 1 ]; then
-    # Single job, do not use array
-    qsub <<EOF
+# Single job, do not use array
+qsub <<EOF
+    
 #!/bin/bash
 #PBS -q N
 #PBS -o logs/job_1.out
 #PBS -e logs/job_1.err
-#PBS -l select=1:ncpus=$CPUS_PER_JOB:mem=20gb
+#PBS -l select=1:ncpus=$CPUS_PER_JOB:mem=$MEM_PER_JOB
 #PBS -l io=5
 #PBS -l walltime=72:00:00
 
@@ -39,7 +41,7 @@ qsub <<EOF
 #PBS -q N
 #PBS -o logs/job_\$PBS_ARRAY_INDEX.out
 #PBS -e logs/job_\$PBS_ARRAY_INDEX.err
-#PBS -l select=1:ncpus=$CPUS_PER_JOB:mem=20gb
+#PBS -l select=1:ncpus=$CPUS_PER_JOB:mem=$MEM_PER_JOB
 #PBS -l io=5
 #PBS -l walltime=72:00:00
 #PBS -J 1-$NUM_JOBS

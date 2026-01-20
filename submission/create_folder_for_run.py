@@ -22,8 +22,8 @@ with open(CONFIG_PATH, "w") as f:
     ts = datetime.now()
     run_time = ts.strftime("%d_%m_%Y_%H:%M")
 
-    config["parsing_config"]["pipeline_config"]["output_path"] += run_time
-    config["parsing_config"]["atlasparser_config"]["logging_path"] += run_time
-    config["mass_calculate"]["input_dir"] += run_time
-    config["mass_calculate"]["output_dir"] += run_time
+    config["parsing_task_config"]["pipeline_config"]["output_path"] += run_time
+    config["parsing_task_config"]["atlasparser_config"]["jobs_logs_path"] += run_time
+    config["mass_calculate_task_config"]["input_dir"] += run_time
+    config["mass_calculate_task_config"]["output_dir"] += run_time
     yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)

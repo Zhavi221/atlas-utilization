@@ -35,7 +35,7 @@ def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> Li
     
     input_dir = config["input_dir"]
     output_dir = config["output_dir"]
-    bin_widths_gev = config["bin_widths_gev"]
+    peak_detection_bin_width_gev = config["peak_detection_bin_width_gev"]
     
     os.makedirs(output_dir, exist_ok=True)
     
@@ -89,7 +89,7 @@ def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> Li
     for im_array_filename in im_array_files:
         try:
             output_files = process_single_array(
-                im_array_filename, input_dir, output_dir, bin_widths_gev, logger
+                im_array_filename, input_dir, output_dir, peak_detection_bin_width_gev, logger
             )
             if output_files:
                 processed_files.extend(output_files)
@@ -104,7 +104,7 @@ def process_single_array(
     filename: str,
     input_dir: str,
     output_dir: str,
-    bin_widths_gev: List[float],
+    peak_detection_bin_width_gev: float,
     logger: logging.Logger
 ) -> List[str]:
     """
@@ -114,7 +114,7 @@ def process_single_array(
         filename: Name of .npy file
         input_dir: Input directory path
         output_dir: Output directory path
-        bin_widths_gev: List of bin widths for peak detection
+        peak_detection_bin_width_gev: Bin width for peak detection (single value)
         logger: Logger instance
     
     Returns:
@@ -127,8 +127,8 @@ def process_single_array(
         logger.warning(f"Array {filename} is empty, skipping")
         return []
     
-    # Use the first bin width for peak detection (or could use all and take consensus)
-    bin_width = bin_widths_gev[0]
+    # Use the bin width for peak detection
+    bin_width = peak_detection_bin_width_gev
     
     # Find peak using binned data
     peak_mass = find_rightmost_highest_peak(im_array, bin_width, logger)

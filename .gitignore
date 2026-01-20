@@ -20,3 +20,6 @@ test_main.ipynb
 test.py
 testing_scripts/*
 .devcontainer/devcontainer.json
+
+.devcontainer/devcontainer.json
+.vscode/atlas_utilization.code-workspace
