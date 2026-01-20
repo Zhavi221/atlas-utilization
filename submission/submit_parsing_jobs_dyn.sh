@@ -1,6 +1,6 @@
 #!/bin/bash
-NUM_JOBS=$(
-    python submission/calculate_jobs_amount.py --time_for_file_sec 20 --walltime_per_job_sec 259200 | tail -1)
+# NUM_JOBS=$(
+#     python submission/calculate_jobs_amount.py --time_for_file_sec 20 --walltime_per_job_sec 259200 | tail -1)
 NUM_JOBS=1
 if [ "$NUM_JOBS" -eq 1 ]; then
     echo "Submitting 1 single job (not an array)"

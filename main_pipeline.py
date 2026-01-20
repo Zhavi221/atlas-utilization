@@ -23,10 +23,17 @@ def main():
     processed_im_files = []
     
     if tasks["do_parsing"]:
-        parsed_files = parsing_task(config["parsing_task_config"], config.get("testing_config", {}), config.get("run_metadata", {}), logger)
+        parsed_files = parsing_task(
+            config["parsing_task_config"], 
+            config.get("testing_config", {}), 
+            config.get("run_metadata", {}), logger)
     
     if tasks["do_mass_calculating"]:
-        im_files = mass_calculation_task(config["mass_calculate_task_config"], config.get("testing_config", {}), logger, parsed_files)
+        im_files = mass_calculation_task(
+            config["mass_calculate_task_config"], 
+            config.get("testing_config", {}), 
+            logger, 
+            parsed_files)
     
     if tasks["do_post_processing"]:
         processed_im_files = post_processing_task(

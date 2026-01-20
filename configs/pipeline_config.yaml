@@ -4,7 +4,7 @@
 paths:  
   # Pipeline flow paths
   root_files_path: &root_files_path "/storage/agrp/netalev/data/root_files/"
-  inv_masses_path: &inv_masses_path "/storage/agrp/netalev/data/inv_masses/"
+  inv_masses_path: &inv_masses_path "/storage/agrp/netalev/archive/first_full_run/data/inv_masses_sample/"
   inv_masses_processed_path: &inv_masses_processed_path "/storage/agrp/netalev/data/inv_masses_processed/"
   histograms_path: &histograms_path "/storage/agrp/netalev/data/histograms/"
   
@@ -16,29 +16,38 @@ paths:
 # ===NAMES CONFIGURATION===
 # Global names used throughout the pipeline
 names:
-  run_name: &run_name "atlas_existing_im_only_hist"
-  output_filename: &output_filename "atlas_existing_im_only_hist.root"
+  run_name: &run_name "test_new_algo"
+  unified_histogram_filename: &unified_histogram_filename "test_new_algo.root"
 
 # ===RUN METADATA===
 # Runtime metadata for the pipeline execution
 run_metadata:
   run_name: *run_name
 
+# ===TASK ENABLEMENT===
+# Control which tasks are executed in the pipeline
 tasks:
-  do_parsing: true
-  do_mass_calculating: true
+  do_parsing: false
+  do_mass_calculating: false
   do_post_processing: true
   do_histogram_creation: true
 
+# ===TESTING CONFIGURATION===
+# Settings for testing and development runs
 testing_config:
   is_on: false 
   test_run_index: null
   testing_jobs_path: *testing_jobs_path
-  limit_files_per_year: null #FOR TESTING - limit number of files per year
-  limit_combinations: null #FOR TESTING - limit number of combinations to calculate
+  limit_files_per_year: null  # FOR TESTING - limit number of files per year
+  limit_combinations: null     # FOR TESTING - limit number of combinations to calculate
 
+# ============================================================================
+# TASK CONFIGURATIONS
+# ============================================================================
+
+# --- Parsing Task ---
+# Extracts particle data from ROOT files using ATLAS parser
 parsing_task_config:
-
   pipeline_config:
     # ===PATHS===
     output_path: *root_files_path
@@ -46,11 +55,10 @@ parsing_task_config:
     
     # ===PROCESSING CONFIGURATION===
     parse_mc: false
-    use_multiprocessing: false #important for cluster processing
+    use_multiprocessing: false  # Important: set to false for cluster processing
     parallel_processes: 4
     count_retries_failed_files: 3
     fetching_metadata_timeout: 60
-    
   
   atlasparser_config:
     # ===PATHS===
@@ -58,19 +66,21 @@ parsing_task_config:
     
     # ===MEMORY AND PERFORMANCE===
     env_threshold_memory_mb: 20000
-    chunk_yield_threshold_bytes: 5000000000 # 5GB
+    chunk_yield_threshold_bytes: 5000000000  # 5GB
     threads: 8
     
+    # ===DATA SELECTION===
     specific_record_ids:
-      - 30529
-      - 30562 
-      - 30530 
-      - 30563
-    release_years:
+      # - 30529
+      # - 30562 
+      # - 30530 
+      # - 30563
+    release_years:  # Empty list - uncomment below to filter by year
+    - 2024r-pp
     # - 2024r-hi
-    # - 2024r-pp
     
-    # ===THE TREE NAME OF WHERE THE DATA CAN BE FOUND IN THE ROOT FILES===
+    # ===ROOT FILE TREE NAMES===
+    # Tree names where data can be found in ROOT files
     possible_data_tree_names:
       - CollectionTree
       - mini
@@ -81,6 +91,8 @@ parsing_task_config:
     create_dirs: true
     show_progress_bar: true
 
+  # ===FILTERING CONFIGURATION===
+  # Particle count limits for event filtering
   particle_counts:
     Electrons:
       min: 0
@@ -95,6 +107,7 @@ parsing_task_config:
       min: 0
       max: 5
 
+  # Kinematic cuts applied to particles
   kinematic_cuts:
     pt:
       min: 0
@@ -102,9 +115,11 @@ parsing_task_config:
       min: -5
       max: 5
     phi:
-      min: -3.141592653589793
-      max: 3.141592653589793
+      min: -3.141592653589793  # -π
+      max: 3.141592653589793   # +π
 
+# --- Mass Calculation Task ---
+# Calculates invariant masses from particle combinations
 mass_calculate_task_config:
   # ===PATHS===
   input_dir: *root_files_path
@@ -114,7 +129,7 @@ mass_calculate_task_config:
   field_to_slice_by: "pt"
   use_multiprocessing: true
   parallel_processes: 4
-  fs_chunk_threshold_bytes: 500000000  # 500MB default
+  fs_chunk_threshold_bytes: 500000000  # 500MB
   
   # ===OBJECTS AND COMBINATORICS===
   objects_to_calculate:
@@ -130,6 +145,8 @@ mass_calculate_task_config:
   max_count_particle_in_combination: 4
   min_events_per_fs: 100
 
+# --- Post-Processing Task ---
+# Post-processes invariant mass arrays (peak detection, removal, etc.)
 post_processing_task_config:
   # ===PATHS===
   input_dir: *inv_masses_path
@@ -139,6 +156,8 @@ post_processing_task_config:
   # Bin width (in GeV) for peak detection and removal in post-processing
   peak_detection_bin_width_gev: 10
 
+# --- Histogram Creation Task ---
+# Creates histograms from processed invariant mass arrays
 histogram_creation_task_config:
   # ===PATHS===
   input_dir: *inv_masses_processed_path
@@ -150,7 +169,7 @@ histogram_creation_task_config:
   
   # ===OUTPUT CONFIGURATION===
   single_output_file: true
-  output_filename: *output_filename
+  output_filename: *unified_histogram_filename
   exclude_outliers: true
   # When enabled, adapts histogram naming format for BumpNet input compatibility
   # Outputs histograms with naming: mass_<combo>_cat_<final_state>

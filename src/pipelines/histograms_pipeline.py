@@ -4,6 +4,7 @@ import os
 import fcntl
 import time
 import re
+import json
 from typing import Dict
 from collections import defaultdict
 import numpy as np
@@ -110,6 +111,8 @@ def group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
     """
     groups = defaultdict(list)
     
+    log_path = '/srv01/agrp/netalev/BumpNet-main/.cursor/debug.log'
+    unmatched_files = []
     for filename in im_files:
         # Extract FS and IM parts: ..._FS_<final_state>_IM_<combination>...
         match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)', filename)
@@ -117,7 +120,12 @@ def group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
             fs_str, im_str = match.groups()
             bumpnet_name = convert_to_bumpnet_name(fs_str, im_str)
             groups[bumpnet_name].append(filename)
+        else:
+            unmatched_files.append(filename)
     
+    if unmatched_files:
+        # Use print since logger may not be available in this function
+        print(f"WARNING: {len(unmatched_files)} files didn't match FS/IM pattern and will be skipped")
     return dict(groups)
 
 
@@ -132,6 +140,13 @@ def convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
     Returns:
         BumpNet-compatible name (e.g., "mass_m2g1_cat_0ex_2mx_3jx_1gx")
     """
+    log_path = '/srv01/agrp/netalev/BumpNet-main/.cursor/debug.log'
+    # #region agent log
+    try:
+        with open(log_path, 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A,B,C,D","location":"histograms_pipeline.py:124","message":"convert_to_bumpnet_name entry","data":{"fs_str":fs_str,"im_str":im_str},"timestamp":int(time.time()*1000)}) + '\n')
+    except: pass
+    # #endregion
     # Parse IM for combination (e.g., "0e_2m_0j_1g" -> "m2g1")
     # Only include particles with non-zero counts
     particles = re.findall(r'(\d+)([emjg])', im_str)
@@ -142,7 +157,21 @@ def convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
     fs_particles = re.findall(r'(\d+)([emjg])', fs_str)
     fs_formatted = "_".join(f"{c}{p}x" for c, p in fs_particles)
     
-    return f"mass_{combo}_cat_{fs_formatted}"
+    result = f"mass_{combo}_cat_{fs_formatted}"
+    
+    # CRITICAL: Ensure the name always contains 'cat' for BumpNet compatibility
+    # BumpNet's get_signature_and_observable requires 'cat' or 'hCat' in the name
+    # or it will raise UnboundLocalError
+    if 'cat' not in result and 'hCat' not in result:
+        raise ValueError(f"Generated histogram name '{result}' doesn't contain 'cat' or 'hCat' - this will cause UnboundLocalError in BumpNet")
+    
+    # #region agent log
+    try:
+        with open(log_path, 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A,B,C,D","location":"histograms_pipeline.py:145","message":"convert_to_bumpnet_name result","data":{"result":result,"has_cat":"cat" in result,"has_hCat":"hCat" in result},"timestamp":int(time.time()*1000)}) + '\n')
+    except: pass
+    # #endregion
+    return result
 
 
 def process_im_arrays_bumpnet(
@@ -259,6 +288,11 @@ def create_merged_histograms_streaming(
     for bin_width in bin_widths_gev:
         nbins = max(1, math.ceil((global_max - global_min) / bin_width))
         hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
+        # Validate that hist_name_base contains 'cat' to ensure BumpNet compatibility
+        # BumpNet's get_signature_and_observable requires 'cat' or 'hCat' in the name
+        if 'cat' not in hist_name_base and 'hCat' not in hist_name_base:
+            logger.error(f"CRITICAL: Histogram name base '{hist_name_base}' doesn't contain 'cat' or 'hCat' - this will cause UnboundLocalError in BumpNet!")
+            raise ValueError(f"Invalid histogram name base '{hist_name_base}': must contain 'cat' for BumpNet compatibility")
         hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
         histograms.append(hist)
     
