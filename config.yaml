@@ -1,0 +1,69 @@
+# ATLAS Pipeline Configuration
+# Refactored architecture with state machine orchestration
+
+run_metadata:
+  run_name: "atlas_opendata_parsing"
+  batch_job_index: null
+  total_batch_jobs: null
+
+tasks:
+  do_parsing: true
+  do_mass_calculating: false
+  do_post_processing: false
+  do_histogram_creation: false
+
+testing_config:
+  is_on: false
+  test_run_index: null
+  testing_jobs_path: "./testing_jobs"
+  limit_files_per_year: null
+  limit_combinations: null
+
+parsing_config:
+  output_path: "./output/parsed_data"
+  file_urls_path: "./output/metadata_cache.json"
+  jobs_logs_path: "./output/logs"
+  parse_mc: false
+  use_multiprocessing: false
+  parallel_processes: 4
+  count_retries_failed_files: 3
+  fetching_metadata_timeout: 60
+  env_threshold_memory_mb: 8000
+  chunk_yield_threshold_bytes: 2147483648  # 2 GB
+  threads: 8
+  specific_record_ids: null
+  release_years:
+    - "2024r-pp"
+  possible_data_tree_names:
+    - "CollectionTree"
+    - "mini"
+  create_dirs: true
+  show_progress_bar: true
+  
+  particle_counts:
+    electrons:
+      min: 1
+      max: 4
+    muons:
+      min: 0
+      max: 4
+    jets:
+      min: 0
+      max: 10
+    photons:
+      min: 0
+      max: 4
+  
+  kinematic_cuts:
+    electrons:
+      pt_min: 25.0
+      eta_max: 2.47
+    muons:
+      pt_min: 25.0
+      eta_max: 2.5
+    jets:
+      pt_min: 30.0
+      eta_max: 4.5
+    photons:
+      pt_min: 25.0
+      eta_max: 2.37

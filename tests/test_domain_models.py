@@ -8,7 +8,7 @@ import pytest
 import awkward as ak
 from datetime import datetime, timedelta
 
-from src.domain import (
+from domain import (
     EventChunk,
     EventBatch,
     FileMetadata,

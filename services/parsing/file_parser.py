@@ -11,7 +11,7 @@ import uproot
 import itertools
 from typing import Optional
 
-from src.ParseAtlas import schemas
+from services.parsing import schemas  # Schema definitions for different ATLAS/CMS releases
 
 
 class FileParser:
@@ -187,7 +187,7 @@ class FileParser:
     ) -> dict[str, str]:
         """Extract branches using flat naming pattern (object_field)."""
         # Import here to avoid circular dependency
-        from src.ParseAtlas.parser import AtlasOpenDataChunkParser
+        from ParseAtlas.parser import AtlasOpenDataChunkParser
         
         branch_base = AtlasOpenDataChunkParser._prepare_obj_branch_name(obj_name, release_year=release_year)
         available_fields = [
@@ -212,7 +212,7 @@ class FileParser:
     ) -> dict[str, str]:
         """Extract branches using dotted naming pattern (object.field)."""
         # Import here to avoid circular dependency
-        from src.ParseAtlas.parser import AtlasOpenDataChunkParser
+        from ParseAtlas.parser import AtlasOpenDataChunkParser
         
         branch_name = AtlasOpenDataChunkParser._prepare_obj_branch_name(obj_name, release_year=release_year)
         logging.info(f"ATLAS-style naming for {obj_name}, branch base: {branch_name}")
@@ -223,7 +223,7 @@ class FileParser:
         
         if obj_field_paths:
             # CMS-style: use nested field paths
-            from src.ParseAtlas.parser import AtlasOpenDataChunkParser
+            from ParseAtlas.parser import AtlasOpenDataChunkParser
             return AtlasOpenDataChunkParser._find_cms_branches(
                 branch_name, fields, obj_field_paths, tree_branches
             )
@@ -389,5 +389,5 @@ class FileParser:
             Best-guess object to branch mappings
         """
         # Import here to avoid circular dependency
-        from src.ParseAtlas.parser import AtlasOpenDataChunkParser
+        from ParseAtlas.parser import AtlasOpenDataChunkParser
         return AtlasOpenDataChunkParser._auto_detect_branches(tree_branches)

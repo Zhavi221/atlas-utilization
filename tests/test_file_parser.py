@@ -8,7 +8,7 @@ import pytest
 import awkward as ak
 from unittest.mock import Mock, patch, MagicMock
 
-from src.services.parsing.file_parser import FileParser
+from services.parsing.file_parser import FileParser
 
 
 class TestFileParser:

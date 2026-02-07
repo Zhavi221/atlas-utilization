@@ -8,8 +8,8 @@ import pytest
 import awkward as ak
 from datetime import datetime
 
-from src.services.parsing.event_accumulator import EventAccumulator
-from src.domain.events import EventBatch, EventChunk
+from services.parsing.event_accumulator import EventAccumulator
+from domain.events import EventBatch, EventChunk
 
 
 class TestEventAccumulator:

@@ -7,7 +7,7 @@ Single responsibility: Manage event accumulation and chunking logic.
 import awkward as ak
 from typing import Optional
 
-from src.domain.events import EventChunk, EventBatch
+from domain.events import EventChunk, EventBatch
 
 
 class EventAccumulator:
