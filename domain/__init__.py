@@ -7,7 +7,14 @@ Pure data structures with validation, no business logic.
 from .events import EventChunk, EventBatch
 from .metadata import FileMetadata, ReleaseMetadata
 from .statistics import ParsingStatistics, ChunkStatistics
-from .config import PipelineConfig, ParsingConfig, TaskConfig
+from .config import (
+    PipelineConfig,
+    ParsingConfig,
+    TaskConfig,
+    MassCalculationConfig,
+    PostProcessingConfig,
+    HistogramCreationConfig,
+)
 
 __all__ = [
     "EventChunk",
@@ -19,4 +26,7 @@ __all__ = [
     "PipelineConfig",
     "ParsingConfig",
     "TaskConfig",
+    "MassCalculationConfig",
+    "PostProcessingConfig",
+    "HistogramCreationConfig",
 ]

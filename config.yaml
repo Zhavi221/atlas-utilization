@@ -1,69 +1,159 @@
-# ATLAS Pipeline Configuration
-# Refactored architecture with state machine orchestration
+# ============================================================================
+# ATLAS Open Data Pipeline — Configuration
+# ============================================================================
+#
+# Single config for local and cluster runs.
+# All paths are defined once in the `paths` block and reused via YAML anchors.
+# At runtime the pipeline creates a timestamped directory under base_output_dir:
+#
+#   {base_output_dir}/{run_name}_{YYYYMMDD_HHMMSS}/
+#     ├── parsed_data/            ← ROOT files with particle arrays
+#     ├── im_arrays/              ← invariant-mass .npy files
+#     ├── im_arrays_processed/    ← post-processed (peak-removed) arrays
+#     ├── histograms/             ← final ROOT histograms
+#     ├── plots/                  ← summary plots
+#     ├── logs/                   ← job logs
+#     └── metadata_cache.json     ← cached ATLAS file URLs
+#
+# Quick start:
+#   Local test:   python main.py                          (uses defaults below)
+#   Cluster:      NUM_JOBS=4 bash submit.sh               (reads this config)
+#   Dry run:      python main.py --dry-run
 
+# ===PATH CONFIGURATION=======================================================
+# Change base_output_dir to point at a storage volume for cluster runs.
+# The per-stage paths below are defaults; they get overridden at runtime
+# to sit inside the timestamped run directory.
+paths:
+  parsed_data_path:        &parsed_data_path        "./output/parsed_data"
+  im_arrays_path:          &im_arrays_path          "./output/im_arrays"
+  im_arrays_processed_path: &im_arrays_processed_path "./output/im_arrays_processed"
+  histograms_path:         &histograms_path         "./output/histograms"
+  metadata_cache_path:     &metadata_cache_path     "./output/metadata_cache.json"
+  jobs_logs_path:          &jobs_logs_path          "./output/logs"
+
+# ===NAMES====================================================================
+names:
+  run_name:           &run_name           "atlas_run"
+  histogram_filename: &histogram_filename "atlas_opendata.root"
+
+# ===RUN METADATA=============================================================
 run_metadata:
-  run_name: "atlas_opendata_parsing"
-  batch_job_index: null
-  total_batch_jobs: null
+  run_name: *run_name
+  base_output_dir: "./output"            # local default — override for cluster
+  batch_job_index: null                  # set by submit.sh (--batch-job-index)
+  total_batch_jobs: null                 # set by submit.sh (--total-batch-jobs)
 
+# ===TASK TOGGLES=============================================================
+# Enable / disable pipeline stages.  Stages run in order:
+#   parsing → mass_calculating → post_processing → histogram_creation
 tasks:
   do_parsing: true
-  do_mass_calculating: false
-  do_post_processing: false
-  do_histogram_creation: false
+  do_mass_calculating: true
+  do_post_processing: true
+  do_histogram_creation: true
 
+# ===TESTING==================================================================
 testing_config:
   is_on: false
   test_run_index: null
   testing_jobs_path: "./testing_jobs"
-  limit_files_per_year: null
-  limit_combinations: null
+  limit_files_per_year: null             # limit per release-year (for testing)
+  limit_combinations: null               # limit IM combinations  (for testing)
 
-parsing_config:
-  output_path: "./output/parsed_data"
-  file_urls_path: "./output/metadata_cache.json"
-  jobs_logs_path: "./output/logs"
-  parse_mc: false
-  use_multiprocessing: false
-  parallel_processes: 4
-  count_retries_failed_files: 3
-  fetching_metadata_timeout: 60
-  env_threshold_memory_mb: 8000
-  chunk_yield_threshold_bytes: 2147483648  # 2 GB
-  threads: 8
-  specific_record_ids: null
+# ============================================================================
+# STAGE CONFIGURATIONS
+# ============================================================================
+
+# --- 1. Parsing --------------------------------------------------------------
+# Downloads ATLAS Open Data ROOT files and extracts particle arrays.
+parsing_task_config:
+  # ===PATHS===
+  output_path:    *parsed_data_path
+  file_urls_path: *metadata_cache_path
+  jobs_logs_path: *jobs_logs_path
+
+  # ===DATA SELECTION===
   release_years:
     - "2024r-pp"
+  specific_record_ids: null              # list of CERN record IDs, or null for all
+  parse_mc: false
+
+  # ===PERFORMANCE===
+  use_multiprocessing: false
+  parallel_processes: 4
+  threads: 8
+  env_threshold_memory_mb: 8000
+  chunk_yield_threshold_bytes: 2147483648  # 2 GB
+  count_retries_failed_files: 3
+  fetching_metadata_timeout: 60
+  max_files_to_process: null             # null = all files; set e.g. 3 for a quick test
+
+  # ===ROOT TREES===
   possible_data_tree_names:
     - "CollectionTree"
     - "mini"
+    - "analysis"
+    - "Events"
   create_dirs: true
   show_progress_bar: true
-  
+
+  # ===EVENT FILTERING===
   particle_counts:
-    electrons:
-      min: 1
-      max: 4
-    muons:
-      min: 0
-      max: 4
-    jets:
-      min: 0
-      max: 10
-    photons:
-      min: 0
-      max: 4
-  
+    electrons: { min: 1, max: 4 }
+    muons:     { min: 0, max: 4 }
+    jets:      { min: 0, max: 10 }
+    photons:   { min: 0, max: 4 }
+
   kinematic_cuts:
-    electrons:
-      pt_min: 25.0
-      eta_max: 2.47
-    muons:
-      pt_min: 25.0
-      eta_max: 2.5
-    jets:
-      pt_min: 30.0
-      eta_max: 4.5
-    photons:
-      pt_min: 25.0
-      eta_max: 2.37
+    electrons: { pt_min: 25.0, eta_max: 2.47 }
+    muons:     { pt_min: 25.0, eta_max: 2.5 }
+    jets:      { pt_min: 30.0, eta_max: 4.5 }
+    photons:   { pt_min: 25.0, eta_max: 2.37 }
+
+# --- 2. Mass Calculation -----------------------------------------------------
+# Computes invariant masses for every valid particle combination per final state.
+mass_calculation_task_config:
+  # ===PATHS===
+  input_dir:  *parsed_data_path
+  output_dir: *im_arrays_path
+
+  # ===PROCESSING===
+  field_to_slice_by: "pt"
+  use_multiprocessing: true
+  parallel_processes: 4
+  fs_chunk_threshold_bytes: 2000000000  # 2 GB
+
+  # ===COMBINATORICS===
+  objects_to_calculate: [Electrons, Muons, Jets, Photons]
+  min_particles_in_combination: 2        # min particle types in a combination
+  max_particles_in_combination: 4        # max particle types
+  min_count_particle_in_combination: 2   # min count per type
+  max_count_particle_in_combination: 4   # max count per type
+  min_events_per_fs: 100                 # drop final states with fewer events
+
+# --- 3. Post-Processing ------------------------------------------------------
+# Removes known-mass peaks and splits into main / outlier arrays.
+post_processing_task_config:
+  # ===PATHS===
+  input_dir:  *im_arrays_path
+  output_dir: *im_arrays_processed_path
+
+  # ===PROCESSING===
+  peak_detection_bin_width_gev: 10.0
+
+# --- 4. Histogram Creation ---------------------------------------------------
+# Builds ROOT histograms from processed invariant-mass arrays.
+histogram_creation_task_config:
+  # ===PATHS===
+  input_dir:  *im_arrays_processed_path
+  output_dir: *histograms_path
+
+  # ===PROCESSING===
+  bin_width_gev: 10.0
+
+  # ===OUTPUT===
+  single_output_file: true
+  output_filename: *histogram_filename
+  exclude_outliers: true
+  use_bumpnet_naming: true               # mass_<combo>_cat_<final_state> format

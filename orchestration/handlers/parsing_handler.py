@@ -2,9 +2,14 @@
 ParsingHandler - Handles parsing state.
 
 Orchestrates file parsing using services.
+Supports batch job splitting via batch_job_index / total_batch_jobs.
 """
 
+import os
 from datetime import datetime
+from pathlib import Path
+import uproot
+import awkward as ak
 
 from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
@@ -13,6 +18,7 @@ from services.parsing.file_parser import FileParser
 from services.parsing.event_accumulator import EventAccumulator
 from services.parsing.threaded_processor import ThreadedFileProcessor, ParsingStatisticsCollector
 from domain.statistics import ParsingStatistics
+from utils.batching import get_batch_slice_by_year
 
 
 class ParsingHandler(StateHandler):
@@ -42,6 +48,42 @@ class ParsingHandler(StateHandler):
         self.processor = threaded_processor
         self.accumulator = event_accumulator
     
+    def _save_chunk_to_root(self, chunk, file_path: str):
+        """
+        Save an EventChunk to a ROOT file.
+        
+        Args:
+            chunk: EventChunk with awkward array data
+            file_path: Path where to save the ROOT file
+        """
+        try:
+            # Get the awkward array from the chunk
+            if hasattr(chunk, 'events'):
+                events_data = chunk.events
+            elif hasattr(chunk, 'data'):
+                events_data = chunk.data
+            else:
+                self.logger.warning(f"Chunk has no data to save: {chunk}")
+                return
+            
+            # Flatten the nested structure for ROOT compatibility
+            # Each particle type becomes separate branches
+            flattened = {}
+            for field in events_data.fields:
+                particle_data = events_data[field]
+                # Store as jagged array - ROOT can handle var * type at top level
+                flattened[field] = particle_data
+            
+            # Save to ROOT file using uproot
+            with uproot.recreate(file_path) as root_file:
+                root_file["events"] = flattened
+            
+            self.logger.debug(f"Successfully wrote {len(events_data)} events to {file_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save chunk to {file_path}: {e}")
+            raise
+    
     def handle(self, context: PipelineContext) -> tuple[PipelineContext, PipelineState]:
         """
         Parse files and determine next state.
@@ -64,8 +106,32 @@ class ParsingHandler(StateHandler):
         stats_collector = ParsingStatisticsCollector()
         parsed_files = []
         
+        # ---- Apply batch splitting if configured ----
+        metadata = dict(context.metadata)  # mutable copy
+        batch_idx = context.config.batch_job_index
+        total_batches = context.config.total_batch_jobs
+        
+        if batch_idx is not None and total_batches is not None:
+            self.logger.info(
+                f"Batch mode: job {batch_idx}/{total_batches}"
+            )
+            metadata = get_batch_slice_by_year(metadata, batch_idx, total_batches)
+        
+        # ---- Apply max_files_to_process limit (per year) ----
+        max_files = getattr(parsing_config, 'max_files_to_process', None)
+        if max_files and max_files > 0:
+            for year in metadata:
+                original = len(metadata[year])
+                metadata[year] = metadata[year][:max_files]
+                if original > max_files:
+                    self.logger.info(
+                        f"Limiting {year} to {max_files} files "
+                        f"(was {original}, max_files_to_process={max_files})"
+                    )
+        
         # Parse each release year
-        for release_year, file_urls in context.metadata.items():
+        for release_year, file_urls in metadata.items():
+            
             self.logger.info(
                 f"Parsing {len(file_urls)} files for release year: {release_year}"
             )
@@ -90,21 +156,40 @@ class ParsingHandler(StateHandler):
                 chunk = self.accumulator.add_batch(batch)
                 
                 if chunk:
-                    # Save chunk (placeholder - in real implementation, save to disk)
-                    file_path = f"chunk_{chunk.chunk_index}_{release_year}.root"
-                    parsed_files.append(file_path)
+                    # Save chunk to disk as ROOT file
+                    output_dir = Path(parsing_config.output_path)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    batch_suffix = f"_batch{batch_idx}" if batch_idx is not None else ""
+                    file_name = f"parsed_{release_year}{batch_suffix}_chunk{chunk.chunk_index}.root"
+                    file_path = output_dir / file_name
+                    
+                    # Save the awkward array to ROOT file
+                    self._save_chunk_to_root(chunk, str(file_path))
+                    parsed_files.append(str(file_path))
+                    
                     self.logger.info(
                         f"Saved chunk {chunk.chunk_index}: "
-                        f"{chunk.event_count} events, {chunk.size_mb:.1f} MB"
+                        f"{chunk.event_count} events, {chunk.size_mb:.1f} MB → {file_path}"
                     )
         
         # Flush remaining events
         final_chunk = self.accumulator.flush()
         if final_chunk:
-            file_path = f"chunk_final_{final_chunk.release_year}.root"
-            parsed_files.append(file_path)
+            # Save final chunk to disk
+            output_dir = Path(parsing_config.output_path)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            batch_suffix = f"_batch{batch_idx}" if batch_idx is not None else ""
+            file_name = f"parsed_{final_chunk.release_year}{batch_suffix}_final.root"
+            file_path = output_dir / file_name
+            
+            # Save the awkward array to ROOT file
+            self._save_chunk_to_root(final_chunk, str(file_path))
+            parsed_files.append(str(file_path))
+            
             self.logger.info(
-                f"Saved final chunk: {final_chunk.event_count} events, {final_chunk.size_mb:.1f} MB"
+                f"Saved final chunk: {final_chunk.event_count} events, {final_chunk.size_mb:.1f} MB → {file_path}"
             )
         
         # Create parsing statistics

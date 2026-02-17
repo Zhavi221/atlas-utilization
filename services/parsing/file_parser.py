@@ -187,6 +187,8 @@ class FileParser:
     ) -> dict[str, str]:
         """Extract branches using flat naming pattern (object_field)."""
         # Import here to avoid circular dependency
+        import sys
+        sys.path.insert(0, '/srv01/agrp/netalev/atlas_utilization')
         from src.ParseAtlas.parser import AtlasOpenDataChunkParser
         
         branch_base = AtlasOpenDataChunkParser._prepare_obj_branch_name(obj_name, release_year=release_year)
@@ -212,10 +214,12 @@ class FileParser:
     ) -> dict[str, str]:
         """Extract branches using dotted naming pattern (object.field)."""
         # Import here to avoid circular dependency
+        import sys
+        sys.path.insert(0, '/srv01/agrp/netalev/atlas_utilization')
         from src.ParseAtlas.parser import AtlasOpenDataChunkParser
         
         branch_name = AtlasOpenDataChunkParser._prepare_obj_branch_name(obj_name, release_year=release_year)
-        logging.info(f"ATLAS-style naming for {obj_name}, branch base: {branch_name}")
+        logging.debug(f"ATLAS-style naming for {obj_name}, branch base: {branch_name}")
         
         # Check if schema has field_paths (CMS-style nested paths)
         field_paths = schema_config.get("field_paths", {})
@@ -223,6 +227,8 @@ class FileParser:
         
         if obj_field_paths:
             # CMS-style: use nested field paths
+            import sys
+            sys.path.insert(0, '/srv01/agrp/netalev/atlas_utilization')
             from src.ParseAtlas.parser import AtlasOpenDataChunkParser
             return AtlasOpenDataChunkParser._find_cms_branches(
                 branch_name, fields, obj_field_paths, tree_branches
@@ -275,6 +281,10 @@ class FileParser:
         """
         Test branch accessibility and filter out inaccessible ones.
         
+        Optimization: reads ONE entry with ALL candidate branches at once
+        instead of one-by-one, drastically reducing HTTP round-trips for
+        remote ROOT files.
+        
         Args:
             tree: ROOT tree object
             obj_branches: Object to branch mappings
@@ -282,21 +292,41 @@ class FileParser:
         Returns:
             Filtered object to branch mappings with only accessible branches
         """
-        accessible_obj_branches = {}
+        # Collect all candidate branch names across all objects
+        all_candidate_branches = []
+        for branch_mapping in obj_branches.values():
+            all_candidate_branches.extend(branch_mapping.keys())
         
-        for obj_name, branch_mapping in obj_branches.items():
-            accessible_branches = {}
-            
-            for branch_path, quantity in branch_mapping.items():
+        # Single test read with all branches at once
+        accessible_set = set()
+        try:
+            test_arr = tree.arrays(
+                all_candidate_branches,
+                entry_start=0, entry_stop=1,
+                library="ak"
+            )
+            accessible_set = set(test_arr.fields)
+        except Exception:
+            # If bulk read fails, fall back to per-branch testing
+            for branch_path in all_candidate_branches:
                 try:
-                    # Test read one entry
-                    test_arr = tree.arrays(branch_path, entry_start=0, entry_stop=1, library="ak")
+                    test_arr = tree.arrays(
+                        branch_path,
+                        entry_start=0, entry_stop=1,
+                        library="ak"
+                    )
                     if branch_path in test_arr.fields:
-                        accessible_branches[branch_path] = quantity
+                        accessible_set.add(branch_path)
                 except Exception:
-                    # Branch doesn't exist or isn't accessible
                     continue
-            
+        
+        # Filter each object's branches using the accessible set
+        accessible_obj_branches = {}
+        for obj_name, branch_mapping in obj_branches.items():
+            accessible_branches = {
+                bp: qty for bp, qty in branch_mapping.items()
+                if bp in accessible_set
+            }
             if accessible_branches and FileParser._can_calculate_inv_mass(
                 list(accessible_branches.values())
             ):
@@ -389,5 +419,7 @@ class FileParser:
             Best-guess object to branch mappings
         """
         # Import here to avoid circular dependency
+        import sys
+        sys.path.insert(0, '/srv01/agrp/netalev/atlas_utilization')
         from src.ParseAtlas.parser import AtlasOpenDataChunkParser
         return AtlasOpenDataChunkParser._auto_detect_branches(tree_branches)
