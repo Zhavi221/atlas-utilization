@@ -18,7 +18,7 @@
 # Quick start:
 #   Local test:   python main.py                          (uses defaults below)
 #   Cluster:      NUM_JOBS=4 bash submit.sh               (reads this config)
-#   Dry run:      python main.py --dry-run
+#   Dry run:      python main.py --dry-run                (validates config)
 
 # ===PATH CONFIGURATION=======================================================
 # Change base_output_dir to point at a storage volume for cluster runs.
