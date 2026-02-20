@@ -79,12 +79,12 @@ class MassCalculationHandler(StateHandler):
         if batch_idx is not None and total_batches is not None:
             total_files = len(root_files)
             chunk_size = total_files // total_batches
-            start = (batch_idx - 1) * chunk_size
-            end = total_files if batch_idx == total_batches else start + chunk_size
-            root_files = root_files[start:end]
+            slice_start = (batch_idx - 1) * chunk_size
+            slice_end = total_files if batch_idx == total_batches else slice_start + chunk_size
+            root_files = root_files[slice_start:slice_end]
             self.logger.info(
                 f"Batch {batch_idx}/{total_batches}: "
-                f"processing files {start+1}-{end} of {total_files}"
+                f"processing files {slice_start+1}-{slice_end} of {total_files}"
             )
 
         self.logger.info(

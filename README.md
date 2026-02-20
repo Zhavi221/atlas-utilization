@@ -129,8 +129,10 @@ run_metadata:
 
 Split the work across N jobs (e.g. 4). Each job processes its slice of files through the full pipeline. A dependent merge job combines all outputs afterward.
 
+Edit `NUM_JOBS` at the top of `submit.sh`, then:
+
 ```bash
-NUM_JOBS=4 bash submit.sh
+bash submit.sh
 ```
 
 `submit.sh` automatically:
@@ -168,7 +170,7 @@ python main.py --dry-run
 | `histogram_creation_task_config` | `bin_width_gev` | Histogram bin width in GeV |
 | `post_processing_task_config` | `peak_detection_bin_width_gev` | Bin width used during known-peak detection |
 
-All paths (`output_path`, `input_dir`, `output_dir`, etc.) are defined once in the `paths:` block at the top of `config.yaml` and reused via YAML anchors. At runtime they are overridden to point inside the timestamped run directory.
+All paths (`output_path`, `input_dir`, `output_dir`, etc.) are defined once in the `paths:` block at the top of `config.yaml` and reused via YAML anchors. At runtime, **relative** paths are overridden to point inside the timestamped run directory. To point a specific stage at an external directory, set its path to an **absolute** path in `config.yaml` — absolute paths are preserved as-is.
 
 ## CLI options
 
@@ -183,7 +185,6 @@ python main.py --help
   --tasks TASKS              Override config task toggles (comma-separated:
                              parsing, mass_calculating, post_processing,
                              histogram_creation)
-  --stage-input STAGE:PATH   Override input directory for a stage (repeatable)
   --run-dir DIR              Use this directory instead of creating a new one
   --merge-only               Merge batch outputs (hadd + aggregate stats + plots)
   --plots-only               Re-generate plots from an existing run

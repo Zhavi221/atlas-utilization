@@ -37,13 +37,20 @@ def create_timestamped_run_dir(base_output_dir: str, run_name: str = None) -> st
     return run_dir
 
 
+def _set_if_relative(config: dict, key: str, value: str):
+    """Only overwrite a path if it's missing or relative (not an absolute override)."""
+    if key not in config or not os.path.isabs(config[key]):
+        config[key] = value
+
+
 def update_config_paths_with_run_dir(config_dict: dict, run_dir: str) -> dict:
     """
-    Inject all output paths into config to use the run directory.
+    Inject default paths into config to use the run directory.
 
-    Paths are always set to the standard sub-directory layout, regardless of
-    whether the keys already exist in the YAML.  This allows config files to
-    omit per-task path fields entirely (they are derived from run_dir).
+    Relative paths (the ``./output/...`` defaults from YAML) are replaced
+    with the corresponding sub-directory under *run_dir*.  Absolute paths
+    already set in the config are left untouched, so you can point any
+    stage at an external directory by setting an absolute path in config.yaml.
 
     Standard sub-directory layout under run_dir:
         parsed_data/        - parsed ROOT files
@@ -63,37 +70,31 @@ def update_config_paths_with_run_dir(config_dict: dict, run_dir: str) -> dict:
     """
     updated_config = config_dict.copy()
 
-    # Create all stage subdirectories upfront so the output structure is
-    # always visible, even for stages that haven't run yet.
     STAGE_DIRS = ["parsed_data", "im_arrays", "im_arrays_processed",
                   "histograms", "plots", "logs"]
     for d in STAGE_DIRS:
         os.makedirs(os.path.join(run_dir, d), exist_ok=True)
 
-    # Inject parsing paths
     if 'parsing_task_config' in updated_config:
         parsing_config = updated_config['parsing_task_config']
-        parsing_config['output_path'] = os.path.join(run_dir, "parsed_data")
-        parsing_config['file_urls_path'] = os.path.join(run_dir, "metadata_cache.json")
-        parsing_config['jobs_logs_path'] = os.path.join(run_dir, "logs")
+        _set_if_relative(parsing_config, 'output_path', os.path.join(run_dir, "parsed_data"))
+        _set_if_relative(parsing_config, 'file_urls_path', os.path.join(run_dir, "metadata_cache.json"))
+        _set_if_relative(parsing_config, 'jobs_logs_path', os.path.join(run_dir, "logs"))
 
-    # Inject mass calculation paths
     if 'mass_calculation_task_config' in updated_config:
         mass_config = updated_config['mass_calculation_task_config']
-        mass_config['input_dir'] = os.path.join(run_dir, "parsed_data")
-        mass_config['output_dir'] = os.path.join(run_dir, "im_arrays")
+        _set_if_relative(mass_config, 'input_dir', os.path.join(run_dir, "parsed_data"))
+        _set_if_relative(mass_config, 'output_dir', os.path.join(run_dir, "im_arrays"))
 
-    # Inject post-processing paths
     if 'post_processing_task_config' in updated_config:
         post_config = updated_config['post_processing_task_config']
-        post_config['input_dir'] = os.path.join(run_dir, "im_arrays")
-        post_config['output_dir'] = os.path.join(run_dir, "im_arrays_processed")
+        _set_if_relative(post_config, 'input_dir', os.path.join(run_dir, "im_arrays"))
+        _set_if_relative(post_config, 'output_dir', os.path.join(run_dir, "im_arrays_processed"))
 
-    # Inject histogram creation paths
     if 'histogram_creation_task_config' in updated_config:
         hist_config = updated_config['histogram_creation_task_config']
-        hist_config['input_dir'] = os.path.join(run_dir, "im_arrays_processed")
-        hist_config['output_dir'] = os.path.join(run_dir, "histograms")
+        _set_if_relative(hist_config, 'input_dir', os.path.join(run_dir, "im_arrays_processed"))
+        _set_if_relative(hist_config, 'output_dir', os.path.join(run_dir, "histograms"))
 
     return updated_config
 

@@ -18,7 +18,7 @@
 # Quick start:
 #   Local test:   python main.py                          (uses defaults below)
 #   Cluster:      NUM_JOBS=4 bash submit.sh               (reads this config)
-#   Dry run:      python main.py --dry-run
+#   Dry run:      python main.py --dry-run                (validates config)
 
 # ===PATH CONFIGURATION=======================================================
 # Change base_output_dir to point at a storage volume for cluster runs.
@@ -34,13 +34,13 @@ paths:
 
 # ===NAMES====================================================================
 names:
-  run_name:           &run_name           "atlas_run"
-  histogram_filename: &histogram_filename "atlas_opendata.root"
+  run_name:           &run_name           "atlas_full_120"
+  histogram_filename: &histogram_filename "atlas_opendata_full_bumpnet.root"
 
 # ===RUN METADATA=============================================================
 run_metadata:
   run_name: *run_name
-  base_output_dir: "./output"            # local default — override for cluster
+  base_output_dir: "/storage/agrp/netalev/data"
   batch_job_index: null                  # set by submit.sh (--batch-job-index)
   total_batch_jobs: null                 # set by submit.sh (--total-batch-jobs)
 
@@ -48,7 +48,7 @@ run_metadata:
 # Enable / disable pipeline stages.  Stages run in order:
 #   parsing → mass_calculating → post_processing → histogram_creation
 tasks:
-  do_parsing: true
+  do_parsing: false
   do_mass_calculating: true
   do_post_processing: true
   do_histogram_creation: true
@@ -115,7 +115,7 @@ parsing_task_config:
 # Computes invariant masses for every valid particle combination per final state.
 mass_calculation_task_config:
   # ===PATHS===
-  input_dir:  *parsed_data_path
+  input_dir:  "/storage/agrp/netalev/data/atlas_pp_root_files"
   output_dir: *im_arrays_path
 
   # ===PROCESSING===
