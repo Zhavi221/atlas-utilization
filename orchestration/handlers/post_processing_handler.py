@@ -1,10 +1,9 @@
 """
 PostProcessingHandler - Handles post-processing state.
 
-Delegates to the existing post_processing_pipeline module from atlas_utilization.
+Delegates to the post_processing_pipeline module.
 """
 
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -18,7 +17,7 @@ class PostProcessingHandler(StateHandler):
     Handler for POST_PROCESSING state.
 
     Converts PipelineConfig into a plain dict and calls
-    ``post_processing_pipeline.process_im_arrays`` from atlas_utilization.
+    ``post_processing_pipeline.process_im_arrays``.
     """
 
     def handle(self, context: PipelineContext) -> tuple[PipelineContext, PipelineState]:
@@ -42,10 +41,7 @@ class PostProcessingHandler(StateHandler):
         if context.im_files:
             file_list = [Path(f).name for f in context.im_files if f.endswith(".npy")]
 
-        if '/srv01/agrp/netalev/atlas_utilization' not in sys.path:
-            sys.path.insert(0, '/srv01/agrp/netalev/atlas_utilization')
-
-        from src.pipelines.post_processing_pipeline import process_im_arrays  # type: ignore
+        from services.pipelines.post_processing_pipeline import process_im_arrays
 
         self.logger.info(
             f"Running post-processing: input={pp.input_dir}  output={pp.output_dir}"

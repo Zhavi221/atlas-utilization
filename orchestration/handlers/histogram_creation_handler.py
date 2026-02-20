@@ -1,10 +1,9 @@
 """
 HistogramCreationHandler - Handles histogram creation state.
 
-Delegates to the existing histograms_pipeline module from atlas_utilization.
+Delegates to the histograms_pipeline module.
 """
 
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -18,7 +17,7 @@ class HistogramCreationHandler(StateHandler):
     Handler for HISTOGRAM_CREATION state.
 
     Converts PipelineConfig into a plain dict and calls
-    ``histograms_pipeline.create_histograms`` from atlas_utilization.
+    ``histograms_pipeline.create_histograms``.
     """
 
     def handle(self, context: PipelineContext) -> tuple[PipelineContext, PipelineState]:
@@ -46,10 +45,7 @@ class HistogramCreationHandler(StateHandler):
         if context.processed_files:
             file_list = [Path(f).name for f in context.processed_files if f.endswith(".npy")]
 
-        if '/srv01/agrp/netalev/atlas_utilization' not in sys.path:
-            sys.path.insert(0, '/srv01/agrp/netalev/atlas_utilization')
-
-        from src.pipelines.histograms_pipeline import create_histograms  # type: ignore
+        from services.pipelines.histograms_pipeline import create_histograms
 
         self.logger.info(
             f"Running histogram creation: input={hc.input_dir}  output={hc.output_dir}"

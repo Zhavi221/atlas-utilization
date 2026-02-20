@@ -6,15 +6,9 @@ Supports:
   - Single-job execution (default)
   - Batch job execution via --batch-job-index / --total-batch-jobs
   - Shared run directory via --run-dir  (for multi-job PBS arrays)
+  - Task override via --tasks (comma-separated list, overrides config toggles)
   - Merge-only mode via --merge-only --run-dir <path>
   - Post-run plot regeneration via --plots-only --run-dir <path>
-
-Architecture (multi-job):
-  Each batch job runs the FULL pipeline (parse → IM calc → post-proc → histograms)
-  on its own slice of data.  Each batch writes a separate histogram file
-  (batch_N.root) and a stats JSON (batch_N_stats.json).
-  The merge job (--merge-only) combines histogram files via hadd, aggregates
-  stats, and generates plots.
 """
 
 import sys
@@ -54,18 +48,18 @@ Examples:
   # Single job – all enabled stages (default)
   python main.py
 
-  # Single job with custom config
-  python main.py --config my_config.yaml
+  # Run only specific stages
+  python main.py --tasks mass_calculating,post_processing
 
-  # Batch array job – runs FULL pipeline on its file slice
+  # Batch array job (mass calc + post-proc on file slice)
   python main.py --batch-job-index 1 --total-batch-jobs 4 \\
-      --run-dir /storage/agrp/netalev/data/run_20260217
+      --tasks mass_calculating,post_processing --run-dir /storage/.../run_dir
+
+  # Histogram-only job (e.g. after batch jobs complete)
+  python main.py --tasks histogram_creation --run-dir /storage/.../run_dir
 
   # Merge job – hadd histograms + aggregate stats + generate plots
-  python main.py --merge-only --run-dir /storage/agrp/netalev/data/run_20260217
-
-  # Re-generate plots from an existing run (no processing)
-  python main.py --plots-only --run-dir /storage/agrp/netalev/data/run_20260217
+  python main.py --merge-only --run-dir /storage/.../run_dir
 
   # Dry-run to validate config
   python main.py --dry-run
@@ -99,6 +93,14 @@ Examples:
     batch_group.add_argument(
         "--run-dir", type=str, default=None,
         help="Pre-created shared run directory (skips timestamped dir creation)"
+    )
+
+    # --- Task override ---
+    batch_group.add_argument(
+        "--tasks", type=str, default=None,
+        help="Comma-separated list of tasks to run, overriding config. "
+             "Valid: parsing, mass_calculating, post_processing, histogram_creation. "
+             "Example: --tasks mass_calculating,post_processing"
     )
 
     # --- Post-run options ---
@@ -177,6 +179,19 @@ def main():
             config_dict.setdefault("run_metadata", {})
             config_dict["run_metadata"]["batch_job_index"] = args.batch_job_index
             config_dict["run_metadata"]["total_batch_jobs"] = args.total_batch_jobs
+
+        # Override task toggles from CLI (--tasks flag)
+        if args.tasks:
+            valid_tasks = {"parsing", "mass_calculating", "post_processing", "histogram_creation"}
+            requested = {t.strip() for t in args.tasks.split(",")}
+            unknown = requested - valid_tasks
+            if unknown:
+                logger.error(f"Unknown tasks: {unknown}. Valid: {valid_tasks}")
+                return 1
+            config_dict.setdefault("tasks", {})
+            for task in valid_tasks:
+                config_dict["tasks"][f"do_{task}"] = task in requested
+            logger.info(f"Task override from CLI: {sorted(requested)}")
 
         # Determine run directory
         if args.run_dir:

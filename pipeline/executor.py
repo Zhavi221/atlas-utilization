@@ -569,8 +569,7 @@ class PipelineExecutor:
                 event_accumulator=services['event_accumulator']
             )
         
-        # These handlers have no external service dependencies – they call
-        # the old atlas_utilization pipeline modules directly.
+        # These handlers have no external service dependencies.
         if self.config.tasks.do_mass_calculating:
             handlers[PipelineState.MASS_CALCULATION] = MassCalculationHandler()
         if self.config.tasks.do_post_processing:

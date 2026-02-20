@@ -1,0 +1,14 @@
+awkward
+atlasopenmagic==1.5.0
+cernopendata-client==1.0.0
+fsspec_xrootd==0.5.1
+matplotlib
+numpy
+PyYAML
+requests
+scikit-learn
+seaborn
+tqdm
+uproot==5.6.2
+vector==1.6.2
+xrootd==5.8.3
