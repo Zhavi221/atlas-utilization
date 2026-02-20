@@ -7,6 +7,7 @@ Supports:
   - Batch job execution via --batch-job-index / --total-batch-jobs
   - Shared run directory via --run-dir  (for multi-job PBS arrays)
   - Task override via --tasks (comma-separated list, overrides config toggles)
+  - Per-stage input override via --stage-input STAGE:PATH (use external dirs)
   - Merge-only mode via --merge-only --run-dir <path>
   - Post-run plot regeneration via --plots-only --run-dir <path>
 """
@@ -45,18 +46,19 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Single job – all enabled stages (default)
+  # Single job – all enabled stages
   python main.py
 
   # Run only specific stages
   python main.py --tasks mass_calculating,post_processing
 
-  # Batch array job (mass calc + post-proc on file slice)
+  # Batch array job on a specific file slice
   python main.py --batch-job-index 1 --total-batch-jobs 4 \\
       --tasks mass_calculating,post_processing --run-dir /storage/.../run_dir
 
-  # Histogram-only job (e.g. after batch jobs complete)
-  python main.py --tasks histogram_creation --run-dir /storage/.../run_dir
+  # Histogram creation reading from an external processed dir
+  python main.py --tasks histogram_creation --run-dir /storage/.../run_dir \\
+      --stage-input histogram_creation:/storage/.../all_processed
 
   # Merge job – hadd histograms + aggregate stats + generate plots
   python main.py --merge-only --run-dir /storage/.../run_dir
@@ -101,6 +103,14 @@ Examples:
         help="Comma-separated list of tasks to run, overriding config. "
              "Valid: parsing, mass_calculating, post_processing, histogram_creation. "
              "Example: --tasks mass_calculating,post_processing"
+    )
+
+    # --- Stage input overrides ---
+    batch_group.add_argument(
+        "--stage-input", action="append", metavar="STAGE:PATH", default=None,
+        help="Override input directory for a stage (applied after run-dir path setup). "
+             "Can be repeated. Stages: mass_calculating, post_processing, histogram_creation. "
+             "Example: --stage-input histogram_creation:/storage/agrp/netalev/combined_processed"
     )
 
     # --- Post-run options ---
@@ -207,6 +217,25 @@ def main():
 
         # Update config paths to use run directory
         config_dict = update_config_paths_with_run_dir(config_dict, run_dir)
+
+        # Apply per-stage input directory overrides (after path setup)
+        if args.stage_input:
+            STAGE_INPUT_MAP = {
+                "mass_calculating": "mass_calculation_task_config",
+                "post_processing": "post_processing_task_config",
+                "histogram_creation": "histogram_creation_task_config",
+            }
+            for override in args.stage_input:
+                if ":" not in override:
+                    logger.error(f"Invalid --stage-input format: '{override}'. Expected STAGE:PATH")
+                    return 1
+                stage, path = override.split(":", 1)
+                if stage not in STAGE_INPUT_MAP:
+                    logger.error(f"Unknown stage '{stage}'. Valid: {list(STAGE_INPUT_MAP)}")
+                    return 1
+                config_key = STAGE_INPUT_MAP[stage]
+                config_dict.setdefault(config_key, {})["input_dir"] = path
+                logger.info(f"Stage input override: {stage} reads from {path}")
 
         # Per-batch histogram filename so batch jobs don't collide
         if args.batch_job_index is not None:

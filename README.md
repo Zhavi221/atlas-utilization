@@ -183,6 +183,7 @@ python main.py --help
   --tasks TASKS              Override config task toggles (comma-separated:
                              parsing, mass_calculating, post_processing,
                              histogram_creation)
+  --stage-input STAGE:PATH   Override input directory for a stage (repeatable)
   --run-dir DIR              Use this directory instead of creating a new one
   --merge-only               Merge batch outputs (hadd + aggregate stats + plots)
   --plots-only               Re-generate plots from an existing run

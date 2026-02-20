@@ -7,14 +7,14 @@
 #   Multi-job   (NUM_JOBS>1) — PBS array splits files across N jobs,
 #                              then a dependent merge/histogram job runs.
 #
-# Incremental mode (INCREMENTAL=true):
-#   Symlinks only unprocessed ROOT files into parsed_data/, runs mass calc +
-#   post-proc in batch, then the merge job symlinks existing archive arrays
-#   and creates histograms on the combined data.
+# Stage input overrides:
+#   Set MASS_CALC_INPUT, POST_PROC_INPUT, or HISTOGRAM_INPUT to point a
+#   stage at an external directory instead of the run dir's default subdirs.
 #
 # Usage:
-#   bash submit.sh                 # uses defaults below
-#   CONFIG=my.yaml bash submit.sh  # override config
+#   bash submit.sh
+#   NUM_JOBS=4 BATCH_TASKS=mass_calculating,post_processing bash submit.sh
+#   HISTOGRAM_INPUT=/storage/.../combined_processed bash submit.sh
 # ===========================================================================
 
 set -e
@@ -30,14 +30,15 @@ QUEUE=${QUEUE:-"N"}
 
 # Task overrides (comma-separated, empty = use config as-is)
 BATCH_TASKS=${BATCH_TASKS:-""}
-MERGE_TASKS=${MERGE_TASKS:-"histogram_creation"}
+MERGE_TASKS=${MERGE_TASKS:-""}
 
-# --- Incremental mode (merge new + archive processed arrays) ---------------
-# Set INCREMENTAL=true and provide ARCHIVE_* paths to only process new files.
-INCREMENTAL=${INCREMENTAL:-false}
-ARCHIVE_ROOT_FILES=${ARCHIVE_ROOT_FILES:-""}
-ARCHIVE_PROCESSED=${ARCHIVE_PROCESSED:-""}
-BUMPNET_DATA_DIR=${BUMPNET_DATA_DIR:-""}
+# Per-stage input directory overrides (empty = use run dir defaults)
+MASS_CALC_INPUT=${MASS_CALC_INPUT:-""}
+POST_PROC_INPUT=${POST_PROC_INPUT:-""}
+HISTOGRAM_INPUT=${HISTOGRAM_INPUT:-""}
+
+# Post-run copy: if set, copies the first histogram ROOT file here
+COPY_HISTOGRAM_TO=${COPY_HISTOGRAM_TO:-""}
 
 PIPELINE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -57,28 +58,14 @@ mkdir -p "${RUN_DIR}"
 LOG_DIR="${RUN_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
-# --- Incremental data preparation ------------------------------------------
-if [ "$INCREMENTAL" = true ]; then
-    mkdir -p "${RUN_DIR}/parsed_data" "${RUN_DIR}/im_arrays" \
-             "${RUN_DIR}/im_arrays_processed" "${RUN_DIR}/histograms"
+# Build --stage-input flags from env vars
+STAGE_INPUT_FLAGS=""
+[ -n "${MASS_CALC_INPUT}" ]  && STAGE_INPUT_FLAGS+=" --stage-input mass_calculating:${MASS_CALC_INPUT}"
+[ -n "${POST_PROC_INPUT}" ]  && STAGE_INPUT_FLAGS+=" --stage-input post_processing:${POST_PROC_INPUT}"
+[ -n "${HISTOGRAM_INPUT}" ]  && STAGE_INPUT_FLAGS+=" --stage-input histogram_creation:${HISTOGRAM_INPUT}"
 
-    PROCESSED_HASHES=$(ls "${ARCHIVE_PROCESSED}/" | grep -oP '2024r-pp_[a-f0-9]+' | sort -u)
-    ALL_PP_FILES=$(ls "${ARCHIVE_ROOT_FILES}/" | grep '2024r-pp')
-
-    LINKED=0
-    for f in ${ALL_PP_FILES}; do
-        hash=$(echo "$f" | sed 's/.root$//')
-        if ! echo "${PROCESSED_HASHES}" | grep -q "^${hash}$"; then
-            ln -s "${ARCHIVE_ROOT_FILES}/${f}" "${RUN_DIR}/parsed_data/"
-            LINKED=$((LINKED + 1))
-        fi
-    done
-    echo "Incremental mode: symlinked ${LINKED} unprocessed ROOT files"
-fi
-
-# Save configs into run dir for reproducibility
+# Save config and submit script into run dir for reproducibility
 cp "${PIPELINE_DIR}/${CONFIG}" "${LOG_DIR}/"
-[ -f "${PIPELINE_DIR}/${MERGE_CONFIG}" ] && cp "${PIPELINE_DIR}/${MERGE_CONFIG}" "${LOG_DIR}/"
 cp "${PIPELINE_DIR}/submit.sh" "${LOG_DIR}/"
 
 echo "=============================================="
@@ -91,7 +78,11 @@ echo "CPUs/job:     ${CPUS_PER_JOB}"
 echo "Memory/job:   ${MEM_PER_JOB}"
 echo "Walltime:     ${WALLTIME}"
 echo "Merge wall:   ${MERGE_WALLTIME}"
-echo "Incremental:  ${INCREMENTAL}"
+[ -n "${BATCH_TASKS}" ]     && echo "Batch tasks:  ${BATCH_TASKS}"
+[ -n "${MERGE_TASKS}" ]     && echo "Merge tasks:  ${MERGE_TASKS}"
+[ -n "${MASS_CALC_INPUT}" ] && echo "Mass calc in: ${MASS_CALC_INPUT}"
+[ -n "${POST_PROC_INPUT}" ] && echo "Post proc in: ${POST_PROC_INPUT}"
+[ -n "${HISTOGRAM_INPUT}" ] && echo "Histogram in: ${HISTOGRAM_INPUT}"
 echo "=============================================="
 
 if [ "$NUM_JOBS" -eq 1 ]; then
@@ -116,15 +107,18 @@ export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
 source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
 lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 
-echo "Running single pipeline job"
+echo "Running single pipeline job: \$(date)"
 echo "Run directory: ${RUN_DIR}"
 
 TASK_FLAG=""
 [ -n "${BATCH_TASKS}" ] && TASK_FLAG="--tasks ${BATCH_TASKS}"
 
-python -u main.py --config "${CONFIG}" \${TASK_FLAG} --run-dir "${RUN_DIR}" \
+python -u main.py --config "${CONFIG}" \${TASK_FLAG} \
+    --run-dir "${RUN_DIR}" ${STAGE_INPUT_FLAGS} \
     > "${LOG_DIR}/pipeline.out" \
     2> "${LOG_DIR}/pipeline.err"
+
+echo "Single job finished: \$(date)"
 EOF
     )
     echo "Submitted single job: ${MAIN_JOB_ID}"
@@ -161,7 +155,7 @@ TASK_FLAG=""
 python -u main.py --config "${CONFIG}" \${TASK_FLAG} \
     --batch-job-index \${PBS_ARRAY_INDEX} \
     --total-batch-jobs ${NUM_JOBS} \
-    --run-dir "${RUN_DIR}" \
+    --run-dir "${RUN_DIR}" ${STAGE_INPUT_FLAGS} \
     > "${LOG_DIR}/batch_\${PBS_ARRAY_INDEX}.out" \
     2> "${LOG_DIR}/batch_\${PBS_ARRAY_INDEX}.err"
 
@@ -191,41 +185,29 @@ lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 echo "Merge/histogram job started: \$(date)"
 echo "Run directory: ${RUN_DIR}"
 
-if [ "${INCREMENTAL}" = true ]; then
-    echo "Symlinking archive processed arrays..."
-    ARCHIVE_LINKED=0
-    for f in ${ARCHIVE_PROCESSED}/*_main.npy; do
-        base=\$(basename "\$f")
-        dst="${RUN_DIR}/im_arrays_processed/\${base}"
-        if [ ! -e "\${dst}" ]; then
-            ln -s "\$f" "\${dst}"
-            ARCHIVE_LINKED=\$((ARCHIVE_LINKED + 1))
-        fi
-    done
-    echo "Symlinked \${ARCHIVE_LINKED} archive _main.npy files"
+TASK_FLAG=""
+[ -n "${MERGE_TASKS}" ] && TASK_FLAG="--tasks ${MERGE_TASKS}"
 
-    TOTAL=\$(ls "${RUN_DIR}/im_arrays_processed/"*_main.npy 2>/dev/null | wc -l)
-    echo "Total processed _main.npy files: \${TOTAL}"
-
-    python -u main.py --config "${CONFIG}" --tasks ${MERGE_TASKS} \
-        --run-dir "${RUN_DIR}" \
+if [ -n "\${TASK_FLAG}" ]; then
+    python -u main.py --config "${CONFIG}" \${TASK_FLAG} \
+        --run-dir "${RUN_DIR}" ${STAGE_INPUT_FLAGS} \
         > "${LOG_DIR}/merge.out" \
         2> "${LOG_DIR}/merge.err"
-
-    if [ -n "${BUMPNET_DATA_DIR}" ]; then
-        HIST_FILE=\$(ls "${RUN_DIR}/histograms/"*.root 2>/dev/null | head -1)
-        if [ -n "\${HIST_FILE}" ]; then
-            mkdir -p "${BUMPNET_DATA_DIR}"
-            cp "\${HIST_FILE}" "${BUMPNET_DATA_DIR}/"
-            echo "Copied histogram to ${BUMPNET_DATA_DIR}/"
-        fi
-    fi
 else
     python -u main.py --config "${CONFIG}" \
         --merge-only \
         --run-dir "${RUN_DIR}" \
         > "${LOG_DIR}/merge.out" \
         2> "${LOG_DIR}/merge.err"
+fi
+
+if [ -n "${COPY_HISTOGRAM_TO}" ]; then
+    HIST_FILE=\$(ls "${RUN_DIR}/histograms/"*.root 2>/dev/null | head -1)
+    if [ -n "\${HIST_FILE}" ]; then
+        mkdir -p "${COPY_HISTOGRAM_TO}"
+        cp "\${HIST_FILE}" "${COPY_HISTOGRAM_TO}/"
+        echo "Copied \$(basename "\${HIST_FILE}") to ${COPY_HISTOGRAM_TO}/"
+    fi
 fi
 
 echo "Merge/histogram job finished: \$(date)"
