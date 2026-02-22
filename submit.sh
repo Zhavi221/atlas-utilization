@@ -5,11 +5,17 @@
 # Single-job  (NUM_JOBS=1) — one PBS job runs the full pipeline.
 # Multi-job   (NUM_JOBS>1) — PBS array splits files across N jobs,
 #                            then a dependent merge job runs.
+# Single-job  (NUM_JOBS=1) — one PBS job runs the full pipeline.
+# Multi-job   (NUM_JOBS>1) — PBS array splits files across N jobs,
+#                            then a dependent merge job runs.
 #
+# All pipeline settings (tasks, paths, stage inputs) live in config.yaml.
+# This script only handles PBS resource allocation and job submission.
 # All pipeline settings (tasks, paths, stage inputs) live in config.yaml.
 # This script only handles PBS resource allocation and job submission.
 #
 # Usage:
+#   Edit the variables below, then: bash submit.sh
 #   Edit the variables below, then: bash submit.sh
 # ===========================================================================
 
@@ -26,6 +32,7 @@ QUEUE="N"
 
 PIPELINE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# --- Read run_name and base_output_dir from config -------------------------
 # --- Read run_name and base_output_dir from config -------------------------
 read RUN_NAME BASE_DIR <<< $(python3 -c "
 import yaml
@@ -45,6 +52,12 @@ cp "${PIPELINE_DIR}/submit.sh" "${LOG_DIR}/"
 echo "=============================================="
 echo "ATLAS Pipeline Submission"
 echo "=============================================="
+echo "Config:     ${CONFIG}"
+echo "Run dir:    ${RUN_DIR}"
+echo "Num jobs:   ${NUM_JOBS}"
+echo "CPUs/job:   ${CPUS_PER_JOB}"
+echo "Mem/job:    ${MEM_PER_JOB}"
+echo "Walltime:   ${WALLTIME}"
 echo "Config:     ${CONFIG}"
 echo "Run dir:    ${RUN_DIR}"
 echo "Num jobs:   ${NUM_JOBS}"
@@ -72,10 +85,12 @@ source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
 lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 
 python -u main.py --config "${CONFIG}" --run-dir "${RUN_DIR}" \
+python -u main.py --config "${CONFIG}" --run-dir "${RUN_DIR}" \
     > "${LOG_DIR}/pipeline.out" \
     2> "${LOG_DIR}/pipeline.err"
 EOF
     )
+    echo "Submitted: ${MAIN_JOB_ID}"
     echo "Submitted: ${MAIN_JOB_ID}"
 
 else
@@ -98,14 +113,17 @@ source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
 lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 
 python -u main.py --config "${CONFIG}" \
+python -u main.py --config "${CONFIG}" \
     --batch-job-index \${PBS_ARRAY_INDEX} \
     --total-batch-jobs ${NUM_JOBS} \
+    --run-dir "${RUN_DIR}" \
     --run-dir "${RUN_DIR}" \
     > "${LOG_DIR}/batch_\${PBS_ARRAY_INDEX}.out" \
     2> "${LOG_DIR}/batch_\${PBS_ARRAY_INDEX}.err"
 EOF
     )
 
+    echo "Submitted array: ${ARRAY_JOB_ID}"
     echo "Submitted array: ${ARRAY_JOB_ID}"
 
     MERGE_JOB_ID=$(qsub -W depend=afterok:"${ARRAY_JOB_ID}" <<EOF
@@ -123,6 +141,16 @@ cd ${PIPELINE_DIR}
 export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
 source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
 lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
+
+python -u main.py --config "${CONFIG}" \
+    --merge-only \
+    --run-dir "${RUN_DIR}" \
+    > "${LOG_DIR}/merge.out" \
+    2> "${LOG_DIR}/merge.err"
+EOF
+    )
+
+    echo "Submitted merge: ${MERGE_JOB_ID} (depends on ${ARRAY_JOB_ID})"
 
 python -u main.py --config "${CONFIG}" \
     --merge-only \
