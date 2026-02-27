@@ -128,7 +128,7 @@ mass_calculation_task_config:
   objects_to_calculate: [Electrons, Muons, Jets, Photons]
   min_particles_in_combination: 2        # min particle types in a combination
   max_particles_in_combination: 4        # max particle types
-  min_count_particle_in_combination: 2   # min count per type
+  min_count_particle_in_combination: 1   # min count per type
   max_count_particle_in_combination: 4   # max count per type
   min_events_per_fs: 100                 # drop final states with fewer events
 
