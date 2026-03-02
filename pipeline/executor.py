@@ -36,6 +36,7 @@ from services.parsing.file_parser import FileParser
 from services.parsing.event_accumulator import EventAccumulator
 from services.parsing.threaded_processor import ThreadedFileProcessor
 from services.analysis.statistics_plotter import StatisticsPlotter
+from services.storage.sqlite_shards import list_signatures, get_total_entries
 
 
 class PipelineExecutor:
@@ -348,8 +349,27 @@ class PipelineExecutor:
             return None
 
         npy_files = sorted(Path(im_dir).glob("*.npy"))
-        if not npy_files:
+        sqlite_files = sorted(Path(im_dir).glob("*.sqlite"))
+        if not npy_files and not sqlite_files:
             return None
+
+        if sqlite_files and not npy_files:
+            total_entries = 0
+            total_signatures = 0
+            for sf in sqlite_files:
+                total_entries += get_total_entries(str(sf))
+                total_signatures += len(list_signatures(str(sf)))
+            return {
+                'total_final_states': 0,
+                'total_combinations': total_entries,
+                'total_events_processed': 0,
+                'combinations_per_object': {},
+                'combination_size_distribution': {},
+                'events_per_final_state': {},
+                'total_time_sec': 0,
+                'total_signatures': total_signatures,
+                'num_shards': len(sqlite_files),
+            }
 
         total_combinations = 0
         combos_per_object = {}   # e.g. {"Electrons": 12345, "Muons": 678, ...}
@@ -418,8 +438,27 @@ class PipelineExecutor:
             return None
 
         npy_files = sorted(Path(proc_dir).glob("*.npy"))
-        if not npy_files:
+        sqlite_files = sorted(Path(proc_dir).glob("*.sqlite"))
+        if not npy_files and not sqlite_files:
             return None
+
+        if sqlite_files and not npy_files:
+            total_signatures = 0
+            total_entries = 0
+            outlier_signatures = 0
+            for sf in sqlite_files:
+                sigs = list_signatures(str(sf))
+                total_signatures += len(sigs)
+                total_entries += get_total_entries(str(sf))
+                outlier_signatures += sum(1 for s in sigs if s.endswith("_outliers"))
+            return {
+                'total_files': total_signatures,
+                'main_files': total_signatures - outlier_signatures,
+                'outlier_files': outlier_signatures,
+                'total_time_sec': 0,
+                'total_entries': total_entries,
+                'num_shards': len(sqlite_files),
+            }
 
         main_count = sum(1 for f in npy_files if 'outlier' not in f.stem)
         outlier_count = sum(1 for f in npy_files if 'outlier' in f.stem)

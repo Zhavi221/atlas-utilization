@@ -34,12 +34,13 @@ class PostProcessingHandler(StateHandler):
             "input_dir": pp.input_dir,
             "output_dir": pp.output_dir,
             "peak_detection_bin_width_gev": pp.peak_detection_bin_width_gev,
+            "batch_job_index": context.config.batch_job_index,
         }
 
         # If the previous stage produced files, pass them explicitly
         file_list = None
         if context.im_files:
-            file_list = [Path(f).name for f in context.im_files if f.endswith(".npy")]
+            file_list = [Path(f).name for f in context.im_files if f.endswith(".npy") or f.endswith(".sqlite")]
 
         from services.pipelines.post_processing_pipeline import process_im_arrays
 

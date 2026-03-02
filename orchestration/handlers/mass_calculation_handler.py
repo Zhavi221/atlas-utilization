@@ -18,6 +18,7 @@ import numpy as np
 from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
+from services.storage.sqlite_shards import SqliteArrayShardWriter
 
 
 class MassCalculationHandler(StateHandler):
@@ -56,9 +57,18 @@ class MassCalculationHandler(StateHandler):
         self.logger.info(f"Generated {len(all_combinations)} combinations to process")
 
         # Config dict expected by process_final_state & helpers
+        batch_idx = context.config.batch_job_index or 1
+        shard_name = f"im_batch_{batch_idx}.sqlite"
+        shard_path = os.path.join(mc.output_dir, shard_name)
+        if os.path.exists(shard_path):
+            os.remove(shard_path)
+        sqlite_writer = SqliteArrayShardWriter(shard_path)
+
         config_dict = {
             "field_to_slice_by": mc.field_to_slice_by,
             "fs_chunk_threshold_bytes": mc.fs_chunk_threshold_bytes,
+            "output_mode": "sqlite",
+            "sqlite_writer": sqlite_writer,
         }
 
         # ── Discover parsed ROOT files ──
@@ -91,34 +101,37 @@ class MassCalculationHandler(StateHandler):
             f"Processing {len(root_files)} parsed file(s) from {parsed_dir}"
         )
 
-        all_created_files: List[str] = []
+        total_created_chunks = 0
 
-        for root_file_path in root_files:
-            try:
-                created = self._process_single_parsed_file(
-                    root_file_path,
-                    mc.output_dir,
-                    all_combinations,
-                    config_dict,
-                    mc,
-                    IMCalculator,
-                    process_final_state,
-                )
-                if created:
-                    all_created_files.extend(created)
-            except Exception as exc:
-                self.logger.error(
-                    f"Error processing {root_file_path.name}: {exc}",
-                    exc_info=True,
-                )
+        try:
+            for root_file_path in root_files:
+                try:
+                    created = self._process_single_parsed_file(
+                        root_file_path,
+                        mc.output_dir,
+                        all_combinations,
+                        config_dict,
+                        mc,
+                        IMCalculator,
+                        process_final_state,
+                    )
+                    if created:
+                        total_created_chunks += len(created)
+                except Exception as exc:
+                    self.logger.error(
+                        f"Error processing {root_file_path.name}: {exc}",
+                        exc_info=True,
+                    )
+        finally:
+            sqlite_writer.close()
 
         elapsed = (datetime.now() - start).total_seconds()
         self.logger.info(
-            f"Mass calculation complete: {len(all_created_files)} IM arrays "
-            f"in {elapsed:.1f}s"
+            f"Mass calculation complete: {total_created_chunks} IM chunks/signatures "
+            f"in {elapsed:.1f}s; shard={shard_path}"
         )
 
-        updated = context.with_im_files(all_created_files)
+        updated = context.with_im_files([shard_name])
         next_state = self._determine_next_state(updated)
         self._log_state_exit(context, next_state)
         return updated, next_state

@@ -30,7 +30,7 @@ def process_final_state(
     Process all combinations for a given final state.
 
     Returns:
-        Tuple of (statistics dict, list of created .npy filenames)
+        Tuple of (statistics dict, list of created artifact identifiers)
     """
     if len(fs_events) == 0:
         return None, []
@@ -47,6 +47,8 @@ def process_final_state(
     )
 
     fs_mapping_threshold_bytes = config["fs_chunk_threshold_bytes"]
+    output_mode = config.get("output_mode", "npy")
+    sqlite_writer = config.get("sqlite_writer")
     fs_im_mapping: Dict[str, Dict[str, ak.Array]] = {}
 
     stats = {
@@ -103,12 +105,19 @@ def process_final_state(
         combination_name = prepare_im_combination_name(filename, final_state, combination)
         saved_files = _accumulate_invariant_mass(
             fs_im_mapping, final_state, combination_name, inv_mass,
-            fs_mapping_threshold_bytes, output_dir, logger
+            fs_mapping_threshold_bytes, output_dir, logger,
+            output_mode=output_mode, sqlite_writer=sqlite_writer
         )
         if saved_files:
             created_im_files.extend(saved_files)
 
-    remaining_files = _save_remaining_accumulated_data(fs_im_mapping, output_dir, logger)
+    remaining_files = _save_remaining_accumulated_data(
+        fs_im_mapping,
+        output_dir,
+        logger,
+        output_mode=output_mode,
+        sqlite_writer=sqlite_writer,
+    )
     if remaining_files:
         created_im_files.extend(remaining_files)
 
@@ -163,7 +172,9 @@ def _accumulate_invariant_mass(
     inv_mass: ak.Array,
     threshold_bytes: int,
     output_dir: str,
-    logger: logging.Logger
+    logger: logging.Logger,
+    output_mode: str = "npy",
+    sqlite_writer=None,
 ) -> List[str]:
     if final_state not in fs_im_mapping:
         fs_im_mapping[final_state] = {}
@@ -177,7 +188,13 @@ def _accumulate_invariant_mass(
     saved_files = []
     if _fs_dict_exceeding_threshold(fs_im_mapping, threshold_bytes):
         logger.info(f"Memory threshold exceeded. Saving accumulated arrays for {final_state}")
-        saved_files = _save_fs_mapping(fs_im_mapping[final_state], output_dir, final_state)
+        saved_files = _save_fs_mapping(
+            fs_im_mapping[final_state],
+            output_dir,
+            final_state,
+            output_mode=output_mode,
+            sqlite_writer=sqlite_writer,
+        )
         fs_im_mapping[final_state].clear()
 
     return saved_files
@@ -186,13 +203,21 @@ def _accumulate_invariant_mass(
 def _save_remaining_accumulated_data(
     fs_im_mapping: Dict[str, Dict[str, ak.Array]],
     output_dir: str,
-    logger: logging.Logger
+    logger: logging.Logger,
+    output_mode: str = "npy",
+    sqlite_writer=None,
 ) -> List[str]:
     all_saved_files = []
     for fs, combinations_dict in fs_im_mapping.items():
         if combinations_dict:
             logger.debug(f"Saving remaining {len(combinations_dict)} combinations for final state: {fs}")
-            saved_files = _save_fs_mapping(combinations_dict, output_dir, fs)
+            saved_files = _save_fs_mapping(
+                combinations_dict,
+                output_dir,
+                fs,
+                output_mode=output_mode,
+                sqlite_writer=sqlite_writer,
+            )
             if saved_files:
                 all_saved_files.extend(saved_files)
     return all_saved_files
@@ -201,9 +226,23 @@ def _save_remaining_accumulated_data(
 def _save_fs_mapping(
     fs_mapping: Dict[str, ak.Array],
     output_dir: str,
-    final_state: str
+    final_state: str,
+    output_mode: str = "npy",
+    sqlite_writer=None,
 ) -> List[str]:
     saved_files = []
+    if output_mode == "sqlite":
+        if sqlite_writer is None:
+            raise ValueError("output_mode='sqlite' requires sqlite_writer in config")
+        to_write = {}
+        for combination_name, im_arr in fs_mapping.items():
+            to_write[combination_name] = ak.to_numpy(im_arr)
+            saved_files.append(combination_name)
+        if to_write:
+            sqlite_writer.append_many(to_write)
+            sqlite_writer.commit()
+        return saved_files
+
     for combination_name, im_arr in fs_mapping.items():
         filename = f"{combination_name}.npy"
         output_path = os.path.join(output_dir, filename)

@@ -10,9 +10,16 @@ Processes IM arrays to:
 import logging
 import sys
 import os
+import re
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 import math
+
+from services.storage.sqlite_shards import (
+    SqliteArrayShardWriter,
+    iter_arrays_for_signature,
+    list_signatures,
+)
 
 
 def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> List[str]:
@@ -25,6 +32,21 @@ def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> Li
     os.makedirs(output_dir, exist_ok=True)
 
     if file_list is not None:
+        sqlite_files = [f for f in file_list if f.endswith(".sqlite")]
+        if sqlite_files:
+            logger.info(f"Using explicit file list with {len(sqlite_files)} SQLite shard file(s)")
+            existing_sqlite = []
+            for filename in sqlite_files:
+                file_path = os.path.join(input_dir, filename)
+                if os.path.exists(file_path):
+                    existing_sqlite.append(filename)
+                else:
+                    logger.warning(f"File {filename} not found in {input_dir}, skipping")
+            if not existing_sqlite:
+                logger.warning(f"None of the {len(sqlite_files)} specified SQLite files exist in {input_dir}")
+                return []
+            return _process_im_sqlite(config, existing_sqlite, logger)
+
         im_array_files = [f for f in file_list if f.endswith(".npy")]
         logger.info(f"Using explicit file list with {len(im_array_files)} IM array files")
 
@@ -44,6 +66,10 @@ def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> Li
         if not os.path.exists(input_dir) or len(os.listdir(input_dir)) == 0:
             logger.warning(f"Input directory '{input_dir}' is empty or doesn't exist.")
             return []
+
+        sqlite_files = [f for f in os.listdir(input_dir) if f.endswith(".sqlite")]
+        if sqlite_files:
+            return _process_im_sqlite(config, sorted(sqlite_files), logger)
 
         im_array_files = [f for f in os.listdir(input_dir) if f.endswith(".npy")]
         if not im_array_files:
@@ -72,6 +98,69 @@ def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> Li
 
     logger.info(f"Post-processing complete. Created {len(processed_files)} processed arrays.")
     return processed_files
+
+
+def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Logger) -> List[str]:
+    input_dir = config["input_dir"]
+    output_dir = config["output_dir"]
+    bin_width = config["peak_detection_bin_width_gev"]
+
+    batch_idx = config.get("batch_job_index")
+    if batch_idx is None:
+        # Fall back to parsing from shard names like im_batch_3.sqlite
+        for f in sqlite_files:
+            m = re.search(r"(\d+)", f)
+            if m:
+                batch_idx = int(m.group(1))
+                break
+    shard_name = f"processed_batch_{batch_idx if batch_idx else 1}.sqlite"
+    shard_path = os.path.join(output_dir, shard_name)
+    if os.path.exists(shard_path):
+        os.remove(shard_path)
+
+    writer = SqliteArrayShardWriter(shard_path)
+
+    signatures = set()
+    for filename in sqlite_files:
+        signatures.update(list_signatures(os.path.join(input_dir, filename)))
+
+    logger.info(
+        f"Processing {len(signatures)} signatures from {len(sqlite_files)} IM shard file(s) "
+        f"into {shard_name}"
+    )
+
+    written = 0
+    try:
+        for signature in sorted(signatures):
+            chunks = []
+            for filename in sqlite_files:
+                db_path = os.path.join(input_dir, filename)
+                chunks.extend(iter_arrays_for_signature(db_path, signature))
+            if not chunks:
+                continue
+
+            arr = np.concatenate(chunks) if len(chunks) > 1 else chunks[0]
+            if len(arr) == 0:
+                continue
+
+            peak_mass = _find_rightmost_highest_peak(arr, bin_width, logger)
+            filtered = arr if peak_mass is None else arr[arr >= peak_mass]
+            if len(filtered) == 0:
+                continue
+
+            main_array, outliers_array = _split_by_first_empty_bin(filtered, bin_width, logger)
+            if len(main_array) > 0:
+                writer.append_array(f"{signature}_main", main_array)
+                written += 1
+            if len(outliers_array) > 0:
+                writer.append_array(f"{signature}_outliers", outliers_array)
+                written += 1
+        writer.commit()
+    finally:
+        writer.close()
+
+    logger.info(f"Post-processing complete. Created {written} processed array chunks in {shard_name}.")
+    return [shard_name]
 
 
 def _process_single_array(

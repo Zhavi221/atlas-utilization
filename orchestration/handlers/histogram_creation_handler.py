@@ -38,12 +38,13 @@ class HistogramCreationHandler(StateHandler):
             "output_filename": hc.output_filename,
             "exclude_outliers": hc.exclude_outliers,
             "use_bumpnet_naming": hc.use_bumpnet_naming,
+            "batch_job_index": context.config.batch_job_index,
         }
 
         # If the previous stage produced files, pass them explicitly
         file_list = None
         if context.processed_files:
-            file_list = [Path(f).name for f in context.processed_files if f.endswith(".npy")]
+            file_list = [Path(f).name for f in context.processed_files if f.endswith(".npy") or f.endswith(".sqlite")]
 
         from services.pipelines.histograms_pipeline import create_histograms
 

@@ -15,6 +15,7 @@ from collections import defaultdict
 import numpy as np
 import ROOT
 import math
+from services.storage.sqlite_shards import list_signatures, iter_arrays_for_signature
 
 
 def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = None):
@@ -33,6 +34,21 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
     exclude_outliers = histograms_config.get("exclude_outliers", False)
 
     if file_list is not None:
+        sqlite_files = [f for f in file_list if f.endswith(".sqlite")]
+        if sqlite_files:
+            logger.info(f"Using explicit file list with {len(sqlite_files)} SQLite processed shard file(s)")
+            existing_sqlite = []
+            for filename in sqlite_files:
+                file_path = os.path.join(input_dir, filename)
+                if os.path.exists(file_path):
+                    existing_sqlite.append(filename)
+                else:
+                    logger.warning(f"File {filename} not found in {input_dir}, skipping")
+            if not existing_sqlite:
+                logger.warning(f"None of the {len(sqlite_files)} specified SQLite files exist in {input_dir}")
+                return
+            return _create_histograms_from_sqlite(existing_sqlite, input_dir, histograms_config, logger)
+
         im_array_files = [f for f in file_list if f.endswith(".npy")]
         logger.info(f"Using explicit file list with {len(im_array_files)} IM array files")
 
@@ -52,6 +68,10 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
         if not os.path.exists(input_dir) or len(os.listdir(input_dir)) == 0:
             logger.warning(f"Input directory '{input_dir}' is empty or doesn't exist.")
             return
+
+        sqlite_files = [f for f in os.listdir(input_dir) if f.endswith(".sqlite")]
+        if sqlite_files:
+            return _create_histograms_from_sqlite(sorted(sqlite_files), input_dir, histograms_config, logger)
 
         im_array_files = [f for f in os.listdir(input_dir) if f.endswith(".npy")]
         if not im_array_files:
@@ -89,6 +109,178 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
             input_dir, output_dir, bin_widths_gev, logger, im_array_files,
             single_output_file=single_output_file, output_filename=output_filename
         )
+
+
+def _create_histograms_from_sqlite(
+    sqlite_files: List[str],
+    input_dir: str,
+    histograms_config: Dict,
+    logger: logging.Logger,
+):
+    output_dir = histograms_config["output_dir"]
+    os.makedirs(output_dir, exist_ok=True)
+
+    bin_width_gev = histograms_config["bin_width_gev"]
+    bin_widths_gev = [bin_width_gev] if isinstance(bin_width_gev, (int, float)) else bin_width_gev
+    use_bumpnet_naming = histograms_config.get("use_bumpnet_naming", False)
+    exclude_outliers = histograms_config.get("exclude_outliers", False)
+    single_output_file = histograms_config.get("single_output_file", False)
+    output_filename = histograms_config.get("output_filename", "all_histograms.root")
+
+    db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
+    signatures = set()
+    for db_path in db_paths:
+        signatures.update(list_signatures(db_path))
+    signatures = sorted(signatures)
+
+    if exclude_outliers:
+        before = len(signatures)
+        signatures = [s for s in signatures if not s.endswith("_outliers")]
+        logger.info(f"Excluded {before - len(signatures)} outlier signatures (exclude_outliers=true)")
+
+    logger.info(
+        f"Creating histograms from {len(signatures)} signatures across {len(sqlite_files)} SQLite file(s)"
+    )
+    if not signatures:
+        logger.warning("No signatures found after filtering; skipping histogram creation")
+        return
+
+    if use_bumpnet_naming:
+        grouped = _group_signatures_by_bumpnet(signatures)
+        logger.info(f"Grouped {len(signatures)} signatures into {len(grouped)} unique histogram signatures")
+        if single_output_file:
+            root_filepath = os.path.join(output_dir, output_filename)
+            hist_count = 0
+            for bumpnet_name, group_sigs in grouped.items():
+                hists = _create_merged_histograms_from_sqlite_signatures(
+                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger
+                )
+                if hists:
+                    _write_hists_to_shared_file(hists, root_filepath, logger)
+                    hist_count += len(hists)
+            logger.info(f"Wrote {hist_count} histograms to shared file {root_filepath}")
+        else:
+            for bumpnet_name, group_sigs in grouped.items():
+                hists = _create_merged_histograms_from_sqlite_signatures(
+                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger
+                )
+                if hists:
+                    root_filename = f"{bumpnet_name}_hists.root"
+                    root_filepath = os.path.join(output_dir, root_filename)
+                    root_file = ROOT.TFile(root_filepath, "RECREATE")
+                    for hist in hists:
+                        hist.Write()
+                    root_file.Close()
+    else:
+        if single_output_file:
+            root_filepath = os.path.join(output_dir, output_filename)
+            hist_count = 0
+            for signature in signatures:
+                hists = _create_histograms_for_signature(signature, db_paths, bin_widths_gev, logger)
+                if hists:
+                    _write_hists_to_shared_file(hists, root_filepath, logger)
+                    hist_count += len(hists)
+            logger.info(f"Wrote {hist_count} histograms to shared file {root_filepath}")
+        else:
+            for signature in signatures:
+                hists = _create_histograms_for_signature(signature, db_paths, bin_widths_gev, logger)
+                if hists:
+                    root_filename = f"{signature}_hists.root"
+                    root_filepath = os.path.join(output_dir, root_filename)
+                    root_file = ROOT.TFile(root_filepath, "RECREATE")
+                    for hist in hists:
+                        hist.Write()
+                    root_file.Close()
+
+
+def _group_signatures_by_bumpnet(signatures: List[str]) -> Dict[str, List[str]]:
+    groups = defaultdict(list)
+    for signature in signatures:
+        # signature format: <prefix>_FS_<fs>_IM_<im>[_main|_outliers]
+        cleaned = signature
+        if cleaned.endswith("_main"):
+            cleaned = cleaned[:-5]
+        elif cleaned.endswith("_outliers"):
+            cleaned = cleaned[:-9]
+
+        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)$", cleaned)
+        if not match:
+            continue
+        fs_str, im_str = match.groups()
+        bumpnet_name = _convert_to_bumpnet_name(fs_str, im_str)
+        groups[bumpnet_name].append(signature)
+    return dict(groups)
+
+
+def _iter_signature_chunks(signature: str, db_paths: List[str]):
+    for db_path in db_paths:
+        for arr in iter_arrays_for_signature(db_path, signature):
+            if len(arr) > 0:
+                yield arr
+
+
+def _create_histograms_for_signature(
+    signature: str, db_paths: List[str], bin_widths_gev: List[float], logger: logging.Logger
+) -> List[ROOT.TH1F]:
+    global_min, global_max = float("inf"), float("-inf")
+    has_data = False
+    for chunk in _iter_signature_chunks(signature, db_paths):
+        has_data = True
+        global_min = min(global_min, float(np.min(chunk)))
+        global_max = max(global_max, float(np.max(chunk)))
+    if not has_data:
+        return []
+
+    histograms = []
+    for bin_width in bin_widths_gev:
+        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
+        hist_name = f"ROI_{signature}_width_{bin_width}"
+        hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+        histograms.append(hist)
+
+    for chunk in _iter_signature_chunks(signature, db_paths):
+        for hist in histograms:
+            for val in chunk:
+                hist.Fill(float(val))
+    return histograms
+
+
+def _create_merged_histograms_from_sqlite_signatures(
+    signatures: List[str],
+    db_paths: List[str],
+    hist_name_base: str,
+    bin_widths_gev: List[float],
+    logger: logging.Logger,
+) -> List[ROOT.TH1F]:
+    global_min, global_max = float("inf"), float("-inf")
+    has_data = False
+
+    for signature in signatures:
+        for chunk in _iter_signature_chunks(signature, db_paths):
+            has_data = True
+            global_min = min(global_min, float(np.min(chunk)))
+            global_max = max(global_max, float(np.max(chunk)))
+
+    if not has_data:
+        logger.warning(f"No valid data found for {hist_name_base}")
+        return []
+
+    histograms = []
+    for bin_width in bin_widths_gev:
+        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
+        hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
+        if "cat" not in hist_name_base and "hCat" not in hist_name_base:
+            raise ValueError(
+                f"Invalid histogram name base '{hist_name_base}': must contain 'cat' for BumpNet compatibility"
+            )
+        histograms.append(ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max))
+
+    for signature in signatures:
+        for chunk in _iter_signature_chunks(signature, db_paths):
+            for hist in histograms:
+                for val in chunk:
+                    hist.Fill(float(val))
+    return histograms
 
 
 def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
