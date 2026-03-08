@@ -218,7 +218,7 @@ class PipelineExecutor:
             for key in ("total_events", "successful_files", "failed_files",
                         "total_chunks", "total_size_mb"):
                 if key in p:
-                    parsing_sums[key] = parsing_sums.get(key, 0) + p[key]
+                    parsing_sums[key] = parsing_sums.get(key, 0) + int(float(p[key]))
         if parsing_sums:
             aggregated["parsing_totals"] = parsing_sums
 
