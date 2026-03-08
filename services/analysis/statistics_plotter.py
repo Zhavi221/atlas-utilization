@@ -507,20 +507,33 @@ class StatisticsPlotter:
         ax6 = fig.add_subplot(gs[1, 2])
         ax6.axis('off')
         proc_time = self._safe_float(mass_calc_stats.get('total_time_sec', 0))
+        total_mass_values = int(
+            mass_calc_stats.get(
+                'total_mass_values',
+                mass_calc_stats.get('total_events_processed', 0)
+            )
+        )
         fs_per_sec = total_fs / proc_time if proc_time > 0 else 0
-        combos_per_sec = total_combos / proc_time if proc_time > 0 else 0
+        channels_per_sec = total_combos / proc_time if proc_time > 0 else 0
+        values_per_sec = total_mass_values / proc_time if proc_time > 0 else 0
 
         ax6.text(0.5, 0.80, 'PROCESSING RATE', ha='center', va='center',
                  transform=ax6.transAxes, fontsize=12, fontweight='bold', color='#7f8c8d')
-        ax6.text(0.5, 0.62, f'{combos_per_sec:,.1f}', ha='center', va='center',
+        ax6.text(0.5, 0.62, self._format_rate(values_per_sec), ha='center', va='center',
                  transform=ax6.transAxes, fontsize=30, fontweight='bold',
                  color=self.COLORS['primary'])
-        ax6.text(0.5, 0.48, 'combinations / second', ha='center', va='center',
+        ax6.text(0.5, 0.48, 'mass values / second', ha='center', va='center',
                  transform=ax6.transAxes, fontsize=11, color='#7f8c8d')
 
-        ax6.text(0.5, 0.28, f'{fs_per_sec:,.1f} final states/sec', ha='center',
+        ax6.text(
+            0.5, 0.31,
+            f'{self._format_rate(channels_per_sec)} channels/sec',
+            ha='center', va='center', transform=ax6.transAxes, fontsize=13,
+            fontweight='bold', color=self.COLORS['secondary']
+        )
+        ax6.text(0.5, 0.22, f'{self._format_rate(fs_per_sec)} final states/sec', ha='center',
                  va='center', transform=ax6.transAxes, fontsize=13,
-                 fontweight='bold', color=self.COLORS['secondary'])
+                 fontweight='bold', color=self.COLORS['info'])
         ax6.text(0.5, 0.12, f'Total time: {proc_time:.1f}s', ha='center',
                  va='center', transform=ax6.transAxes, fontsize=11, color='#7f8c8d')
         ax6.set_title('Efficiency Metrics', fontsize=13, fontweight='bold', pad=10)
@@ -599,16 +612,16 @@ class StatisticsPlotter:
             self._empty_panel(ax2, 'No histogram data')
         ax2.set_title('Main vs Outlier', fontsize=13, fontweight='bold', pad=10)
 
-        # -- 4c. Peaks Detected & Cut --
+        # -- 4c. Outlier Split Summary --
         ax3 = fig.add_subplot(gs[0, 2])
         peaks_detected = int(histogram_stats.get('peaks_detected', 0))
         peaks_cut = int(histogram_stats.get('peaks_cut', 0))
         hists_with_peaks = int(histogram_stats.get('histograms_with_peaks_cut', 0))
 
         peak_data = {
-            'Peaks\nDetected': peaks_detected,
-            'Peaks\nCut': peaks_cut,
-            'Histograms\nw/ Cuts': hists_with_peaks,
+            'Outlier\nChannels': peaks_detected,
+            'Outlier\nEntries': peaks_cut,
+            'Channels\nWith Split': hists_with_peaks,
         }
         if any(v > 0 for v in peak_data.values()):
             bar_colors = [self.COLORS['accent'], self.COLORS['failure'], self.COLORS['secondary']]
@@ -621,8 +634,8 @@ class StatisticsPlotter:
                          f'{v:,}', ha='center', va='bottom', fontweight='bold', fontsize=12)
             ax3.set_ylabel('Count', fontsize=11)
         else:
-            self._empty_panel(ax3, 'No peak data available\n(Run post-processing first)')
-        ax3.set_title('Peak Detection & Removal', fontsize=13, fontweight='bold', pad=10)
+            self._empty_panel(ax3, 'No outlier split data available\n(Run post-processing first)')
+        ax3.set_title('Outlier Split Metrics', fontsize=13, fontweight='bold', pad=10)
 
         # -- 4d. Histogram Entries Distribution --
         ax4 = fig.add_subplot(gs[1, 0])
@@ -778,6 +791,17 @@ class StatisticsPlotter:
             except ValueError:
                 return 0.0
         return 0.0
+
+    @staticmethod
+    def _format_rate(value: float) -> str:
+        """Format very small rates without collapsing to 0.0."""
+        if value >= 100:
+            return f'{value:,.0f}'
+        if value >= 1:
+            return f'{value:,.2f}'
+        if value > 0:
+            return f'{value:.4f}'
+        return '0'
 
     @staticmethod
     def _empty_panel(ax, message: str):

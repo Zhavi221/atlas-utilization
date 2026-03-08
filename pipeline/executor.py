@@ -17,6 +17,8 @@ Architecture (multi-job mode):
 import json
 import logging
 import os
+import re
+import sqlite3
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -240,10 +242,16 @@ class PipelineExecutor:
         """
         pipeline_stats = {}
 
+        # Batch logs can recover stage timings even when per-stage stat files
+        # are not persisted by handlers.
+        batch_exec_stats = self._read_batch_execution_stats(run_dir)
+
         # ----- Parsed data -----
         parsed_dir = os.path.join(run_dir, "parsed_data")
         parsing_stats, particle_stats = self._read_parsed_data_stats(parsed_dir)
         if parsing_stats:
+            if batch_exec_stats.get("parsing_time_sec", 0) > 0:
+                parsing_stats["total_time_sec"] = batch_exec_stats["parsing_time_sec"]
             pipeline_stats['parsing'] = parsing_stats
         if particle_stats:
             pipeline_stats['particles'] = particle_stats
@@ -252,21 +260,74 @@ class PipelineExecutor:
         im_dir = os.path.join(run_dir, "im_arrays")
         mass_stats = self._read_im_array_stats(im_dir)
         if mass_stats:
+            if batch_exec_stats.get("mass_calc_time_sec", 0) > 0:
+                mass_stats["total_time_sec"] = batch_exec_stats["mass_calc_time_sec"]
             pipeline_stats['mass_calc'] = mass_stats
 
         # ----- Post-processed arrays -----
         im_proc_dir = os.path.join(run_dir, "im_arrays_processed")
         post_stats = self._read_post_processing_stats(im_proc_dir)
         if post_stats:
+            if batch_exec_stats.get("post_processing_time_sec", 0) > 0:
+                post_stats["total_time_sec"] = batch_exec_stats["post_processing_time_sec"]
             pipeline_stats['post_processing'] = post_stats
 
         # ----- Histograms -----
         hist_dir = os.path.join(run_dir, "histograms")
-        hist_stats = self._read_histogram_stats(hist_dir)
+        hist_stats = self._read_histogram_stats(hist_dir, post_stats=post_stats)
         if hist_stats:
+            if batch_exec_stats.get("histogram_time_sec", 0) > 0:
+                hist_stats["total_time_sec"] = batch_exec_stats["histogram_time_sec"]
             pipeline_stats['histograms'] = hist_stats
 
         return pipeline_stats
+
+    def _read_batch_execution_stats(self, run_dir: str) -> dict:
+        """
+        Recover stage timings from per-batch stdout logs and aggregated stats.
+
+        This is used for plot reconstruction in merge/plots-only mode when
+        handlers did not persist stage timing objects in JSON stats.
+        """
+        logs_dir = Path(run_dir) / "logs"
+        if not logs_dir.is_dir():
+            return {}
+
+        stats = {
+            "parsing_time_sec": 0.0,
+            "mass_calc_time_sec": 0.0,
+            "post_processing_time_sec": 0.0,
+            "histogram_time_sec": 0.0,
+            "total_batch_time_sec": 0.0,
+        }
+
+        mass_re = re.compile(r"Mass calculation complete: .* in ([0-9.]+)s")
+        post_re = re.compile(r"Post-processing complete: .* in ([0-9.]+)s")
+        hist_re = re.compile(r"Histogram creation complete in ([0-9.]+)s")
+
+        for out_file in sorted(logs_dir.glob("batch_*.out")):
+            try:
+                text = out_file.read_text(errors="ignore")
+            except Exception:
+                continue
+
+            for m in mass_re.findall(text):
+                stats["mass_calc_time_sec"] += float(m)
+            for m in post_re.findall(text):
+                stats["post_processing_time_sec"] += float(m)
+            for m in hist_re.findall(text):
+                stats["histogram_time_sec"] += float(m)
+
+        aggregated_path = logs_dir / "aggregated_stats.json"
+        if aggregated_path.exists():
+            try:
+                with open(aggregated_path) as f:
+                    agg = json.load(f)
+                stats["total_batch_time_sec"] = float(agg.get("total_batch_time_sec", 0) or 0)
+            except Exception:
+                pass
+
+        return stats
 
     def _read_parsed_data_stats(self, parsed_dir: str):
         """Read all parsed ROOT files and compute consolidated stats."""
@@ -354,29 +415,78 @@ class PipelineExecutor:
             return None
 
         if sqlite_files and not npy_files:
-            total_entries = 0
+            total_mass_values = 0
+            combos_per_object = {}
+            combo_sizes = {}
+            fs_events = {}
+            unique_fs = set()
+            unique_channels = set()
             total_signatures = 0
+
+            fs_im_pattern = re.compile(
+                r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)$'
+            )
+            particle_pattern = re.compile(r'(\d+)([emjg])')
+            particle_name_map = {'e': 'Electrons', 'm': 'Muons', 'j': 'Jets', 'g': 'Photons'}
+
             for sf in sqlite_files:
-                total_entries += get_total_entries(str(sf))
-                total_signatures += len(list_signatures(str(sf)))
+                # Aggregate n_entries per signature directly from metadata column.
+                with sqlite3.connect(str(sf)) as conn:
+                    rows = conn.execute(
+                        """
+                        SELECT signature, COALESCE(SUM(n_entries), 0) AS entries
+                        FROM array_chunks
+                        GROUP BY signature
+                        """
+                    ).fetchall()
+
+                total_signatures += len(rows)
+                for signature, entries in rows:
+                    entries = int(entries or 0)
+                    if entries <= 0:
+                        continue
+
+                    total_mass_values += entries
+                    match = fs_im_pattern.search(signature)
+                    if not match:
+                        continue
+
+                    fs_str, im_str = match.groups()
+                    unique_fs.add(fs_str)
+                    fs_events[fs_str] = fs_events.get(fs_str, 0) + entries
+                    channel = (fs_str, im_str)
+
+                    if channel not in unique_channels:
+                        unique_channels.add(channel)
+                        im_particles = particle_pattern.findall(im_str)
+                        involved_types = 0
+                        for count_str, pchar in im_particles:
+                            count = int(count_str)
+                            if count > 0:
+                                involved_types += 1
+                                pname = particle_name_map.get(pchar, pchar)
+                                combos_per_object[pname] = combos_per_object.get(pname, 0) + 1
+                        combo_sizes[involved_types] = combo_sizes.get(involved_types, 0) + 1
+
             return {
-                'total_final_states': 0,
-                'total_combinations': total_entries,
-                'total_events_processed': 0,
-                'combinations_per_object': {},
-                'combination_size_distribution': {},
-                'events_per_final_state': {},
+                'total_final_states': len(unique_fs),
+                'total_combinations': len(unique_channels),
+                'total_events_processed': total_mass_values,
+                'combinations_per_object': combos_per_object,
+                'combination_size_distribution': combo_sizes,
+                'events_per_final_state': fs_events,
                 'total_time_sec': 0,
                 'total_signatures': total_signatures,
                 'num_shards': len(sqlite_files),
+                'total_mass_values': total_mass_values,
             }
 
-        total_combinations = 0
+        total_mass_values = 0
         combos_per_object = {}   # e.g. {"Electrons": 12345, "Muons": 678, ...}
         combo_sizes = {}         # e.g. {2: 5, 3: 3, 4: 1} — num particle types involved
         fs_events = {}           # final-state string → total IM values across files
         unique_fs = set()
-        unique_im = set()
+        unique_channels = set()
 
         fs_im_pattern = re.compile(
             r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)'
@@ -388,7 +498,7 @@ class PipelineExecutor:
             try:
                 arr = np.load(str(nf), allow_pickle=True)
                 n_entries = len(arr)
-                total_combinations += n_entries
+                total_mass_values += n_entries
 
                 match = fs_im_pattern.search(nf.stem)
                 if not match:
@@ -397,39 +507,38 @@ class PipelineExecutor:
 
                 fs_str, im_str = match.groups()
                 unique_fs.add(fs_str)
-                unique_im.add(im_str)
+                channel = (fs_str, im_str)
 
                 # --- Aggregate events per final state ---
                 fs_events[fs_str] = fs_events.get(fs_str, 0) + n_entries
 
-                # --- Combos per object type ---
-                # Weight by how many particles of each type are in the combination
-                # e.g. IM_2e_2m_4j_2g → Electrons+=2*n, Jets+=4*n, etc.
-                im_particles = particle_pattern.findall(im_str)
-                involved_types = 0
-                for count_str, pchar in im_particles:
-                    count = int(count_str)
-                    if count > 0:
-                        involved_types += 1
-                        pname = particle_name_map.get(pchar, pchar)
-                        combos_per_object[pname] = (
-                            combos_per_object.get(pname, 0) + count * n_entries
-                        )
+                if channel not in unique_channels:
+                    unique_channels.add(channel)
+                    # --- Per-object participation in unique channels ---
+                    im_particles = particle_pattern.findall(im_str)
+                    involved_types = 0
+                    for count_str, pchar in im_particles:
+                        count = int(count_str)
+                        if count > 0:
+                            involved_types += 1
+                            pname = particle_name_map.get(pchar, pchar)
+                            combos_per_object[pname] = combos_per_object.get(pname, 0) + 1
 
-                # --- Combination size (number of particle types involved) ---
-                combo_sizes[involved_types] = combo_sizes.get(involved_types, 0) + 1
+                    # --- Channel size (number of particle types involved) ---
+                    combo_sizes[involved_types] = combo_sizes.get(involved_types, 0) + 1
 
             except Exception as e:
                 self.logger.warning(f"Could not read {nf}: {e}")
 
         return {
             'total_final_states': len(unique_fs),
-            'total_combinations': total_combinations,
-            'total_events_processed': 0,
+            'total_combinations': len(unique_channels),
+            'total_events_processed': total_mass_values,
             'combinations_per_object': combos_per_object,
             'combination_size_distribution': combo_sizes,
             'events_per_final_state': fs_events,
             'total_time_sec': 0,
+            'total_mass_values': total_mass_values,
         }
 
     def _read_post_processing_stats(self, proc_dir: str):
@@ -446,31 +555,71 @@ class PipelineExecutor:
             total_signatures = 0
             total_entries = 0
             outlier_signatures = 0
+            main_entries = 0
+            outlier_entries = 0
+            unique_outlier_channels = set()
+            outlier_pattern = re.compile(
+                r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)_outliers$"
+            )
             for sf in sqlite_files:
-                sigs = list_signatures(str(sf))
-                total_signatures += len(sigs)
-                total_entries += get_total_entries(str(sf))
-                outlier_signatures += sum(1 for s in sigs if s.endswith("_outliers"))
+                with sqlite3.connect(str(sf)) as conn:
+                    rows = conn.execute(
+                        """
+                        SELECT signature, COALESCE(SUM(n_entries), 0) AS entries
+                        FROM array_chunks
+                        GROUP BY signature
+                        """
+                    ).fetchall()
+                total_signatures += len(rows)
+                for signature, entries in rows:
+                    entries = int(entries or 0)
+                    total_entries += entries
+                    if signature.endswith("_outliers"):
+                        outlier_signatures += 1
+                        outlier_entries += entries
+                        match = outlier_pattern.search(signature)
+                        if match:
+                            unique_outlier_channels.add(match.groups())
+                    else:
+                        main_entries += entries
             return {
                 'total_files': total_signatures,
                 'main_files': total_signatures - outlier_signatures,
                 'outlier_files': outlier_signatures,
                 'total_time_sec': 0,
                 'total_entries': total_entries,
+                'main_entries': main_entries,
+                'outlier_entries': outlier_entries,
+                'outlier_groups': len(unique_outlier_channels),
                 'num_shards': len(sqlite_files),
             }
 
         main_count = sum(1 for f in npy_files if 'outlier' not in f.stem)
         outlier_count = sum(1 for f in npy_files if 'outlier' in f.stem)
+        main_entries = 0
+        outlier_entries = 0
+        for f in npy_files:
+            try:
+                arr = np.load(str(f), allow_pickle=True)
+                if 'outlier' in f.stem:
+                    outlier_entries += int(len(arr))
+                else:
+                    main_entries += int(len(arr))
+            except Exception:
+                continue
 
         return {
             'total_files': len(npy_files),
             'main_files': main_count,
             'outlier_files': outlier_count,
             'total_time_sec': 0,
+            'total_entries': main_entries + outlier_entries,
+            'main_entries': main_entries,
+            'outlier_entries': outlier_entries,
+            'outlier_groups': outlier_count,
         }
 
-    def _read_histogram_stats(self, hist_dir: str):
+    def _read_histogram_stats(self, hist_dir: str, post_stats: Optional[dict] = None):
         """Read histogram ROOT files and compute stats."""
         if not os.path.isdir(hist_dir):
             return None
@@ -530,9 +679,9 @@ class PipelineExecutor:
             'total_histograms': total_histograms,
             'main_histograms': main_histograms,
             'outlier_histograms': outlier_histograms,
-            'peaks_detected': 0,
-            'peaks_cut': 0,
-            'histograms_with_peaks_cut': 0,
+            'peaks_detected': int((post_stats or {}).get('outlier_groups', 0)),
+            'peaks_cut': int((post_stats or {}).get('outlier_entries', 0)),
+            'histograms_with_peaks_cut': int((post_stats or {}).get('outlier_groups', 0)),
             'entries_per_histogram': entries_per_histogram,
             'histograms_per_final_state': fs_hist_counts,
             'bin_width_gev': hc.bin_width_gev if hc else 'N/A',
