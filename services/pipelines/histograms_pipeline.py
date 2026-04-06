@@ -203,7 +203,9 @@ def _group_signatures_by_bumpnet(signatures: List[str]) -> Dict[str, List[str]]:
         elif cleaned.endswith("_outliers"):
             cleaned = cleaned[:-9]
 
-        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)$", cleaned)
+        #match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)$", cleaned)
+        # NEW — matches index-based: IM_e0e1j0
+        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([e\dm\djg\d]*)$", cleaned)
         if not match:
             continue
         fs_str, im_str = match.groups()
@@ -287,7 +289,8 @@ def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
     groups = defaultdict(list)
     unmatched_files = []
     for filename in im_files:
-        match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)', filename)
+        #match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)', filename)
+        match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([e0-9m j0-9g0-9]+)', filename)
         if match:
             fs_str, im_str = match.groups()
             bumpnet_name = _convert_to_bumpnet_name(fs_str, im_str)
@@ -300,23 +303,55 @@ def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
     return dict(groups)
 
 
-def _convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
-    particles = re.findall(r'(\d+)([emjg])', im_str)
-    combo_parts = [f"{p}{c}" for c, p in particles if c != '0']
-    combo = "".join(combo_parts) if combo_parts else "none"
+# def _convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
+#     particles = re.findall(r'(\d+)([emjg])', im_str)
+#     combo_parts = [f"{p}{c}" for c, p in particles if c != '0']
+#     combo = "".join(combo_parts) if combo_parts else "none"
 
+#     fs_particles = re.findall(r'(\d+)([emjg])', fs_str)
+#     fs_formatted = "_".join(f"{c}{p}x" for c, p in fs_particles)
+
+#     result = f"mass_{combo}_cat_{fs_formatted}"
+
+#     if 'cat' not in result and 'hCat' not in result:
+#         raise ValueError(
+#             f"Generated histogram name '{result}' doesn't contain 'cat' or 'hCat' "
+#             "- this will cause UnboundLocalError in BumpNet"
+#         )
+#     return result
+def _convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
+    """
+    Convert FS and IM strings to a BumpNet histogram name.
+
+    IM string is now index-based (e.g. "e0e1j0") so it passes through
+    directly as the combo part — no conversion needed.
+
+    FS string remains count-based (e.g. "2e_0m_3j_0g") and is formatted
+    as before (e.g. "2ex_0mx_3jx_0gx").
+
+    Examples:
+      fs="2e_0m_3j_0g"  im="e0j0"   → mass_e0j0_cat_2ex_0mx_3jx_0gx
+      fs="2e_0m_3j_0g"  im="e0e1j0" → mass_e0e1j0_cat_2ex_0mx_3jx_0gx
+      fs="2e_0m_3j_0g"  im="e1j0"   → mass_e1j0_cat_2ex_0mx_3jx_0gx  (future sub-leading)
+
+    The regex in _group_signatures_by_bumpnet that feeds this function
+    also needs to be updated.
+    """
+    # IM part is already index-based — use directly as combo
+    combo = im_str if im_str else "none"
+
+    # FS part: count-based "2e_0m_3j_0g" → "2ex_0mx_3jx_0gx"
     fs_particles = re.findall(r'(\d+)([emjg])', fs_str)
-    fs_formatted = "_".join(f"{c}{p}x" for c, p in fs_particles)
+    fs_formatted  = "_".join(f"{c}{p}x" for c, p in fs_particles)
 
     result = f"mass_{combo}_cat_{fs_formatted}"
 
     if 'cat' not in result and 'hCat' not in result:
         raise ValueError(
-            f"Generated histogram name '{result}' doesn't contain 'cat' or 'hCat' "
-            "- this will cause UnboundLocalError in BumpNet"
+            f"Generated histogram name '{result}' doesn't contain 'cat' — "
+            "BumpNet incompatible"
         )
     return result
-
 
 def _process_im_arrays_bumpnet(
     im_arrays_dir: str, output_dir: str, bin_widths_gev: list,

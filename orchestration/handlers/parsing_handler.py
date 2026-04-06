@@ -11,6 +11,8 @@ from pathlib import Path
 import uproot
 import awkward as ak
 
+import gc
+
 from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
@@ -172,6 +174,8 @@ class ParsingHandler(StateHandler):
                         f"Saved chunk {chunk.chunk_index}: "
                         f"{chunk.event_count} events, {chunk.size_mb:.1f} MB → {file_path}"
                     )
+                    del chunk
+                    gc.collect()
         
         # Flush remaining events
         final_chunk = self.accumulator.flush()
@@ -191,6 +195,8 @@ class ParsingHandler(StateHandler):
             self.logger.info(
                 f"Saved final chunk: {final_chunk.event_count} events, {final_chunk.size_mb:.1f} MB → {file_path}"
             )
+            del final_chunk;
+            gc.collect()
         
         # Create parsing statistics
         end_time = datetime.now()

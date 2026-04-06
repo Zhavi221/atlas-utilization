@@ -34,13 +34,13 @@ paths:
 
 # ===NAMES====================================================================
 names:
-  run_name:           &run_name           "atlas_full_120"
+  run_name:           &run_name           "atlas_full_fixComb_fixCut"
   histogram_filename: &histogram_filename "atlas_opendata_full_bumpnet.root"
 
 # ===RUN METADATA=============================================================
 run_metadata:
   run_name: *run_name
-  base_output_dir: "/storage/agrp/netalev/data"
+  base_output_dir: "/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data"
   batch_job_index: null                  # set by submit.sh (--batch-job-index)
   total_batch_jobs: null                 # set by submit.sh (--total-batch-jobs)
 
@@ -82,9 +82,9 @@ parsing_task_config:
   # ===PERFORMANCE===
   use_multiprocessing: false
   parallel_processes: 4
-  threads: 8
+  threads: 2
   env_threshold_memory_mb: 8000
-  chunk_yield_threshold_bytes: 2147483648  # 2 GB
+  chunk_yield_threshold_bytes: 268435456  # 256MB instead of 2GB 2147483648  # 2 GB
   count_retries_failed_files: 3
   fetching_metadata_timeout: 60
   max_files_to_process: null             # null = all files; set e.g. 3 for a quick test
@@ -100,36 +100,37 @@ parsing_task_config:
 
   # ===EVENT FILTERING===
   particle_counts:
-    electrons: { min: 1, max: 4 }
+    electrons: { min: 0, max: 4 }
     muons:     { min: 0, max: 4 }
-    jets:      { min: 0, max: 10 }
+    jets:      { min: 0, max: 4 }
     photons:   { min: 0, max: 4 }
 
   kinematic_cuts:
-    electrons: { pt_min: 25.0, eta_max: 2.47 }
-    muons:     { pt_min: 25.0, eta_max: 2.5 }
-    jets:      { pt_min: 30.0, eta_max: 4.5 }
-    photons:   { pt_min: 25.0, eta_max: 2.37 }
+    electrons: { pt_min: 25000.0, eta_max: 2.47 } #pt in MeV
+    muons:     { pt_min: 25000.0, eta_max: 2.5 }
+    jets:      { pt_min: 30000.0, eta_max: 4.5 }
+    photons:   { pt_min: 25000.0, eta_max: 2.37 }
 
 # --- 2. Mass Calculation -----------------------------------------------------
 # Computes invariant masses for every valid particle combination per final state.
 mass_calculation_task_config:
   # ===PATHS===
-  input_dir:  "/storage/agrp/netalev/data/atlas_pp_root_files"
+  # input_dir:  "/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data/atlas_pp_root_files"
+  input_dir:  "/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data/atlas_full_fixComb_fixCut_20260403_230628/parsed_data"
   output_dir: *im_arrays_path
 
   # ===PROCESSING===
   field_to_slice_by: "pt"
-  use_multiprocessing: true
-  parallel_processes: 4
-  fs_chunk_threshold_bytes: 2000000000  # 2 GB
+  use_multiprocessing: false #true
+  parallel_processes: 1 #4
+  fs_chunk_threshold_bytes: 500000000 #2000000000  # 2 GB
 
   # ===COMBINATORICS===
   objects_to_calculate: [Electrons, Muons, Jets, Photons]
   min_particles_in_combination: 2        # min particle types in a combination
-  max_particles_in_combination: 4        # max particle types
+  max_particles_in_combination: 4        # max particle types was 4 reduces 12,567 → ~28 combinations
   min_count_particle_in_combination: 1   # min count per type
-  max_count_particle_in_combination: 4   # max count per type
+  max_count_particle_in_combination: 4   # max count per type was 4
   min_events_per_fs: 100                 # drop final states with fewer events
 
 # --- 3. Post-Processing ------------------------------------------------------
@@ -140,7 +141,7 @@ post_processing_task_config:
   output_dir: *im_arrays_processed_path
 
   # ===PROCESSING===
-  peak_detection_bin_width_gev: 10.0
+  peak_detection_bin_width_gev: 10.0 
 
 # --- 4. Histogram Creation ---------------------------------------------------
 # Builds ROOT histograms from processed invariant-mass arrays.

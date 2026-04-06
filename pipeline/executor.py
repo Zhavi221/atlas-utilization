@@ -163,9 +163,11 @@ class PipelineExecutor:
                 if result.returncode == 0:
                     self.logger.info(f"hadd succeeded: {merged_path}")
                     # Clean up batch files
+                    archive_dir = Path(hist_dir) / "batch_files_archive"
+                    archive_dir.mkdir(exist_ok=True)
                     for bf in batch_roots:
-                        bf.unlink()
-                        self.logger.debug(f"Removed batch file: {bf}")
+                        bf.rename(archive_dir / bf.name)   
+                        self.logger.debug(f"Archived batch file: {bf.name}")
                 else:
                     self.logger.error(f"hadd failed (rc={result.returncode}): {result.stderr}")
             except FileNotFoundError:
@@ -216,7 +218,7 @@ class PipelineExecutor:
             for key in ("total_events", "successful_files", "failed_files",
                         "total_chunks", "total_size_mb"):
                 if key in p:
-                    parsing_sums[key] = parsing_sums.get(key, 0) + p[key]
+                    parsing_sums[key] = parsing_sums.get(key, 0) + int(float(p[key]))
         if parsing_sums:
             aggregated["parsing_totals"] = parsing_sums
 
@@ -268,8 +270,73 @@ class PipelineExecutor:
 
         return pipeline_stats
 
+    # def _read_parsed_data_stats(self, parsed_dir: str):
+    #     """Read all parsed ROOT files and compute consolidated stats."""
+    #     import uproot
+    #     import numpy as np
+
+    #     if not os.path.isdir(parsed_dir):
+    #         return None, None
+
+    #     root_files = sorted(Path(parsed_dir).glob("*.root"))
+    #     if not root_files:
+    #         return None, None
+
+    #     total_events = 0
+    #     total_size_bytes = 0
+    #     particle_counts = {}      # {type: total_count}
+    #     particle_dists = {}       # {type: [per-event counts]}
+    #     events_per_file = []
+
+    #     for rf in root_files:
+    #         try:
+    #             total_size_bytes += rf.stat().st_size
+    #             with uproot.open(str(rf)) as f:
+    #                 if "events" not in f:
+    #                     continue
+    #                 tree = f["events"]
+    #                 n_events = tree.num_entries
+    #                 total_events += n_events
+    #                 events_per_file.append(n_events)
+
+    #                 # Discover particle branches (nElectrons, nMuons, …)
+    #                 for branch_name in tree.keys():
+    #                     if branch_name.startswith("n") and branch_name != "nEvents":
+    #                         ptype = branch_name[1:]  # e.g. "Electrons"
+    #                         counts = tree[branch_name].array(library="np")
+    #                         total_for_type = int(np.sum(counts))
+    #                         particle_counts[ptype] = particle_counts.get(ptype, 0) + total_for_type
+    #                         if ptype not in particle_dists:
+    #                             particle_dists[ptype] = []
+    #                         particle_dists[ptype].extend(counts.tolist())
+    #         except Exception as e:
+    #             self.logger.warning(f"Could not read {rf}: {e}")
+
+    #     avg_per_file = total_events / len(root_files) if root_files else 0
+
+    #     parsing_stats = {
+    #         'total_files': len(root_files),
+    #         'successful_files': len(root_files),
+    #         'failed_files': 0,
+    #         'total_events': total_events,
+    #         'total_chunks': len(root_files),
+    #         'total_size_mb': total_size_bytes / (1024 * 1024),
+    #         'total_time_sec': 0,   # not available from disk
+    #         'average_events_per_file': avg_per_file,
+    #         'max_memory_mb': 0,
+    #         'timeout_count': 0,
+    #         'error_types': {},
+    #     }
+
+    #     particle_stats = {
+    #         'particle_counts': particle_counts,
+    #         'distributions': particle_dists,
+    #         'events_per_file': events_per_file,
+    #     }
+
+    #     return parsing_stats, particle_stats
+
     def _read_parsed_data_stats(self, parsed_dir: str):
-        """Read all parsed ROOT files and compute consolidated stats."""
         import uproot
         import numpy as np
 
@@ -282,8 +349,7 @@ class PipelineExecutor:
 
         total_events = 0
         total_size_bytes = 0
-        particle_counts = {}      # {type: total_count}
-        particle_dists = {}       # {type: [per-event counts]}
+        particle_counts = {}
         events_per_file = []
 
         for rf in root_files:
@@ -297,18 +363,16 @@ class PipelineExecutor:
                     total_events += n_events
                     events_per_file.append(n_events)
 
-                    # Discover particle branches (nElectrons, nMuons, …)
                     for branch_name in tree.keys():
                         if branch_name.startswith("n") and branch_name != "nEvents":
-                            ptype = branch_name[1:]  # e.g. "Electrons"
+                            ptype = branch_name[1:]
+                            # Only read sum, not full array — avoids memory blowup
                             counts = tree[branch_name].array(library="np")
-                            total_for_type = int(np.sum(counts))
-                            particle_counts[ptype] = particle_counts.get(ptype, 0) + total_for_type
-                            if ptype not in particle_dists:
-                                particle_dists[ptype] = []
-                            particle_dists[ptype].extend(counts.tolist())
+                            particle_counts[ptype] = particle_counts.get(ptype, 0) + int(np.sum(counts))
+                            del counts  # free immediately
             except Exception as e:
                 self.logger.warning(f"Could not read {rf}: {e}")
+
 
         avg_per_file = total_events / len(root_files) if root_files else 0
 
@@ -319,7 +383,7 @@ class PipelineExecutor:
             'total_events': total_events,
             'total_chunks': len(root_files),
             'total_size_mb': total_size_bytes / (1024 * 1024),
-            'total_time_sec': 0,   # not available from disk
+            'total_time_sec': 0,
             'average_events_per_file': avg_per_file,
             'max_memory_mb': 0,
             'timeout_count': 0,
@@ -328,11 +392,11 @@ class PipelineExecutor:
 
         particle_stats = {
             'particle_counts': particle_counts,
-            'distributions': particle_dists,
+            'distributions': {},   # dropped — too large for 671 files
             'events_per_file': events_per_file,
         }
 
-        return parsing_stats, particle_stats
+        return parsing_stats, particle_stats    
 
     def _read_im_array_stats(self, im_dir: str):
         """Read invariant mass array (.npy) files and compute stats.

@@ -69,7 +69,7 @@ cd ${PIPELINE_DIR}
 
 export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
 source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
-lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
+lsetup "views LCG_107 x86_64-el9-gcc14-opt"
 
 python -u main.py --config "${CONFIG}" --run-dir "${RUN_DIR}" \
     > "${LOG_DIR}/pipeline.out" \
@@ -95,7 +95,7 @@ cd ${PIPELINE_DIR}
 
 export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
 source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
-lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
+lsetup "views LCG_107 x86_64-el9-gcc14-opt"
 
 python -u main.py --config "${CONFIG}" \
     --batch-job-index \${PBS_ARRAY_INDEX} \
@@ -122,7 +122,7 @@ cd ${PIPELINE_DIR}
 
 export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
 source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
-lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
+lsetup "views LCG_107 x86_64-el9-gcc14-opt"
 
 python -u main.py --config "${CONFIG}" \
     --merge-only \

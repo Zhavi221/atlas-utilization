@@ -278,17 +278,58 @@ def _fs_dict_exceeding_threshold(fs_im_mapping: Dict, threshold: int) -> bool:
     return total_size >= threshold
 
 
+# def prepare_im_combination_name(
+#     filename: str,
+#     final_state: str,
+#     combination: Dict[str, int]
+# ) -> str:
+#     base_filename = filename.replace(".root", "")
+
+#     e_count = combination.get("Electrons", 0)
+#     j_count = combination.get("Jets", 0)
+#     m_count = combination.get("Muons", 0)
+#     g_count = combination.get("Photons", 0)
+
+#     combination_part = f"{e_count}e_{m_count}m_{j_count}j_{g_count}g"
+#     return f"{base_filename}_FS_{final_state}_IM_{combination_part}"
 def prepare_im_combination_name(
     filename: str,
     final_state: str,
     combination: Dict[str, int]
 ) -> str:
+    """
+    Build the SQLite signature name for a given IM combination.
+
+    IM part uses BumpNet index-based convention:
+      count N of particle type X → indices 0..N-1 → encoded as X0X1...X(N-1)
+
+    Examples:
+      {"Electrons": 1, "Jets": 1}          → IM_e0j0
+      {"Electrons": 2, "Jets": 1}          → IM_e0e1j0
+      {"Electrons": 1, "Muons": 1}         → IM_e0m0
+      {"Electrons": 2, "Muons": 1, "Jets": 1} → IM_e0e1m0j0
+
+    This is unambiguous: IM_e0j0 = leading e + leading j (2-body),
+    IM_e0e1j0 = leading e + sub-leading e + leading j (3-body).
+
+    Future sub-leading support (Fix 2): when start_indices are added,
+    {"Electrons": 1, start=1, "Jets": 1, start=0} → IM_e1j0 naturally.
+    """
     base_filename = filename.replace(".root", "")
 
-    e_count = combination.get("Electrons", 0)
-    j_count = combination.get("Jets", 0)
-    m_count = combination.get("Muons", 0)
-    g_count = combination.get("Photons", 0)
+    # Canonical particle order matches BumpNet convention
+    PARTICLE_ORDER = [
+        ("Electrons", "e"),
+        ("Muons",     "m"),
+        ("Jets",      "j"),
+        ("Photons",   "g"),
+    ]
 
-    combination_part = f"{e_count}e_{m_count}m_{j_count}j_{g_count}g"
-    return f"{base_filename}_FS_{final_state}_IM_{combination_part}"
+    im_parts = []
+    for ptype, letter in PARTICLE_ORDER:
+        count = combination.get(ptype, 0)
+        for idx in range(count):
+            im_parts.append(f"{letter}{idx}")
+
+    im_str = "".join(im_parts)   # e.g. "e0e1j0"
+    return f"{base_filename}_FS_{final_state}_IM_{im_str}"
