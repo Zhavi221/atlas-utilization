@@ -36,7 +36,7 @@ Histogram names follow the same convention:
 
 ---
 
-### Fix 2 — Kinematic cuts in MeV (`config10GeVbin.yaml`)
+### Fix 2 — Kinematic cuts in MeV (`config.yaml`)
 
 **Problem:** ATLAS PHYSLITE stores all 4-vector quantities (pt, mass, energy) in
 MeV. The original config used `pt_min: 25.0`, which meant 25 MeV — effectively
@@ -89,7 +89,7 @@ The ROOT files on disk are unaffected — only the in-memory Python object is fr
 `threads: 8` allowed up to 16 GB of awkward arrays to accumulate before any
 flush, leading to memory explosions when running all pipeline stages in one job.
 
-**Fix** in `config10GeVbin.yaml`:
+**Fix** in `config.yaml`:
 
 ```yaml
 parsing_task_config:
@@ -101,7 +101,7 @@ parsing_task_config:
 
 ## New Files
 
-### `config10GeVbin.yaml`
+### `config.yaml`
 Main config for the ATLAS Open Data BumpNet run. Key settings:
 - 10 GeV bin width for histograms
 - Correct MeV kinematic cuts
@@ -206,20 +206,5 @@ updated for multi-body final states.
 
 - ATLAS Open Data 2024r-pp release: 70,201 files, ~65 TB
 - pT stored in MeV in all PHYSLITE branches
-- Parsed data: ~107 chunks × ~2 GB = ~183 GB (15% of full dataset)
-- Full dataset parsing: ~22–30 hours on a single PBS node
-- Mass calculation: ~52 seconds per chunk with `max_particles_in_combination: 2`
 
 ---
-
-## How to Add This README to the Branch
-
-```bash
-# Save this file as CHANGES.md in the repository root
-cp CHANGES.md /path/to/atlas-utilization/CHANGES.md
-
-cd /path/to/atlas-utilization
-git add CHANGES.md
-git commit -m "Add CHANGES.md documenting Open Data BumpNet fixes"
-git push origin atlas-opendata-bumpnet
-```
