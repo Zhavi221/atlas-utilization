@@ -289,6 +289,9 @@ def prepare_im_combination_name(
     j_count = combination.get("Jets", 0)
     m_count = combination.get("Muons", 0)
     g_count = combination.get("Photons", 0)
+    t_count = combination.get("Taus", 0)
+    b_count = combination.get("BJets", 0)
+    l_count = combination.get("LJets", 0)
 
-    combination_part = f"{e_count}e_{m_count}m_{j_count}j_{g_count}g"
+    combination_part = f"{e_count}e_{m_count}m_{j_count}j_{g_count}g_{t_count}t_{b_count}b_{l_count}l"
     return f"{base_filename}_FS_{final_state}_IM_{combination_part}"

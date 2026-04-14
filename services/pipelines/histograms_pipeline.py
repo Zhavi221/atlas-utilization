@@ -32,6 +32,7 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
         bin_widths_gev = bin_width_gev
     use_bumpnet_naming = histograms_config.get("use_bumpnet_naming", False)
     exclude_outliers = histograms_config.get("exclude_outliers", False)
+    apply_peak_removal = histograms_config.get("apply_peak_removal_at_histogram_level", False)
 
     if file_list is not None:
         sqlite_files = [f for f in file_list if f.endswith(".sqlite")]
@@ -47,7 +48,13 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
             if not existing_sqlite:
                 logger.warning(f"None of the {len(sqlite_files)} specified SQLite files exist in {input_dir}")
                 return
-            return _create_histograms_from_sqlite(existing_sqlite, input_dir, histograms_config, logger)
+            return _create_histograms_from_sqlite(
+                existing_sqlite,
+                input_dir,
+                histograms_config,
+                logger,
+                apply_peak_removal=apply_peak_removal,
+            )
 
         im_array_files = [f for f in file_list if f.endswith(".npy")]
         logger.info(f"Using explicit file list with {len(im_array_files)} IM array files")
@@ -71,7 +78,13 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
 
         sqlite_files = [f for f in os.listdir(input_dir) if f.endswith(".sqlite")]
         if sqlite_files:
-            return _create_histograms_from_sqlite(sorted(sqlite_files), input_dir, histograms_config, logger)
+            return _create_histograms_from_sqlite(
+                sorted(sqlite_files),
+                input_dir,
+                histograms_config,
+                logger,
+                apply_peak_removal=apply_peak_removal,
+            )
 
         im_array_files = [f for f in os.listdir(input_dir) if f.endswith(".npy")]
         if not im_array_files:
@@ -101,13 +114,17 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
         logger.info("Using BumpNet naming mode: grouping files by signature and merging")
         _process_im_arrays_bumpnet(
             input_dir, output_dir, bin_widths_gev, logger, im_array_files,
-            single_output_file=single_output_file, output_filename=output_filename
+            single_output_file=single_output_file,
+            output_filename=output_filename,
+            apply_peak_removal=apply_peak_removal,
         )
     else:
         logger.info("Using standard naming mode")
         _process_im_arrays_standard(
             input_dir, output_dir, bin_widths_gev, logger, im_array_files,
-            single_output_file=single_output_file, output_filename=output_filename
+            single_output_file=single_output_file,
+            output_filename=output_filename,
+            apply_peak_removal=apply_peak_removal,
         )
 
 
@@ -116,6 +133,7 @@ def _create_histograms_from_sqlite(
     input_dir: str,
     histograms_config: Dict,
     logger: logging.Logger,
+    apply_peak_removal: bool = False,
 ):
     output_dir = histograms_config["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
@@ -153,7 +171,7 @@ def _create_histograms_from_sqlite(
             hist_count = 0
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
-                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger
+                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger, apply_peak_removal
                 )
                 if hists:
                     _write_hists_to_shared_file(hists, root_filepath, logger)
@@ -162,7 +180,7 @@ def _create_histograms_from_sqlite(
         else:
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
-                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger
+                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger, apply_peak_removal
                 )
                 if hists:
                     root_filename = f"{bumpnet_name}_hists.root"
@@ -176,14 +194,18 @@ def _create_histograms_from_sqlite(
             root_filepath = os.path.join(output_dir, output_filename)
             hist_count = 0
             for signature in signatures:
-                hists = _create_histograms_for_signature(signature, db_paths, bin_widths_gev, logger)
+                hists = _create_histograms_for_signature(
+                    signature, db_paths, bin_widths_gev, logger, apply_peak_removal
+                )
                 if hists:
                     _write_hists_to_shared_file(hists, root_filepath, logger)
                     hist_count += len(hists)
             logger.info(f"Wrote {hist_count} histograms to shared file {root_filepath}")
         else:
             for signature in signatures:
-                hists = _create_histograms_for_signature(signature, db_paths, bin_widths_gev, logger)
+                hists = _create_histograms_for_signature(
+                    signature, db_paths, bin_widths_gev, logger, apply_peak_removal
+                )
                 if hists:
                     root_filename = f"{signature}_hists.root"
                     root_filepath = os.path.join(output_dir, root_filename)
@@ -203,7 +225,7 @@ def _group_signatures_by_bumpnet(signatures: List[str]) -> Dict[str, List[str]]:
         elif cleaned.endswith("_outliers"):
             cleaned = cleaned[:-9]
 
-        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)$", cleaned)
+        match = re.search(r"_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)$", cleaned)
         if not match:
             continue
         fs_str, im_str = match.groups()
@@ -220,7 +242,11 @@ def _iter_signature_chunks(signature: str, db_paths: List[str]):
 
 
 def _create_histograms_for_signature(
-    signature: str, db_paths: List[str], bin_widths_gev: List[float], logger: logging.Logger
+    signature: str,
+    db_paths: List[str],
+    bin_widths_gev: List[float],
+    logger: logging.Logger,
+    apply_peak_removal: bool = False,
 ) -> List[ROOT.TH1F]:
     global_min, global_max = float("inf"), float("-inf")
     has_data = False
@@ -242,6 +268,9 @@ def _create_histograms_for_signature(
         for hist in histograms:
             for val in chunk:
                 hist.Fill(float(val))
+    if apply_peak_removal:
+        for hist in histograms:
+            _apply_peak_removal_to_histogram(hist)
     return histograms
 
 
@@ -251,6 +280,7 @@ def _create_merged_histograms_from_sqlite_signatures(
     hist_name_base: str,
     bin_widths_gev: List[float],
     logger: logging.Logger,
+    apply_peak_removal: bool = False,
 ) -> List[ROOT.TH1F]:
     global_min, global_max = float("inf"), float("-inf")
     has_data = False
@@ -280,6 +310,9 @@ def _create_merged_histograms_from_sqlite_signatures(
             for hist in histograms:
                 for val in chunk:
                     hist.Fill(float(val))
+    if apply_peak_removal:
+        for hist in histograms:
+            _apply_peak_removal_to_histogram(hist)
     return histograms
 
 
@@ -287,7 +320,7 @@ def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
     groups = defaultdict(list)
     unmatched_files = []
     for filename in im_files:
-        match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)', filename)
+        match = re.search(r'_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)', filename)
         if match:
             fs_str, im_str = match.groups()
             bumpnet_name = _convert_to_bumpnet_name(fs_str, im_str)
@@ -301,11 +334,11 @@ def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
 
 
 def _convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
-    particles = re.findall(r'(\d+)([emjg])', im_str)
+    particles = re.findall(r'(\d+)([emjgtbl])', im_str)
     combo_parts = [f"{p}{c}" for c, p in particles if c != '0']
     combo = "".join(combo_parts) if combo_parts else "none"
 
-    fs_particles = re.findall(r'(\d+)([emjg])', fs_str)
+    fs_particles = re.findall(r'(\d+)([emjgtbl])', fs_str)
     fs_formatted = "_".join(f"{c}{p}x" for c, p in fs_particles)
 
     result = f"mass_{combo}_cat_{fs_formatted}"
@@ -321,7 +354,9 @@ def _convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
 def _process_im_arrays_bumpnet(
     im_arrays_dir: str, output_dir: str, bin_widths_gev: list,
     logger: logging.Logger, im_array_files: List[str],
-    single_output_file: bool = False, output_filename: str = "all_histograms.root"
+    single_output_file: bool = False,
+    output_filename: str = "all_histograms.root",
+    apply_peak_removal: bool = False,
 ):
     os.makedirs(output_dir, exist_ok=True)
     grouped_files = _group_im_files_by_signature(im_array_files)
@@ -334,7 +369,12 @@ def _process_im_arrays_bumpnet(
         for bumpnet_name, matching_files in grouped_files.items():
             logger.info(f"Processing {bumpnet_name}: merging {len(matching_files)} files")
             hists = _create_merged_histograms_streaming(
-                matching_files, im_arrays_dir, bumpnet_name, bin_widths_gev, logger
+                matching_files,
+                im_arrays_dir,
+                bumpnet_name,
+                bin_widths_gev,
+                logger,
+                apply_peak_removal=apply_peak_removal,
             )
             if hists:
                 _write_hists_to_shared_file(hists, root_filepath, logger)
@@ -345,7 +385,12 @@ def _process_im_arrays_bumpnet(
         for bumpnet_name, matching_files in grouped_files.items():
             logger.info(f"Processing {bumpnet_name}: merging {len(matching_files)} files")
             hists = _create_merged_histograms_streaming(
-                matching_files, im_arrays_dir, bumpnet_name, bin_widths_gev, logger
+                matching_files,
+                im_arrays_dir,
+                bumpnet_name,
+                bin_widths_gev,
+                logger,
+                apply_peak_removal=apply_peak_removal,
             )
             if hists:
                 root_filename = f"{bumpnet_name}_hists.root"
@@ -359,7 +404,7 @@ def _process_im_arrays_bumpnet(
 
 def _create_merged_histograms_streaming(
     files: List[str], directory: str, hist_name_base: str,
-    bin_widths_gev: list, logger: logging.Logger
+    bin_widths_gev: list, logger: logging.Logger, apply_peak_removal: bool = False
 ) -> List[ROOT.TH1F]:
     global_min, global_max = float('inf'), float('-inf')
     total_entries = 0
@@ -408,13 +453,18 @@ def _create_merged_histograms_streaming(
             logger.warning(f"Error filling from {f}: {e}")
             continue
 
+    if apply_peak_removal:
+        for hist in histograms:
+            _apply_peak_removal_to_histogram(hist)
     return histograms
 
 
 def _process_im_arrays_standard(
     im_arrays_dir: str, output_dir: str, bin_widths_gev: list,
     logger: logging.Logger, im_array_files: Optional[List[str]] = None,
-    single_output_file: bool = False, output_filename: str = "all_histograms.root"
+    single_output_file: bool = False,
+    output_filename: str = "all_histograms.root",
+    apply_peak_removal: bool = False,
 ):
     if im_array_files is None:
         im_array_files = [f for f in os.listdir(im_arrays_dir) if f.endswith(".npy")]
@@ -426,7 +476,13 @@ def _process_im_arrays_standard(
         hist_count = 0
 
         for im_array_filename in im_array_files:
-            hists = _make_histograms_single_file(im_array_filename, im_arrays_dir, bin_widths_gev, logger)
+            hists = _make_histograms_single_file(
+                im_array_filename,
+                im_arrays_dir,
+                bin_widths_gev,
+                logger,
+                apply_peak_removal=apply_peak_removal,
+            )
             if hists:
                 _write_hists_to_shared_file(hists, root_filepath, logger)
                 hist_count += len(hists)
@@ -434,20 +490,51 @@ def _process_im_arrays_standard(
         logger.info(f"Wrote {hist_count} histograms to shared file {root_filepath}")
     else:
         for im_array_filename in im_array_files:
-            hists = _make_histograms_single_file(im_array_filename, im_arrays_dir, bin_widths_gev, logger)
+            hists = _make_histograms_single_file(
+                im_array_filename,
+                im_arrays_dir,
+                bin_widths_gev,
+                logger,
+                apply_peak_removal=apply_peak_removal,
+            )
             _save_hists(hists, output_dir, im_array_filename, logger)
 
 
 def _make_histograms_single_file(
     im_array_filename: str, im_arrays_dir: str,
-    bin_widths_gev: list, logger: logging.Logger
+    bin_widths_gev: list, logger: logging.Logger, apply_peak_removal: bool = False
 ):
     im_array = np.load(os.path.join(im_arrays_dir, im_array_filename))
     hists = []
     for bin_width in bin_widths_gev:
         hist = _create_histogram_single_array(im_array_filename, im_array, bin_width)
+        if apply_peak_removal:
+            _apply_peak_removal_to_histogram(hist)
         hists.append(hist)
     return hists
+
+
+def _apply_peak_removal_to_histogram(hist: ROOT.TH1F) -> None:
+    """Zero all bins strictly before the rightmost highest bin."""
+    nbins = hist.GetNbinsX()
+    if nbins <= 0:
+        return
+    max_count = hist.GetMaximum()
+    if max_count <= 0:
+        return
+
+    peak_bin_idx = None
+    for bin_idx in range(nbins, 0, -1):
+        if hist.GetBinContent(bin_idx) == max_count:
+            peak_bin_idx = bin_idx
+            break
+
+    if peak_bin_idx is None or peak_bin_idx <= 1:
+        return
+
+    for bin_idx in range(1, peak_bin_idx):
+        hist.SetBinContent(bin_idx, 0.0)
+        hist.SetBinError(bin_idx, 0.0)
 
 
 def _create_histogram_single_array(im_array_filename, im_array, bin_width) -> ROOT.TH1F:

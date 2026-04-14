@@ -66,11 +66,14 @@ class IMCalculator:
             m = ak.to_numpy(getattr(particle_counts, "Muons", zero_array))
             j = ak.to_numpy(getattr(particle_counts, "Jets", zero_array))
             g = ak.to_numpy(getattr(particle_counts, "Photons", zero_array))
+            t = ak.to_numpy(getattr(particle_counts, "Taus", zero_array))
+            b = ak.to_numpy(getattr(particle_counts, "BJets", zero_array))
+            l = ak.to_numpy(getattr(particle_counts, "LJets", zero_array))
 
             all_events_fs = [
-                f"{e}e_{m}m_{j}j_{g}g"
-                for e, m, j, g in zip(e, m, j, g)
-                if self._is_valid_fs([e, m, j, g])
+                f"{e}e_{m}m_{j}j_{g}g_{t}t_{b}b_{l}l"
+                for e, m, j, g, t, b, l in zip(e, m, j, g, t, b, l)
+                if self._is_valid_fs([e, m, j, g, t, b, l])
             ]
             self._all_events_fs = ak.Array(all_events_fs)
         return self._all_events_fs
