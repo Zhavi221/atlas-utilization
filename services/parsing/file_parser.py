@@ -27,7 +27,10 @@ class FileParser:
         file_path: str,
         tree_names: list[str],
         release_year: str,
-        batch_size: int = 40_000
+        batch_size: int = 40_000,
+        enable_jet_tagging: bool = False,
+        jet_btag_field: str = "btagDeepFlavB",
+        jet_btag_threshold: float = 0.5,
     ) -> Optional[ak.Array]:
         """
         Parse a single ROOT file and return events.
@@ -48,7 +51,10 @@ class FileParser:
                     tree_names,
                     release_year,
                     batch_size,
-                    file_path
+                    file_path,
+                    enable_jet_tagging,
+                    jet_btag_field,
+                    jet_btag_threshold,
                 )
         except Exception as e:
             logging.warning(f"Failed to open file {file_path}: {e}")
@@ -60,7 +66,10 @@ class FileParser:
         tree_names: list[str],
         release_year: str,
         batch_size: int,
-        file_path: str
+        file_path: str,
+        enable_jet_tagging: bool,
+        jet_btag_field: str,
+        jet_btag_threshold: float,
     ) -> Optional[ak.Array]:
         """Parse an already-opened ROOT file."""
         tree_name = FileParser._get_data_tree_name(root_file.keys(), tree_names)
@@ -91,8 +100,35 @@ class FileParser:
             n_entries,
             batch_size
         )
+        if enable_jet_tagging:
+            obj_events = FileParser._split_jets_by_btag(
+                obj_events,
+                btag_field=jet_btag_field,
+                threshold=jet_btag_threshold,
+        )
         
         return ak.zip(obj_events, depth_limit=1)
+
+    @staticmethod
+    def _split_jets_by_btag(
+        obj_events: dict[str, ak.Array],
+        btag_field: str,
+        threshold: float,
+    ) -> dict[str, ak.Array]:
+        """
+        Optionally split Jets into BJets/LJets using a configurable b-tag score field.
+        """
+        jets = obj_events.get("Jets")
+        if jets is None or btag_field not in jets.fields:
+            return obj_events
+
+        score = jets[btag_field]
+        is_bjet = score >= threshold
+        obj_events["BJets"] = jets[is_bjet]
+        obj_events["LJets"] = jets[~is_bjet]
+        # In tagging mode, treat tagged jets as the canonical jet categories.
+        obj_events.pop("Jets", None)
+        return obj_events
     
     @staticmethod
     def _get_data_tree_name(
@@ -442,7 +478,8 @@ class FileParser:
             "Electrons": ["Electron", "electron", "el"],
             "Muons": ["Muon", "muon", "mu"],
             "Jets": ["Jet", "jet"],
-            "Photons": ["Photon", "photon", "gamma"]
+            "Photons": ["Photon", "photon", "gamma"],
+            "Taus": ["Tau", "tau", "TauJet", "taujet"]
         }
 
         required_fields = ["pt", "eta", "phi"]

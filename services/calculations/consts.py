@@ -5,12 +5,16 @@ KNOWN_MASSES = {
     "Muons": 0.105,
     "Photons": 0.0,
     "Electrons": 0.000511,
-    "Jets": 0.0
+    "Jets": 0.0,
+    "Taus": 1.77686,
 }
 
 LETTER_PARTICLE_MAPPING = {
     "e": "Electrons",
     "j": "Jets",
     "g": "Photons",
-    "m": "Muons"
+    "m": "Muons",
+    "t": "Taus",
+    "b": "BJets",
+    "l": "LJets",
 }

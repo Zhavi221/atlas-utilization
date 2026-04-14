@@ -183,6 +183,7 @@ class MassCalculationHandler(StateHandler):
         "Muons": "AnalysisMuonsAuxDyn",
         "Jets": "AnalysisJetsAuxDyn",
         "Photons": "AnalysisPhotonsAuxDyn",
+        "Taus": "AnalysisTauJetsAuxDyn",
     }
 
     @classmethod

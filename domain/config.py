@@ -55,6 +55,9 @@ class ParsingConfig:
     # Data selection
     possible_data_tree_names: tuple[str, ...] = ("CollectionTree",)
     max_files_to_process: Optional[int] = None  # Limit files (for testing)
+    enable_jet_tagging: bool = False
+    jet_btag_field: str = "btagDeepFlavB"
+    jet_btag_threshold: float = 0.5
     
     def __post_init__(self):
         """Validate parsing configuration."""
@@ -72,6 +75,8 @@ class ParsingConfig:
             raise ValueError("file_urls_path cannot be empty")
         if not self.jobs_logs_path:
             raise ValueError("jobs_logs_path cannot be empty")
+        if not isinstance(self.enable_jet_tagging, bool):
+            raise ValueError("enable_jet_tagging must be a boolean")
 
 
 @dataclass(frozen=True)
@@ -89,7 +94,9 @@ class MassCalculationConfig:
     fs_chunk_threshold_bytes: int = 500_000_000  # 500MB - chunk threshold for final-state files
     
     # Combinatorics configuration
-    objects_to_calculate: tuple[str, ...] = ("Electrons", "Muons", "Jets", "Photons")
+    objects_to_calculate: tuple[str, ...] = (
+        "Electrons", "Muons", "Jets", "BJets", "LJets", "Photons", "Taus"
+    )
     min_particles_in_combination: int = 2
     max_particles_in_combination: int = 4
     min_count_particle_in_combination: int = 2
@@ -163,6 +170,7 @@ class HistogramCreationConfig:
     # Outlier and naming
     exclude_outliers: bool = True  # Whether to exclude outlier histograms
     use_bumpnet_naming: bool = False  # When true, use mass_<combo>_cat_<final_state> naming
+    apply_peak_removal_at_histogram_level: bool = False
     
     def __post_init__(self):
         """Validate histogram creation configuration."""
@@ -273,6 +281,9 @@ class PipelineConfig:
                 fetching_metadata_timeout=parsing_dict.get("fetching_metadata_timeout", 60),
                 possible_data_tree_names=tuple(parsing_dict.get("possible_data_tree_names", ["CollectionTree"])),
                 max_files_to_process=parsing_dict.get("max_files_to_process"),
+                enable_jet_tagging=parsing_dict.get("enable_jet_tagging", False),
+                jet_btag_field=parsing_dict.get("jet_btag_field", "btagDeepFlavB"),
+                jet_btag_threshold=parsing_dict.get("jet_btag_threshold", 0.5),
             )
         
         # Parse mass calculation config if enabled
@@ -282,7 +293,9 @@ class PipelineConfig:
             
             # Handle objects_to_calculate (can be None or list)
             objects_raw = mass_dict.get("objects_to_calculate")
-            objects = tuple(objects_raw) if objects_raw else ("Electrons", "Muons", "Jets", "Photons")
+            objects = tuple(objects_raw) if objects_raw else (
+                "Electrons", "Muons", "Jets", "BJets", "LJets", "Photons", "Taus"
+            )
             
             mass_calculation_config = MassCalculationConfig(
                 input_dir=mass_dict["input_dir"],
@@ -321,6 +334,9 @@ class PipelineConfig:
                 output_filename=hist_dict.get("output_filename"),
                 exclude_outliers=hist_dict.get("exclude_outliers", True),
                 use_bumpnet_naming=hist_dict.get("use_bumpnet_naming", False),
+                apply_peak_removal_at_histogram_level=hist_dict.get(
+                    "apply_peak_removal_at_histogram_level", False
+                ),
             )
         
         # Parse run metadata

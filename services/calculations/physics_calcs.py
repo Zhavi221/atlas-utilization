@@ -65,8 +65,14 @@ def group_by_final_state(events: ak.Array) -> Iterator[Tuple[str, ak.Array]]:
     m = getattr(particle_counts, "Muons", zero_array)
     j = getattr(particle_counts, "Jets", zero_array)
     g = getattr(particle_counts, "Photons", zero_array)
+    t = getattr(particle_counts, "Taus", zero_array)
+    b = getattr(particle_counts, "BJets", zero_array)
+    l = getattr(particle_counts, "LJets", zero_array)
 
-    all_events_fs = [f"{e}e_{m}m_{j}j_{g}g" for e, m, j, g in zip(e, m, j, g)]
+    all_events_fs = [
+        f"{e}e_{m}m_{j}j_{g}g_{t}t_{b}b_{l}l"
+        for e, m, j, g, t, b, l in zip(e, m, j, g, t, b, l)
+    ]
     unique_fs = set(all_events_fs)
 
     for fs in unique_fs:
