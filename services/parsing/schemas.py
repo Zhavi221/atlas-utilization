@@ -14,7 +14,8 @@ BASE_OBJECTS = {
     "Electrons": ["pt", "eta", "phi", "mass"],
     "Muons": ["pt", "eta", "phi", "mass"],
     "Jets": ["pt", "eta", "phi", "mass"],
-    "Photons": ["pt", "eta", "phi"]  # Photons typically don't have mass
+    "Photons": ["pt", "eta", "phi"],  # Photons typically don't have mass
+    "Taus": ["pt", "eta", "phi", "mass"]
 }
 
 # Mapping from specific record IDs to their release year/schema identifier
@@ -42,7 +43,8 @@ RELEASE_SCHEMAS = {
             "Electrons": "Electrons",
             "Muons": "Muons",
             "Jets": "Jets",
-            "Photons": "Photons"
+            "Photons": "Photons",
+            "Taus": "TauJets"
         },
         "objects": BASE_OBJECTS.copy()
     },
@@ -54,13 +56,15 @@ RELEASE_SCHEMAS = {
             "Electrons": "Electron",  # Maps to Electron_pt, Electron_eta, etc.
             "Muons": "Muon",          # Maps to Muon_pt, Muon_eta, etc.
             "Jets": "Jet",            # Maps to Jet_pt, Jet_eta, etc.
-            "Photons": "Photon"       # Maps to Photon_pt, Photon_eta, etc.
+            "Photons": "Photon",      # Maps to Photon_pt, Photon_eta, etc.
+            "Taus": "Tau"             # Maps to Tau_pt, Tau_eta, etc.
         },
         "objects": {
             "Electrons": ["pt", "eta", "phi", "mass"],
             "Muons": ["pt", "eta", "phi", "mass"],
-            "Jets": ["pt", "eta", "phi", "mass"],
-            "Photons": ["pt", "eta", "phi", "mass"]  # NanoAOD includes Photon_mass
+            "Jets": ["pt", "eta", "phi", "mass", "btagDeepFlavB"],
+            "Photons": ["pt", "eta", "phi", "mass"],  # NanoAOD includes Photon_mass
+            "Taus": ["pt", "eta", "phi", "mass", "charge", "decayMode", "idDeepTau2017v2p1VSjet"]
         }
     },
     "2024r-hi": {
@@ -83,7 +87,8 @@ RELEASE_SCHEMAS = {
             "Electrons": "Electrons",
             "Muons": "Muons",
             "Jets": "Jets",
-            "Photons": "Photons"
+            "Photons": "Photons",
+            "Taus": "TauJets"
         },
         "objects": BASE_OBJECTS.copy()
         # Note: Branch names may differ - needs verification via inspection
@@ -117,14 +122,16 @@ RELEASE_SCHEMAS = {
             "Electrons": "lep",
             "Muons": "lep",
             "Jets": "jet",
-            "Photons": "photon"
+            "Photons": "photon",
+            "Taus": "tau"
             # Note: tau_pt exists but represents tau jets, not regular jets
         },
         "objects": {
             "Electrons": ["pt", "eta", "phi"],  # No mass field detected
             "Muons": ["pt", "eta", "phi"],      # No mass field detected
             "Jets": ["pt", "eta", "phi"],       # No mass field detected
-            "Photons": ["pt", "eta", "phi"]
+            "Photons": ["pt", "eta", "phi"],
+            "Taus": ["pt", "eta", "phi"]
         }
     },
     "2025r-evgen-13tev": {
@@ -135,7 +142,8 @@ RELEASE_SCHEMAS = {
             "Electrons": "Electrons",
             "Muons": "Muons",
             "Jets": "Jets",
-            "Photons": "Photons"
+            "Photons": "Photons",
+            "Taus": "TauJets"
         },
         "objects": BASE_OBJECTS.copy()
         # Note: Files are gzipped, schema inferred from similar releases
@@ -148,7 +156,8 @@ RELEASE_SCHEMAS = {
             "Electrons": "Electrons",
             "Muons": "Muons",
             "Jets": "Jets",
-            "Photons": "Photons"
+            "Photons": "Photons",
+            "Taus": "TauJets"
         },
         "objects": BASE_OBJECTS.copy()
         # Note: Files are gzipped, schema inferred from similar releases
@@ -296,7 +305,8 @@ def extract_schema_from_record_id(record_id: int, sample_file_uri: str = None) -
                             ("Electron", "Electrons", "Electrons_slimmedElectrons"),
                             ("Muon", "Muons", "Muons_slimmedMuons"),
                             ("Photon", "Photons", "Photons_slimmedPhotons"),
-                            ("Jet", "Jets", "Jets_slimmedJets")
+                            ("Jet", "Jets", "Jets_slimmedJets"),
+                            ("Tau", "Taus", "Taus_slimmedTaus"),
                         ]
                         
                         for pattern, obj_name, default_mapping in particle_patterns:
@@ -318,7 +328,8 @@ def extract_schema_from_record_id(record_id: int, sample_file_uri: str = None) -
                             ("Electron", "Electrons"),
                             ("Muon", "Muons"),
                             ("Jet", "Jets"),
-                            ("Photon", "Photons")
+                            ("Photon", "Photons"),
+                            ("Tau", "Taus"),
                         ]
                         
                         for pattern, obj_name in particle_patterns:
@@ -423,7 +434,8 @@ def extract_schema_from_record_id(record_id: int, sample_file_uri: str = None) -
                     "electron": ["Electrons"],
                     "muon": ["Muons"],
                     "jet": ["Jets"],
-                    "photon": ["Photons"]
+                    "photon": ["Photons"],
+                    "tau": ["Taus"],
                 }
                 
                 for prefix, fields in object_prefixes.items():

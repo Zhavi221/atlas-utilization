@@ -1,0 +1,107 @@
+paths:
+  parsed_data_path: ./output/parsed_data
+  im_arrays_path: ./output/im_arrays
+  im_arrays_processed_path: ./output/im_arrays_processed
+  histograms_path: ./output/histograms
+  metadata_cache_path: ./output/metadata_cache.json
+  jobs_logs_path: ./output/logs
+names:
+  run_name: atlas_full_120
+  histogram_filename: atlas_opendata_full_bumpnet.root
+run_metadata:
+  run_name: short_parse_btag
+  base_output_dir: /srv01/agrp/netalev/atlas_pipeline_refactored/output
+  batch_job_index: null
+  total_batch_jobs: null
+tasks:
+  do_parsing: true
+  do_mass_calculating: false
+  do_post_processing: false
+  do_histogram_creation: false
+testing_config:
+  is_on: false
+  test_run_index: null
+  testing_jobs_path: ./testing_jobs
+  limit_files_per_year: null
+  limit_combinations: null
+parsing_task_config:
+  output_path: ./output/parsed_data
+  file_urls_path: ./output/metadata_cache.json
+  jobs_logs_path: ./output/logs
+  release_years: []
+  specific_record_ids:
+  - 30529
+  parse_mc: false
+  use_multiprocessing: false
+  parallel_processes: 4
+  threads: 8
+  env_threshold_memory_mb: 8000
+  chunk_yield_threshold_bytes: 2147483648
+  count_retries_failed_files: 3
+  fetching_metadata_timeout: 60
+  max_files_to_process: 2
+  possible_data_tree_names:
+  - Events
+  - CollectionTree
+  - mini
+  - analysis
+  create_dirs: true
+  show_progress_bar: true
+  particle_counts:
+    electrons:
+      min: 1
+      max: 4
+    muons:
+      min: 0
+      max: 4
+    jets:
+      min: 0
+      max: 10
+    photons:
+      min: 0
+      max: 4
+  kinematic_cuts:
+    electrons:
+      pt_min: 25.0
+      eta_max: 2.47
+    muons:
+      pt_min: 25.0
+      eta_max: 2.5
+    jets:
+      pt_min: 30.0
+      eta_max: 4.5
+    photons:
+      pt_min: 25.0
+      eta_max: 2.37
+  enable_jet_tagging: true
+  jet_btag_field: btagDeepFlavB
+  jet_btag_threshold: 0.5
+mass_calculation_task_config:
+  input_dir: /storage/agrp/netalev/data/atlas_pp_root_files
+  output_dir: ./output/im_arrays
+  field_to_slice_by: pt
+  use_multiprocessing: true
+  parallel_processes: 4
+  fs_chunk_threshold_bytes: 2000000000
+  objects_to_calculate:
+  - Electrons
+  - Muons
+  - Jets
+  - Photons
+  min_particles_in_combination: 2
+  max_particles_in_combination: 4
+  min_count_particle_in_combination: 1
+  max_count_particle_in_combination: 4
+  min_events_per_fs: 100
+post_processing_task_config:
+  input_dir: ./output/im_arrays
+  output_dir: ./output/im_arrays_processed
+  peak_detection_bin_width_gev: 10.0
+histogram_creation_task_config:
+  input_dir: ./output/im_arrays_processed
+  output_dir: ./output/histograms
+  bin_width_gev: 10.0
+  single_output_file: true
+  output_filename: atlas_opendata_full_bumpnet.root
+  exclude_outliers: true
+  use_bumpnet_naming: true

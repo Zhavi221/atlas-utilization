@@ -424,10 +424,13 @@ class PipelineExecutor:
             total_signatures = 0
 
             fs_im_pattern = re.compile(
-                r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)$'
+                r'_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)$'
             )
-            particle_pattern = re.compile(r'(\d+)([emjg])')
-            particle_name_map = {'e': 'Electrons', 'm': 'Muons', 'j': 'Jets', 'g': 'Photons'}
+            particle_pattern = re.compile(r'(\d+)([emjgtbl])')
+            particle_name_map = {
+                'e': 'Electrons', 'm': 'Muons', 'j': 'Jets', 'g': 'Photons',
+                't': 'Taus', 'b': 'BJets', 'l': 'LJets'
+            }
 
             for sf in sqlite_files:
                 # Aggregate n_entries per signature directly from metadata column.
@@ -489,10 +492,13 @@ class PipelineExecutor:
         unique_channels = set()
 
         fs_im_pattern = re.compile(
-            r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)'
+            r'_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)'
         )
-        particle_pattern = re.compile(r'(\d+)([emjg])')
-        particle_name_map = {'e': 'Electrons', 'm': 'Muons', 'j': 'Jets', 'g': 'Photons'}
+        particle_pattern = re.compile(r'(\d+)([emjgtbl])')
+        particle_name_map = {
+            'e': 'Electrons', 'm': 'Muons', 'j': 'Jets', 'g': 'Photons',
+            't': 'Taus', 'b': 'BJets', 'l': 'LJets'
+        }
 
         for nf in npy_files:
             try:
@@ -559,7 +565,7 @@ class PipelineExecutor:
             outlier_entries = 0
             unique_outlier_channels = set()
             outlier_pattern = re.compile(
-                r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)_outliers$"
+                r"_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)_outliers$"
             )
             for sf in sqlite_files:
                 with sqlite3.connect(str(sf)) as conn:
