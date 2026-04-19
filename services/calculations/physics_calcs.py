@@ -186,13 +186,49 @@ def slice_events_by_field(
     return events
 
 
+def _kinematic_cuts_is_per_object(cuts: Optional[Dict]) -> bool:
+    if not cuts:
+        return False
+    markers = (
+        "Electrons", "Muons", "Jets", "BJets", "LJets", "Photons", "Taus",
+        "electrons", "muons", "jets", "bjets", "ljets", "photons", "taus",
+    )
+    return any(k in cuts for k in markers)
+
+
 def filter_events_by_kinematics(
     events: ak.Array,
-    kinematic_cuts: Dict[str, Dict[str, float]]
+    kinematic_cuts: Optional[Dict[str, Dict]],
 ) -> ak.Array:
+    """
+    Mask particles within each event by kinematics (and optional electron isolation).
+
+    ``kinematic_cuts`` may be either:
+
+    - **Per-object** (recommended): ``{"Electrons": {"pt": {"min": 25.0}, ...}, "Muons": {...}}``
+      Keys must match ``events.fields`` (case-sensitive) or YAML-style names
+      (``electrons``, …) — use :func:`map_yaml_kinematic_cuts_to_objects` first.
+
+    - **Legacy (same cuts for every collection)**: ``{"pt": {"min": ...}, "eta": {...}}``
+      Applied to every particle array that has the corresponding attributes.
+    """
+    if not kinematic_cuts:
+        return events
+
+    if _kinematic_cuts_is_per_object(kinematic_cuts):
+        cuts_by_obj = kinematic_cuts
+    else:
+        cuts_by_obj = {obj: kinematic_cuts for obj in events.fields}
+
     filtered_events = {}
     for obj in events.fields:
         particles = events[obj]
+        cuts = cuts_by_obj.get(obj)
+        if cuts is None:
+            for alt in (obj.lower(), obj.capitalize()):
+                if alt in cuts_by_obj:
+                    cuts = cuts_by_obj[alt]
+                    break
 
         if len(particles.fields) == 0:
             filtered_events[obj] = particles
@@ -201,21 +237,45 @@ def filter_events_by_kinematics(
         mask_by = None
         if hasattr(particles, "pt"):
             mask_by = particles.pt
+        elif len(particles) > 0:
+            mask_by = ak.ones_like(ak.num(particles), dtype=bool)
+        else:
+            mask_by = ak.Array([], dtype=bool)
         mask = ak.ones_like(mask_by, dtype=bool)
 
-        if "pt" in kinematic_cuts and hasattr(particles, "pt"):
+        if cuts is None:
+            filtered_events[obj] = particles
+            continue
+
+        if "pt" in cuts and hasattr(particles, "pt"):
             pt_vals = ak.values_astype(particles.pt, float)
-            mask = mask & (pt_vals >= kinematic_cuts["pt"]["min"])
+            mask = mask & (pt_vals >= cuts["pt"]["min"])
 
-        if "eta" in kinematic_cuts and hasattr(particles, "eta"):
+        if "eta" in cuts and hasattr(particles, "eta"):
             eta_vals = ak.values_astype(particles.eta, float)
-            mask = mask & (eta_vals >= kinematic_cuts["eta"]["min"]) & (eta_vals <= kinematic_cuts["eta"]["max"])
+            mask = mask & (eta_vals >= cuts["eta"]["min"]) & (eta_vals <= cuts["eta"]["max"])
 
-        if "phi" in kinematic_cuts and hasattr(particles, "phi"):
+        if "phi" in cuts and hasattr(particles, "phi"):
             phi_vals = ak.values_astype(particles.phi, float)
-            mask = mask & (phi_vals >= kinematic_cuts["phi"]["min"]) & (phi_vals <= kinematic_cuts["phi"]["max"])
+            mask = mask & (phi_vals >= cuts["phi"]["min"]) & (phi_vals <= cuts["phi"]["max"])
 
-        filtered_events[obj] = ak.mask(particles, mask)
+        if obj == "Electrons" and cuts.get("rel_isolation_max") is not None:
+            iso_name = consts.ELECTRON_REL_ISOLATION_FIELD
+            if hasattr(particles, iso_name):
+                iso = getattr(particles, iso_name)
+                pt_vals = ak.values_astype(particles.pt, float)
+                iso_vals = ak.values_astype(iso, float)
+                rel = iso_vals / ak.where(pt_vals > 0, pt_vals, np.inf)
+                mask = mask & (rel < float(cuts["rel_isolation_max"]))
+            else:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Electron rel_isolation_max requested but field %r not present; skipping isolation cut",
+                    iso_name,
+                )
+
+        # Boolean mask (not ak.mask) so dropped particles do not appear in lists
+        filtered_events[obj] = particles[mask]
 
     return ak.zip(filtered_events, depth_limit=1)
 

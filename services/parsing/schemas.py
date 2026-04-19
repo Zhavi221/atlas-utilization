@@ -11,7 +11,14 @@ from services import consts
 
 # Base object definitions (fields needed for invariant mass calculation)
 BASE_OBJECTS = {
-    "Electrons": ["pt", "eta", "phi", "mass"],
+    # ATLAS PHYSLITE: optional isolation branch (read when present on file)
+    "Electrons": [
+        "pt",
+        "eta",
+        "phi",
+        "mass",
+        "ptvarcone30_Nonprompt_All_MaxWeightTTVALooseCone_pt1000",
+    ],
     "Muons": ["pt", "eta", "phi", "mass"],
     "Jets": ["pt", "eta", "phi", "mass"],
     "Photons": ["pt", "eta", "phi"],  # Photons typically don't have mass

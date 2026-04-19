@@ -18,6 +18,8 @@ from services.parsing.file_parser import FileParser
 from services.parsing.event_accumulator import EventAccumulator
 from services.parsing.threaded_processor import ThreadedFileProcessor, ParsingStatisticsCollector
 from domain.statistics import ParsingStatistics
+from domain.events import EventBatch
+from services.parsing.event_selection import apply_parsing_event_selection
 from utils.batching import get_batch_slice_by_year
 
 
@@ -155,6 +157,25 @@ class ParsingHandler(StateHandler):
                 on_success=on_success,
                 on_error=on_error
             ):
+                if parsing_config.kinematic_cuts or parsing_config.particle_counts:
+                    filtered = apply_parsing_event_selection(
+                        batch.events,
+                        particle_counts=parsing_config.particle_counts,
+                        kinematic_cuts=parsing_config.kinematic_cuts,
+                    )
+                    batch = EventBatch(
+                        events=filtered,
+                        file_id=batch.file_id,
+                        release_year=batch.release_year,
+                        size_bytes=(
+                            filtered.layout.nbytes
+                            if hasattr(filtered, "layout")
+                            else batch.size_bytes
+                        ),
+                        event_count=len(filtered),
+                        processing_time_sec=batch.processing_time_sec,
+                    )
+
                 # Accumulate batch into chunks
                 chunk = self.accumulator.add_batch(batch)
                 
