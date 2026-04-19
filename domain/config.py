@@ -58,6 +58,10 @@ class ParsingConfig:
     enable_jet_tagging: bool = False
     jet_btag_field: str = "btagDeepFlavB"
     jet_btag_threshold: float = 0.5
+
+    # Optional selection (from YAML): applied after reading each file, before chunking
+    particle_counts: Optional[dict] = None
+    kinematic_cuts: Optional[dict] = None
     
     def __post_init__(self):
         """Validate parsing configuration."""
@@ -284,6 +288,8 @@ class PipelineConfig:
                 enable_jet_tagging=parsing_dict.get("enable_jet_tagging", False),
                 jet_btag_field=parsing_dict.get("jet_btag_field", "btagDeepFlavB"),
                 jet_btag_threshold=parsing_dict.get("jet_btag_threshold", 0.5),
+                particle_counts=parsing_dict.get("particle_counts"),
+                kinematic_cuts=parsing_dict.get("kinematic_cuts"),
             )
         
         # Parse mass calculation config if enabled

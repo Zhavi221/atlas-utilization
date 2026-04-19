@@ -9,6 +9,9 @@ KNOWN_MASSES = {
     "Taus": 1.77686,
 }
 
+# ATLAS PHYSLITE / AnalysisElectronsAuxDyn — relative isolation uses cone energy / pT
+ELECTRON_REL_ISOLATION_FIELD = "ptvarcone30_Nonprompt_All_MaxWeightTTVALooseCone_pt1000"
+
 LETTER_PARTICLE_MAPPING = {
     "e": "Electrons",
     "j": "Jets",
