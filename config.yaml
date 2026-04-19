@@ -112,7 +112,8 @@ parsing_task_config:
     taus:      { min: 0, max: 4 }
 
   kinematic_cuts:
-    electrons: { pt_min: 25.0, eta_max: 2.47 }
+    # rel_isolation_max: cone energy / pT (ATLAS); rejects jet fakes
+    electrons: { pt_min: 25.0, eta_max: 2.47, rel_isolation_max: 0.06 }
     muons:     { pt_min: 25.0, eta_max: 2.5 }
     jets:      { pt_min: 30.0, eta_max: 4.5 }
     bjets:     { pt_min: 30.0, eta_max: 4.5 }
