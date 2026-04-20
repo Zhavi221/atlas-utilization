@@ -205,7 +205,7 @@ def _group_signatures_by_bumpnet(signatures: List[str]) -> Dict[str, List[str]]:
 
         #match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)$", cleaned)
         # NEW — matches index-based: IM_e0e1j0
-        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([e\dm\djg\d]*)$", cleaned)
+        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([emjg\d]+)$", cleaned)
         if not match:
             continue
         fs_str, im_str = match.groups()
@@ -290,7 +290,7 @@ def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
     unmatched_files = []
     for filename in im_files:
         #match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_(\d+e_\d+m_\d+j_\d+g)', filename)
-        match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([e0-9m j0-9g0-9]+)', filename)
+        match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([emjg\d]+)', filename)
         if match:
             fs_str, im_str = match.groups()
             bumpnet_name = _convert_to_bumpnet_name(fs_str, im_str)

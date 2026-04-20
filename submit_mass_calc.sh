@@ -14,7 +14,7 @@
 set -e
 
 # --- Configuration ---------------------------------------------------------
-CONFIG="config10GeVbin.yaml"
+CONFIG="config10GeVbin_25MeV.yaml"
 CPUS_PER_JOB=1                    # single CPU per job — no parallel processes
 MEM_PER_JOB="16gb"                # one file at a time needs much less memory
 WALLTIME="04:00:00"               # one parsed chunk takes ~10-20 min
@@ -23,7 +23,8 @@ SUBMIT_DELAY=2                    # seconds between submissions (be polite)
 MAX_JOBS=200                      # safety cap — won't submit more than this
 
 # The existing run directory with parsed_data/ inside
-RUN_DIR="/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data/atlas_full_fixComb_fixCut_20260403_230628"
+# RUN_DIR="/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data/atlas_full_fixComb_fixCut_20260403_230628"
+RUN_DIR="/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data/atlas_full_fixComb_20260414_155708"
 PARSED_DIR="${RUN_DIR}/parsed_data"
 
 PIPELINE_DIR="$(cd "$(dirname "$0")" && pwd)"

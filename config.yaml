@@ -48,7 +48,7 @@ run_metadata:
 # Enable / disable pipeline stages.  Stages run in order:
 #   parsing → mass_calculating → post_processing → histogram_creation
 tasks:
-  do_parsing: false
+  do_parsing: true
   do_mass_calculating: true
   do_post_processing: true
   do_histogram_creation: true
@@ -82,9 +82,9 @@ parsing_task_config:
   # ===PERFORMANCE===
   use_multiprocessing: false
   parallel_processes: 4
-  threads: 2
+  threads: 8
   env_threshold_memory_mb: 8000
-  chunk_yield_threshold_bytes: 268435456  # 256MB instead of 2GB 2147483648  # 2 GB
+  chunk_yield_threshold_bytes:  2147483648  # 2 GB
   count_retries_failed_files: 3
   fetching_metadata_timeout: 60
   max_files_to_process: null             # null = all files; set e.g. 3 for a quick test
@@ -115,15 +115,14 @@ parsing_task_config:
 # Computes invariant masses for every valid particle combination per final state.
 mass_calculation_task_config:
   # ===PATHS===
-  # input_dir:  "/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data/atlas_pp_root_files"
-  input_dir:  "/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data/atlas_full_fixComb_fixCut_20260403_230628/parsed_data"
+  input_dir:  "/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data/atlas_pp_root_files"
   output_dir: *im_arrays_path
 
   # ===PROCESSING===
   field_to_slice_by: "pt"
-  use_multiprocessing: false #true
-  parallel_processes: 1 #4
-  fs_chunk_threshold_bytes: 500000000 #2000000000  # 2 GB
+  use_multiprocessing: true
+  parallel_processes: 4
+  fs_chunk_threshold_bytes: 2000000000  # 2 GB
 
   # ===COMBINATORICS===
   objects_to_calculate: [Electrons, Muons, Jets, Photons]
