@@ -94,6 +94,7 @@ class MassCalculationConfig:
     max_particles_in_combination: int = 4
     min_count_particle_in_combination: int = 2
     max_count_particle_in_combination: int = 4
+    max_total_particles_in_combination: int = 4
     min_events_per_fs: int = 100  # Minimum events for a final state to be kept
     
     def __post_init__(self):
@@ -296,6 +297,7 @@ class PipelineConfig:
                 max_particles_in_combination=mass_dict.get("max_particles_in_combination", 4),
                 min_count_particle_in_combination=mass_dict.get("min_count_particle_in_combination", 2),
                 max_count_particle_in_combination=mass_dict.get("max_count_particle_in_combination", 4),
+                max_total_particles_in_combination=mass_dict.get("max_total_particles_in_combination", 4),
                 min_events_per_fs=mass_dict.get("min_events_per_fs", 100),
             )
         

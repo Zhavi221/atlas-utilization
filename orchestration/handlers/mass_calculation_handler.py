@@ -53,6 +53,7 @@ class MassCalculationHandler(StateHandler):
             max_particles=mc.max_particles_in_combination,
             min_count=mc.min_count_particle_in_combination,
             max_count=mc.max_count_particle_in_combination,
+            max_total_particles=mc.max_total_particles_in_combination,
         )
         self.logger.info(f"Generated {len(all_combinations)} combinations to process")
 

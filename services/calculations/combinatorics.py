@@ -11,6 +11,7 @@ def get_all_combinations(
     max_particles: int,
     min_count: int,
     max_count: int,
+    max_total_particles: int = 4,
     limit: int = None
 ) -> List[Dict[str, int]]:
     """
@@ -22,6 +23,7 @@ def get_all_combinations(
         max_particles: maximum number of particle *types* in a combination
         min_count: minimum count per included type
         max_count: maximum count per included type
+        max_total_particles: hard cap on total particles across all types
     """
     all_combinations: List[Dict[str, int]] = []
     seen: set = set()
@@ -31,6 +33,8 @@ def get_all_combinations(
         for chosen_types in itertools.combinations(object_types, r):
             count_ranges = [range(min_count, max_count + 1) for _ in chosen_types]
             for counts in itertools.product(*count_ranges):
+                if sum(counts) > max_total_particles:   # ← new filter
+                    continue
                 combo = dict(zip(chosen_types, counts))
                 combo_key = frozenset(combo.items())
                 if combo_key not in seen:
