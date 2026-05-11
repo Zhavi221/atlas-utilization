@@ -128,14 +128,38 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
         f"Processing {len(signatures)} signatures from {len(sqlite_files)} IM shard file(s) "
         f"into {shard_name}"
     )
+# NEW — group by FS_IM key first, then merge all chunks:
+    # group signatures by FS_IM key (strip batch/chunk prefix)
+    from collections import defaultdict
+    fs_im_groups = defaultdict(list)
+    for sig in signatures:
+        # extract FS_IM part: everything from "_FS_" onward
+        m = re.search(r'(_FS_.+)', sig)
+        fs_im_key = m.group(1) if m else sig
+        fs_im_groups[fs_im_key].append(sig)
+
+    logger.info(f"Grouped {len(signatures)} signatures into {len(fs_im_groups)} unique FS_IM keys")
 
     written = 0
+    COMMIT_EVERY = 1000
+    processed = 0
     try:
-        for signature in sorted(signatures):
+        for fs_im_key in sorted(fs_im_groups.keys()):
+            chunk_sigs = fs_im_groups[fs_im_key]
             chunks = []
-            for filename in sqlite_files:
-                db_path = os.path.join(input_dir, filename)
-                chunks.extend(iter_arrays_for_signature(db_path, signature))
+            for sig in chunk_sigs:
+                for filename in sqlite_files:
+                    db_path = os.path.join(input_dir, filename)
+                    chunks.extend(iter_arrays_for_signature(db_path, sig))
+    # written = 0
+    # COMMIT_EVERY = 1000  # commit every 1000 signatures to keep WAL small
+    # processed = 0
+    # try:
+    #     for signature in sorted(signatures):
+    #         chunks = []
+    #         for filename in sqlite_files:
+    #             db_path = os.path.join(input_dir, filename)
+    #             chunks.extend(iter_arrays_for_signature(db_path, signature))
             if not chunks:
                 continue
 
@@ -150,12 +174,18 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
 
             main_array, outliers_array = _split_by_first_empty_bin(filtered, bin_width, logger)
             if len(main_array) > 0:
-                writer.append_array(f"{signature}_main", main_array)
+                writer.append_array(f"{fs_im_key}_main", main_array)
                 written += 1
             if len(outliers_array) > 0:
-                writer.append_array(f"{signature}_outliers", outliers_array)
+                writer.append_array(f"{fs_im_key}_outliers", outliers_array)
                 written += 1
-        writer.commit()
+
+            processed += 1                          # ← new
+            if processed % COMMIT_EVERY == 0:       # ← new
+                writer.commit()                     # ← new: periodic commit
+                logger.info(f"Post-processing progress: {processed}/{len(signatures)} signatures committed")  # ← new
+
+        writer.commit()  # ← final commit for remainder    
     finally:
         writer.close()
 
@@ -238,7 +268,9 @@ def _find_rightmost_highest_peak(
     if peak_bin_idx is None:
         return None
 
-    peak_mass = bin_edges[peak_bin_idx]
+    # peak_mass = bin_edges[peak_bin_idx]
+    # NEW — returns right edge of peak bin:
+    peak_mass = bin_edges[peak_bin_idx + 1]
     logger.debug(f"Found peak at bin {peak_bin_idx} with count {max_count}, mass = {peak_mass:.2f} GeV")
     return peak_mass
 
