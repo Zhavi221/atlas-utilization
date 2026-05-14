@@ -33,7 +33,9 @@ def get_all_combinations(
         for chosen_types in itertools.combinations(object_types, r):
             count_ranges = [range(min_count, max_count + 1) for _ in chosen_types]
             for counts in itertools.product(*count_ranges):
-                if sum(counts) > max_total_particles:   # ← new filter
+                if sum(counts) > max_total_particles:   #  skip combinations exceeding particle cap
+                    continue
+                if sum(counts) < 2:                     # skip single-particle IM (physically meaningless)
                     continue
                 combo = dict(zip(chosen_types, counts))
                 combo_key = frozenset(combo.items())

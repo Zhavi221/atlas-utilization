@@ -123,6 +123,18 @@ writer.commit()  # final commit for remainder
 **Result:** WAL stays small (~few MB), and at most 1000 signatures worth of work
 is lost on job kill.
 
+### Fix 9 — Skip single-particle combinations in combinatorics (`combinatorics.py`)
+
+Added a guard in `get_all_combinations` to reject combinations where the total
+particle count is less than 2. A single-particle "combination" produces a trivial
+invariant mass equal to the particle's own mass, which is physically meaningless
+for bump hunting. Previously, such combinations could pass the `max_total_particles`
+filter and propagate through the mass calculation, generating spurious signatures
+(e.g. `1e_0m_0j_0g`) that inflate the histogram count without any signal sensitivity.
+
+**Change:** `if sum(counts) < 2: continue`
+**Result:** Combinatorics now only generates signatures with ≥ 2 particles
+
 ---
 
 ### Fix 1 — Index-based IM naming (`im_pipeline.py`, `histograms_pipeline.py`)
