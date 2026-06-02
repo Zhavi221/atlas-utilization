@@ -40,7 +40,7 @@ names:
 # ===RUN METADATA=============================================================
 run_metadata:
   run_name: *run_name
-  base_output_dir: "/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data"
+  base_output_dir: "/data"
   batch_job_index: null                  # set by submit.sh (--batch-job-index)
   total_batch_jobs: null                 # set by submit.sh (--total-batch-jobs)
 
@@ -115,7 +115,7 @@ parsing_task_config:
 # Computes invariant masses for every valid particle combination per final state.
 mass_calculation_task_config:
   # ===PATHS===
-  input_dir:  "/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data/atlas_pp_root_files"
+  input_dir:  "/data/atlas_pp_root_files"
   output_dir: *im_arrays_path
 
   # ===PROCESSING===
@@ -130,7 +130,10 @@ mass_calculation_task_config:
   max_particles_in_combination: 4        # max particle types was 4 reduces 12,567 → ~28 combinations
   min_count_particle_in_combination: 1   # min count per type
   max_count_particle_in_combination: 4   # max count per type was 4
+  max_total_particles_in_combination: 4
   min_events_per_fs: 100                 # drop final states with fewer events
+  include_subleading: false        # set true to include e1, j1, etc.
+  max_subleading_index: 1          # highest rank index to consider
 
 # --- 3. Post-Processing ------------------------------------------------------
 # Removes known-mass peaks and splits into main / outlier arrays.
@@ -155,5 +158,5 @@ histogram_creation_task_config:
   # ===OUTPUT===
   single_output_file: true
   output_filename: *histogram_filename
-  exclude_outliers: true
+  exclude_outliers: false # was designed to remove high-mass outliers from very broad distributions, but it doesn't work properly during merging
   use_bumpnet_naming: true               # mass_<combo>_cat_<final_state> format

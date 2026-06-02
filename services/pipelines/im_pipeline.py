@@ -13,13 +13,14 @@ import awkward as ak
 import numpy as np
 
 from services.calculations.im_calculator import IMCalculator
+from services.calculations.combinatorics import get_count, get_start
 
 
 def process_final_state(
     final_state: str,
     fs_events: ak.Array,
     filename: str,
-    all_combinations: List[Dict[str, int]],
+    all_combinations: List[Dict],
     config: Dict,
     output_dir: str,
     logger: logging.Logger,
@@ -135,7 +136,7 @@ def _convert_array_to_gev(inv_mass: ak.Array) -> ak.Array:
 
 def _calculate_combination_invariant_mass(
     fs_events: ak.Array,
-    combination: Dict[str, int],
+    combination: Dict,
     config: Dict,
     calculator: IMCalculator,
     logger: logging.Logger,
@@ -278,42 +279,30 @@ def _fs_dict_exceeding_threshold(fs_im_mapping: Dict, threshold: int) -> bool:
     return total_size >= threshold
 
 
-# def prepare_im_combination_name(
-#     filename: str,
-#     final_state: str,
-#     combination: Dict[str, int]
-# ) -> str:
-#     base_filename = filename.replace(".root", "")
-
-#     e_count = combination.get("Electrons", 0)
-#     j_count = combination.get("Jets", 0)
-#     m_count = combination.get("Muons", 0)
-#     g_count = combination.get("Photons", 0)
-
-#     combination_part = f"{e_count}e_{m_count}m_{j_count}j_{g_count}g"
-#     return f"{base_filename}_FS_{final_state}_IM_{combination_part}"
 def prepare_im_combination_name(
     filename: str,
     final_state: str,
-    combination: Dict[str, int]
+    combination: Dict,
 ) -> str:
     """
     Build the SQLite signature name for a given IM combination.
 
-    IM part uses BumpNet index-based convention:
-      count N of particle type X → indices 0..N-1 → encoded as X0X1...X(N-1)
+    IM part encodes each selected particle as letter + rank index.
+    Works with both plain-int values (start=0) and (count, start_index) tuples.
 
-    Examples:
-      {"Electrons": 1, "Jets": 1}          → IM_e0j0
-      {"Electrons": 2, "Jets": 1}          → IM_e0e1j0
-      {"Electrons": 1, "Muons": 1}         → IM_e0m0
-      {"Electrons": 2, "Muons": 1, "Jets": 1} → IM_e0e1m0j0
+    Examples (leading only, start=0):
+        {"Electrons": (1, 0), "Jets": (1, 0)}       → IM_e0j0
+        {"Electrons": (2, 0), "Jets": (1, 0)}       → IM_e0e1j0
+        {"Electrons": (1, 0), "Muons": (1, 0)}      → IM_e0m0
 
-    This is unambiguous: IM_e0j0 = leading e + leading j (2-body),
-    IM_e0e1j0 = leading e + sub-leading e + leading j (3-body).
+    Examples (sub-leading, start>0):
+        {"Electrons": (1, 1), "Jets": (1, 0)}       → IM_e1j0
+        {"Electrons": (1, 0), "Jets": (1, 1)}       → IM_e0j1
+        {"Electrons": (1, 1), "Jets": (1, 1)}       → IM_e1j1
+        {"Electrons": (2, 1), "Jets": (1, 0)}       → IM_e1e2j0
 
-    Future sub-leading support (Fix 2): when start_indices are added,
-    {"Electrons": 1, start=1, "Jets": 1, start=0} → IM_e1j0 naturally.
+    The name is unambiguous: IM_e1j0 always means sub-leading electron
+    + leading jet (2-body invariant mass).
     """
     base_filename = filename.replace(".root", "")
 
@@ -327,9 +316,13 @@ def prepare_im_combination_name(
 
     im_parts = []
     for ptype, letter in PARTICLE_ORDER:
-        count = combination.get(ptype, 0)
-        for idx in range(count):
+        if ptype not in combination:
+            continue
+        value = combination[ptype]
+        count = get_count(value)
+        start = get_start(value)
+        for idx in range(start, start + count):
             im_parts.append(f"{letter}{idx}")
 
-    im_str = "".join(im_parts)   # e.g. "e0e1j0"
+    im_str = "".join(im_parts)   # e.g. "e0j0", "e1j0", "e0e1j0"
     return f"{base_filename}_FS_{final_state}_IM_{im_str}"

@@ -96,6 +96,8 @@ class MassCalculationConfig:
     max_count_particle_in_combination: int = 4
     max_total_particles_in_combination: int = 4
     min_events_per_fs: int = 100  # Minimum events for a final state to be kept
+    include_subleading: bool = False       # set True to include e1, j1, etc.
+    max_subleading_index: int = 1          # highest rank index to consider
     
     def __post_init__(self):
         """Validate mass calculation configuration."""
@@ -299,6 +301,8 @@ class PipelineConfig:
                 max_count_particle_in_combination=mass_dict.get("max_count_particle_in_combination", 4),
                 max_total_particles_in_combination=mass_dict.get("max_total_particles_in_combination", 4),
                 min_events_per_fs=mass_dict.get("min_events_per_fs", 100),
+                include_subleading=mass_dict.get("include_subleading", False),
+                max_subleading_index=mass_dict.get("max_subleading_index", 1),
             )
         
         # Parse post-processing config if enabled

@@ -54,6 +54,8 @@ class MassCalculationHandler(StateHandler):
             min_count=mc.min_count_particle_in_combination,
             max_count=mc.max_count_particle_in_combination,
             max_total_particles=mc.max_total_particles_in_combination,
+            include_subleading=getattr(mc, 'include_subleading', False),
+            max_subleading_index=getattr(mc, 'max_subleading_index', 1),
         )
         self.logger.info(f"Generated {len(all_combinations)} combinations to process")
 

@@ -12,6 +12,31 @@ Based on: `master` of [atlas-utilization](https://github.com/Zhavi221/atlas-util
 
 ## Summary of Changes
 
+## Fix 10 — Sub-leading particle support
+
+**Problem:** All combinations used only leading particles (highest pT).
+`{"Electrons": 1}` always meant e₀. There was no way to compute e₁+j₀
+(sub-leading electron + leading jet) as a separate invariant mass signature.
+
+**Solution:** Combination values are now `(count, start_index)` tuples.
+`start_index=0` = leading (unchanged behaviour); `start_index=1` = sub-leading.
+Plain `int` values are still accepted via `get_count()` / `get_start()` helpers
+for full backward compatibility.
+
+**New config flags** (in `mass_calculation_task_config`):
+```yaml
+include_subleading: false   # set true to activate
+max_subleading_index: 1     # highest rank index (1 = up to sub-leading)
+```
+
+**Impact:** With `max_subleading_index: 1`, enabling sub-leading expands
+combinations from 65 → 308 (~4.7×). Walltime should be scaled accordingly.
+
+**Modified files:** `combinatorics.py`, `physics_calcs.py`,
+`im_calculator.py`, `im_pipeline.py`, `domain/config.py`, `config.yaml`
+
+############################
+
 ### Fix 5 — max_total_particles_in_combination cap (`combinatorics.py`, `domain/config.py`, `mass_calculation_handler.py`)
 
 **Problem:** With `min_particles_in_combination: 1`, the number of IM combinations
