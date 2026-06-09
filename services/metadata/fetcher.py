@@ -6,15 +6,74 @@ Single responsibility: Interact with ATLAS API to get file URLs.
 
 import logging
 import json
+import re
 import requests
 import io
 from contextlib import redirect_stdout
 from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 from typing import Optional
 import atlasopenmagic as atom
 
 from services import consts
 from domain.metadata import ReleaseMetadata
+
+# Matches the dataset namespace component in ATLAS Open Data URLs.
+# The digit+underscore suffix (e.g. mc20_, data16_) is specific enough
+# to avoid false matches like "opendata" or "metadata".
+# Examples:
+#   MC:   .../mc20_13TeV/DAOD_PHYSLITE.xxx
+#   Data: .../data16_13TeV/DAOD_PHYSLITE.xxx
+
+
+class UrlType(Enum):
+    DATA    = "data"
+    MC      = "mc"
+
+
+_MC_NAMESPACE_RE   = re.compile(r'/mc\d+_',   re.IGNORECASE)
+_DATA_NAMESPACE_RE = re.compile(r'/data\d+_', re.IGNORECASE)
+
+
+def _classify_url(url: str) -> UrlType:
+    """
+    Classify a URL as DATA or MC using anchored regex on the RUCIO namespace.
+
+    Raises ValueError if the URL matches both patterns or neither — so
+    unclassifiable URLs are never silently misrouted.
+    """
+    is_mc   = bool(_MC_NAMESPACE_RE.search(url))
+    is_data = bool(_DATA_NAMESPACE_RE.search(url))
+
+    if is_mc and not is_data:
+        return UrlType.MC
+    if is_data and not is_mc:
+        return UrlType.DATA
+    raise ValueError(
+        f"URL matched {'both' if is_mc and is_data else 'neither'} "
+        f"MC and DATA patterns — cannot classify: {url}"
+    )
+
+
+def _assert_no_cross_contamination(separated: dict[str, list[str]]) -> None:
+    """
+    Post-separation integrity check.
+    Asserts no MC URLs ended up in data keys and vice versa.
+    Raises AssertionError immediately if violated.
+    """
+    for key, urls in separated.items():
+        is_mc_key = key.endswith("_mc")
+        for url in urls:
+            url_type = _classify_url(url)
+            if is_mc_key and url_type != UrlType.MC:
+                raise AssertionError(
+                    f"DATA url found in MC key '{key}': {url}"
+                )
+            if not is_mc_key and url_type != UrlType.DATA:
+                raise AssertionError(
+                    f"MC url found in DATA key '{key}': {url}"
+                )
+# ── END CHANGE 1 ─────────────────────────────────────────────────────────────
 
 
 class MetadataFetcher:
@@ -79,14 +138,16 @@ class MetadataFetcher:
     def fetch_by_release_years(
         self,
         release_years: list[str],
-        separate_mc: bool = False
+      # ── CHANGE 2: Remove `separate_mc` parameter entirely ────────────────
+        # BEFORE: separate_mc: bool = False
+        # AFTER:  parameter removed — separation is always performed.
+        # There is no valid use case for mixing data and MC in the cache.
     ) -> dict[str, list[str]]:
         """
         Fetch file URLs for given release years.
         
         Args:
             release_years: List of release years to fetch
-            separate_mc: Whether to separate MC files from data files
             
         Returns:
             Dict mapping release years to lists of file URLs
@@ -95,10 +156,15 @@ class MetadataFetcher:
         
         release_files = self._fetch_urls_for_releases(release_years)
         
-        if separate_mc:
-            release_files = self._separate_mc_files(release_files)
-        
-        return release_files
+        # ── CHANGE 3: Always separate, remove `if separate_mc` branch ────────
+        # BEFORE:
+        #     if separate_mc:
+        #         release_files = self._separate_mc_files(release_files)
+        #     return release_files
+        #
+        # AFTER: always separate, using strict classifier:
+        return self._separate_mc_files(release_files)
+        # ── END CHANGE 3 ─────────────────────────────────────────────────────
     
     def fetch_by_record_ids(
         self,
@@ -119,8 +185,8 @@ class MetadataFetcher:
         for record_id in record_ids:
             try:
                 file_urls = self._fetch_files_for_record(record_id)
-                record_key = f"record_{record_id}"
-                release_files[record_key] = file_urls
+
+                release_files[f"record_{record_id}"] = file_urls
                 
                 logging.info(f"Fetched {len(file_urls)} files from record {record_id}")
             except Exception as e:
@@ -132,7 +198,10 @@ class MetadataFetcher:
         self,
         release_years: Optional[list[str]] = None,
         record_ids: Optional[list[int]] = None,
-        separate_mc: bool = False
+         # ── CHANGE 4: Remove `separate_mc` parameter from public API ─────────
+        # BEFORE: separate_mc: bool = False
+        # AFTER:  parameter removed — always separated.
+        # ── END CHANGE 4 ─────
     ) -> dict[str, list[str]]:
         """
         Fetch file URLs using either release years or specific record IDs.
@@ -142,7 +211,6 @@ class MetadataFetcher:
         Args:
             release_years: Optional list of release years
             record_ids: Optional list of specific record IDs
-            separate_mc: Whether to separate MC files from data files
             
         Returns:
             Dict mapping release/record keys to lists of file URLs
@@ -154,13 +222,13 @@ class MetadataFetcher:
         
         # Priority 2: Specified release years
         if release_years and len(release_years) > 0:
-            return self.fetch_by_release_years(release_years, separate_mc)
+            return self.fetch_by_release_years(release_years)
         
         # Priority 3: All available releases
         available = self.get_available_releases()
         all_releases = list(available.keys())
         logging.info(f"No specific releases specified, fetching all: {all_releases}")
-        return self.fetch_by_release_years(all_releases, separate_mc)
+        return self.fetch_by_release_years(all_releases)
     
     def _fetch_urls_for_releases(self, release_years: list[str]) -> dict[str, list[str]]:
         """
@@ -229,39 +297,61 @@ class MetadataFetcher:
         
         return file_list
     
+
     @staticmethod
-    def _separate_mc_files(release_files: dict[str, list[str]]) -> dict[str, list[str]]:
-        """
-        Separate MC files from data files.
-        
-        Creates separate entries with _mc suffix for MC files.
-        
-        Args:
-            release_files: Dict mapping release years to file URLs
-            
-        Returns:
-            Dict with MC files under "{year}_mc" keys and data under "{year}" keys
-        """
-        separated = {}
-        
+    def _separate_mc_files(
+        release_files: dict[str, list[str]]
+    ) -> dict[str, list[str]]:
+        # ── CHANGE 5: Replace loose substring match with strict classifier ────
+        # BEFORE (broken):
+        #     for url in file_urls:
+        #         if "mc" in url.lower():      # hits "opendata" in ALL URLs
+        #             mc_files.append(url)
+        #         else:
+        #             data_files.append(url)   # unclassifiable silently go here
+        #
+        # AFTER (strict):
+        separated: dict[str, list[str]] = {}
+        classification_errors: list[str] = []
+
         for year, file_urls in release_files.items():
-            mc_files = []
-            data_files = []
-            
+            data_files: list[str] = []
+            mc_files:   list[str] = []
+
             for url in file_urls:
-                if "mc" in url.lower():
+                try:
+                    url_type = _classify_url(url)
+                except ValueError as e:
+                    classification_errors.append(str(e))
+                    continue
+
+                if url_type == UrlType.MC:
                     mc_files.append(url)
                 else:
                     data_files.append(url)
-            
-            # Add data files (if any)
+
+            if classification_errors:
+                raise ValueError(
+                    f"Failed to classify {len(classification_errors)} URL(s):\n"
+                    + "\n".join(classification_errors[:10])
+                    + (f"\n... and {len(classification_errors) - 10} more"
+                       if len(classification_errors) > 10 else "")
+                )
+
             if data_files:
                 separated[year] = data_files
-            
-            # Add MC files with _mc suffix (if any)
             if mc_files:
                 separated[f"{year}_mc"] = mc_files
-        
+
+            logging.info(
+                f"Release '{year}': {len(data_files)} data files, "
+                f"{len(mc_files)} MC files"
+            )
+
+        # Post-separation integrity check — asserts zero cross-contamination
+        _assert_no_cross_contamination(separated)
+        # ── END CHANGE 5 ─────────────────────────────────────────────────────
+
         return separated
     
     def to_release_metadata(

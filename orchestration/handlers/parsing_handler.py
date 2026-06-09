@@ -133,7 +133,14 @@ class ParsingHandler(StateHandler):
         
         # Parse each release year
         for release_year, file_urls in metadata.items():
-            
+            # ── Skip MC keys when parse_mc=False ─────────────────────────────────────
+            # The fetcher always separates data and MC into separate keys (e.g.
+            # '2024r-pp' and '2024r-pp_mc'). parse_mc controls whether MC is
+            # included in the parsing run, not whether it is separated.
+            if release_year.endswith("_mc") and not parsing_config.parse_mc:
+                self.logger.info(f"Skipping MC key '{release_year}' (parse_mc=False)")
+                continue
+
             self.logger.info(
                 f"Parsing {len(file_urls)} files for release year: {release_year}"
             )

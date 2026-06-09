@@ -12,6 +12,27 @@ Based on: `master` of [atlas-utilization](https://github.com/Zhavi221/atlas-util
 
 ## Summary of Changes
 
+## Fix 11 — prevent MC/data contamination in metadata cache
+
+**Problem:**The previous `_separate_mc_files` used `"mc" in url.lower()` which is
+ambiguous — ATLAS Open Data URLs all contain "opendata", causing MC URLs
+to be misclassified. With `parse_mc=False`, no separation happened at
+all, so MC events were silently parsed as collision data.
+
+**Modified files:**:
+- fetcher.py: replace loose substring match with regex-based classifier
+  (_classify_url) anchored to the dataset namespace component (mc<N>_,
+  data<N>_). Separation now always happens unconditionally. Unclassifiable
+  URLs raise ValueError immediately — no silent misrouting.
+- fetcher.py: add _assert_no_cross_contamination() post-separation check
+  as a safety net.
+- fetch_metadata_handler.py: validate cache integrity on load; raise
+  RuntimeError with first 5 violations if contaminated, forcing cache
+  rebuild. Remove separate_mc argument from fetcher.fetch() call.
+- parsing_handler.py: skip keys ending in _mc when parse_mc=False.
+  parse_mc now means "include MC in the parsing run", not "separate in
+  cache" (separation is always performed).
+  
 ## Fix 10 — Sub-leading particle support
 
 **Problem:** All combinations used only leading particles (highest pT).
