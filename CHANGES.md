@@ -128,21 +128,11 @@ correctly identifying the Z peak at ~91 GeV even for sparse final states.
 
 ### Fix 7 — Post-processing: use right edge of peak bin (`post_processing_pipeline.py`)
 
-**Problem:** `_find_rightmost_highest_peak` returned `bin_edges[peak_bin_idx]`
-(the **left** edge of the peak bin). With 10 GeV bins, the Z peak bin spans
-81–91 GeV, so the cut kept events from 81 GeV onward — including the full Z peak.
+remove Fix 7 — peak bin right-edge shift had no effect
 
-**Fix:** Return `bin_edges[peak_bin_idx + 1]` (the **right** edge):
-
-```python
-# OLD:
-peak_mass = bin_edges[peak_bin_idx]
-# NEW:
-peak_mass = bin_edges[peak_bin_idx + 1]
-```
-
-**Result:** The full Z peak bin (e.g. 81–91 GeV) is now removed, producing
-a smooth falling distribution starting at ~91 GeV suitable for BumpNet.
+The peak_bin_idx + 1 change (right edge instead of left edge of peak bin)
+did not solve the post-processing problem. Root cause is elsewhere.
+Reverting to original behavior pending proper fix.
 
 ---
 

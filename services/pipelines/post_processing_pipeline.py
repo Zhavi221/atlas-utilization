@@ -183,7 +183,7 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
             processed += 1                          # ← new
             if processed % COMMIT_EVERY == 0:       # ← new
                 writer.commit()                     # ← new: periodic commit
-                logger.info(f"Post-processing progress: {processed}/{len(signatures)} signatures committed")  # ← new
+                logger.info(f"Post-processing progress: {processed}/{len(fs_im_key)} signatures committed")  # ← new
 
         writer.commit()  # ← final commit for remainder    
     finally:
@@ -268,9 +268,7 @@ def _find_rightmost_highest_peak(
     if peak_bin_idx is None:
         return None
 
-    # peak_mass = bin_edges[peak_bin_idx]
-    # NEW — returns right edge of peak bin:
-    peak_mass = bin_edges[peak_bin_idx + 1]
+    peak_mass = bin_edges[peak_bin_idx]
     logger.debug(f"Found peak at bin {peak_bin_idx} with count {max_count}, mass = {peak_mass:.2f} GeV")
     return peak_mass
 
