@@ -1,0 +1,100 @@
+# ============================================================================
+# ATLAS Open Data Pipeline — Configuration
+
+# ============================================================================
+
+paths:
+  parsed_data_path:        &parsed_data_path        "./output/parsed_data"
+  im_arrays_path:          &im_arrays_path          "./output/im_arrays"
+  im_arrays_processed_path: &im_arrays_processed_path "./output/im_arrays_processed"
+  histograms_path:         &histograms_path         "./output/histograms"
+  metadata_cache_path:     &metadata_cache_path     "./output/metadata_cache.json"
+  jobs_logs_path:          &jobs_logs_path          "./output/logs"
+
+names:
+  run_name:           &run_name           "atlas_minEvt100_maxTot4_up4j_sublead"
+  histogram_filename: &histogram_filename "atlas_opendata_minEvt100_maxTot4_up4j_sublead_bumpnet.root"
+
+run_metadata:
+  run_name: *run_name
+  base_output_dir: "/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/data"
+  batch_job_index: null
+  total_batch_jobs: null
+
+tasks:
+  do_parsing: true 
+  do_mass_calculating: true
+  do_post_processing: true
+  do_histogram_creation: true
+
+testing_config:
+  is_on: false
+  test_run_index: null
+  testing_jobs_path: "./testing_jobs"
+  limit_files_per_year: null
+  limit_combinations: null
+
+parsing_task_config:
+  output_path:    *parsed_data_path
+  file_urls_path: *metadata_cache_path
+  jobs_logs_path: *jobs_logs_path
+  release_years:
+    - "2024r-pp"
+  specific_record_ids: null
+  parse_mc: false
+  use_multiprocessing: false
+  parallel_processes: 4
+  threads: 8
+  env_threshold_memory_mb: 8000
+  chunk_yield_threshold_bytes: 2147483648
+  count_retries_failed_files: 3
+  fetching_metadata_timeout: 60
+  max_files_to_process: 3
+  possible_data_tree_names:
+    - "CollectionTree"
+    - "mini"
+    - "analysis"
+    - "Events"
+  create_dirs: true
+  show_progress_bar: true
+  particle_counts:
+    electrons: { min: 0, max: 4 }
+    muons:     { min: 0, max: 4 }
+    jets:      { min: 0, max: 4 }
+    photons:   { min: 0, max: 4 }
+  kinematic_cuts:
+    electrons: { pt_min: 25000.0, eta_max: 2.47 }
+    muons:     { pt_min: 25000.0, eta_max: 2.5 }
+    jets:      { pt_min: 30000.0, eta_max: 4.5 }
+    photons:   { pt_min: 25000.0, eta_max: 2.37 }
+
+mass_calculation_task_config:
+  input_dir: *parsed_data_path
+  output_dir: *im_arrays_path
+  field_to_slice_by: "pt"
+  use_multiprocessing: true
+  parallel_processes: 4
+  fs_chunk_threshold_bytes: 2000000000
+  objects_to_calculate: [Electrons, Muons, Jets, Photons]
+  min_particles_in_combination: 1
+  max_particles_in_combination: 4
+  min_count_particle_in_combination: 1
+  max_count_particle_in_combination: 4
+  max_total_particles_in_combination: 4
+  min_events_per_fs: 100                  
+  include_subleading: true        # set true to include e1, j1, etc.
+  max_subleading_index: 1          # highest rank index to consider
+
+post_processing_task_config:
+  input_dir:  *im_arrays_path
+  output_dir: *im_arrays_processed_path
+  peak_detection_bin_width_gev: 10.0
+
+histogram_creation_task_config:
+  input_dir:  *im_arrays_processed_path
+  output_dir: *histograms_path
+  bin_width_gev: 10.0
+  single_output_file: true
+  output_filename: *histogram_filename
+  exclude_outliers: true # was designed to remove high-mass outliers from very broad distributions, but it doesn't work properly during merging
+  use_bumpnet_naming: true

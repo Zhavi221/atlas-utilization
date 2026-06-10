@@ -12,6 +12,129 @@ Based on: `master` of [atlas-utilization](https://github.com/Zhavi221/atlas-util
 
 ## Summary of Changes
 
+### Fix 12 — Histogram bin-edge mismatch across batches (`histograms_pipeline.py`, `executor.py`, `utils/paths.py`)
+
+**Problem:** Each histogram batch job computed `global_min`/`global_max` from its
+own data slice, producing histograms with different bin edges per batch. `hadd`
+silently kept only the first batch's histogram and discarded the rest — e.g. for
+`mass_m0m1j0_cat_2mx_1jx`, batch_1 had `nbins=33 min=59.8 max=397.5` while
+batch_3 had `nbins=254 min=62.3 max=2598.7`. The merged file contained only
+batch_1's 33 events instead of the true ~52,000.
+
+**Fix:** Introduced a mandatory scan step between post-processing and histogram
+creation. The scan reads all processed SQLite files, computes the true global
+min/max per bumpnet signature across all batches and chunks, and writes
+`logs/global_ranges.json`. All histogram batch jobs load this file and use
+identical bin edges. `hadd` now merges correctly.
+
+**New `--scan-only` mode** in `main.py` + `scan_global_ranges()` in `executor.py`:
+```bash
+python main.py --scan-only --run-dir /path/to/run_dir
+```
+
+**New helper functions** in `histograms_pipeline.py`:
+```python
+compute_global_ranges(sqlite_files, input_dir, exclude_outliers)
+save_global_ranges(ranges, output_path)
+load_global_ranges(path)
+```
+
+**`utils/paths.py`:** `update_config_paths_with_run_dir` now always sets
+`global_ranges_path = {run_dir}/logs/global_ranges.json` automatically — no
+manual config change needed.
+
+**PBS job chain updated** (`submit_data.sh`, `submit_mc.sh`):
+
+---
+
+### Fix 13 — MC/data contamination in pipeline runs (`submit_data.sh`, `submit_mc.sh`, `main.py`)
+
+**Problem:** Data and MC files were parsed into the same run directory. With
+`parse_mc=False` the metadata cache still contained MC URLs (see Fix 11), and
+the pipeline had no clean mechanism to enforce full separation at the run level.
+
+**Fix:** Separated into two independent submission scripts:
+- `submit_data.sh` — creates `{run_name}_data_{TIMESTAMP}/`, passes `--parse-mc false`
+- `submit_mc.sh` — creates `{run_name}_mc_{TIMESTAMP}/`, passes `--parse-mc true`
+
+Both scripts use the same config file. A new `--parse-mc true/false` CLI flag
+overrides `parse_mc` in `parsing_task_config` at runtime without editing YAML:
+
+```bash
+# in submit_data.sh:
+python -u main.py --config "${CONFIG}" --parse-mc false ...
+
+# in submit_mc.sh:
+python -u main.py --config "${CONFIG}" --parse-mc true ...
+```
+
+Both scripts implement the full 4-stage PBS chain from Fix 12.
+
+---
+
+### Fix 14 — Batch file deletion after hadd destroyed retry runs (`executor.py`)
+
+**Problem:** `merge_outputs` called `bf.unlink()` on each `batch_N.root` file
+after a successful `hadd`. On retry runs (e.g. after a failed batch job was
+resubmitted), only the new batch file existed — `hadd` merged just 1 file instead
+of all N, silently overwriting the previously correct merged file.
+
+**Fix:** Batch files are now moved to `histograms/batch_files_archive/` instead
+of deleted:
+```python
+archive_dir = Path(hist_dir) / "batch_files_archive"
+archive_dir.mkdir(exist_ok=True)
+for bf in batch_roots:
+    bf.rename(archive_dir / bf.name)
+```
+
+---
+
+### Fix 15 — Stats aggregation crash on float-valued fields (`executor.py`)
+
+**Problem:** `_aggregate_batch_stats` called `int(p[key])` on fields like
+`total_size_mb` which are stored as floats (e.g. `'0.00'`), raising
+`ValueError: invalid literal for int() with base 10: '0.00'`.
+
+**Fix:** `int(float(p[key]))` — converts to float first, then truncates to int.
+
+---
+
+### Fix 16 — Memory crash in plot generation (`executor.py`)
+
+**Problem:** `_read_parsed_data_stats` accumulated full per-event particle count
+arrays (`particle_dists[ptype].extend(counts.tolist())`) across all 671 parsed
+ROOT files. With millions of events per file this exhausted memory on the login
+node, killing the process silently with no traceback.
+
+**Fix:** Replaced array accumulation with immediate summation:
+```python
+counts = tree[branch_name].array(library="np")
+particle_counts[ptype] = particle_counts.get(ptype, 0) + int(np.sum(counts))
+del counts  # free immediately
+```
+`distributions` dict is now always empty — too large to store for runs of this size.
+
+---
+
+### Feature — Pre-post-processing histograms (`executor.py`, `histogram_creation_task_config`)
+
+**Motivation:** Comparing histograms before and after post-processing is essential
+for validating peak removal. Previously this required a separate manual submission
+script (`submit_hist_up4j_v2.sh`).
+
+**New config options:**
+```yaml
+histogram_creation_task_config:
+  also_save_pre_postproc: true
+  pre_postproc_filename: "atlas_opendata_nopostproc.root"
+```
+
+When enabled, the merge job reads all `im_arrays/*.sqlite` files (raw invariant
+mass arrays, before peak removal) and writes a second ROOT file alongside the
+main post-processed one. Produced in the merge step to avoid the bin-edge problem
+— all data is visible at once, no batching required.
+
 ## Fix 11 — prevent MC/data contamination in metadata cache
 
 **Problem:**The previous `_separate_mc_files` used `"mc" in url.lower()` which is

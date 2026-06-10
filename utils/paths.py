@@ -95,6 +95,8 @@ def update_config_paths_with_run_dir(config_dict: dict, run_dir: str) -> dict:
         hist_config = updated_config['histogram_creation_task_config']
         _set_if_relative(hist_config, 'input_dir', os.path.join(run_dir, "im_arrays_processed"))
         _set_if_relative(hist_config, 'output_dir', os.path.join(run_dir, "histograms"))
+        # Always set global_ranges_path — scan job writes here, histogram batches read from here
+        hist_config['global_ranges_path'] = os.path.join(run_dir, "logs", "global_ranges.json")
 
     return updated_config
 
