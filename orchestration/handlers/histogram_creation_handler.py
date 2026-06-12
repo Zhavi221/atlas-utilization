@@ -39,6 +39,8 @@ class HistogramCreationHandler(StateHandler):
             "exclude_outliers": hc.exclude_outliers,
             "use_bumpnet_naming": hc.use_bumpnet_naming,
             "batch_job_index": context.config.batch_job_index,
+            "total_batch_jobs": context.config.total_batch_jobs,
+            "global_ranges_path": getattr(hc, 'global_ranges_path', None),
         }
 
         # If the previous stage produced files, pass them explicitly

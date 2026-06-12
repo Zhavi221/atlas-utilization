@@ -12,6 +12,49 @@ Based on: `master` of [atlas-utilization](https://github.com/Zhavi221/atlas-util
 
 ## Summary of Changes
 
+### Fix 17 — Histogram batch jobs not splitting SQLite files correctly (`histograms_pipeline.py`, `orchestration/handlers/histogram_creation_handler.py`, `main.py`, `domain/config.py`)
+
+**Problem:** Multiple issues caused all histogram batch jobs to process all
+processed SQLite files instead of their assigned slice, producing identical
+histograms in each batch that hadd summed incorrectly:
+
+1. `total_batch_jobs` was missing from the `config_dict` passed to
+   `create_histograms` — without it, `_create_histograms_from_sqlite` could
+   not split SQLite files by batch index.
+
+2. `global_ranges_path` was not passed through `HistogramCreationHandler` to
+   `create_histograms`, so `global_ranges` was always `None` and histograms
+   used batch-local bin edges instead of the global ones from `global_ranges.json`.
+
+3. `_create_histograms_from_sqlite` had no SQLite file splitting logic at all —
+   it always read all SQLite files regardless of `batch_job_index`.
+
+4. `batch_job_index` and `total_batch_jobs` were injected into
+   `histogram_creation_task_config` in `main.py` but only after
+   `update_config_paths_with_run_dir` was called, so the split never reached
+   `PipelineConfig`.
+
+5. `also_save_pre_postproc`, `pre_postproc_filename`, and `global_ranges_path`
+   were not defined as fields in `HistogramCreationConfig` or read in
+   `from_dict`, so YAML values were silently ignored.
+
+**Fixes:**
+
+- `histograms_pipeline.py`: added SQLite file splitting in
+  `_create_histograms_from_sqlite` using `_get_batch_files` when
+  `batch_job_index` and `total_batch_jobs` are present in config.
+
+- `histogram_creation_handler.py`: added `total_batch_jobs` and
+  `global_ranges_path` to the `config_dict` passed to `create_histograms`.
+
+- `main.py`: inject `batch_job_index` and `total_batch_jobs` into
+  `histogram_creation_task_config` alongside `output_filename`.
+
+- `domain/config.py`: added `global_ranges_path`, `also_save_pre_postproc`,
+  and `pre_postproc_filename` fields to `HistogramCreationConfig` dataclass
+  and wired them through `from_dict`.
+
+
 ### Fix 12 — Histogram bin-edge mismatch across batches (`histograms_pipeline.py`, `executor.py`, `utils/paths.py`)
 
 **Problem:** Each histogram batch job computed `global_min`/`global_max` from its
@@ -120,9 +163,7 @@ del counts  # free immediately
 ### Feature — Pre-post-processing histograms (`executor.py`, `histogram_creation_task_config`)
 
 **Motivation:** Comparing histograms before and after post-processing is essential
-for validating peak removal. Previously this required a separate manual submission
-script (`submit_hist_up4j_v2.sh`).
-
+for validating peak removal. 
 **New config options:**
 ```yaml
 histogram_creation_task_config:

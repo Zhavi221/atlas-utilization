@@ -167,6 +167,13 @@ class HistogramCreationConfig:
     exclude_outliers: bool = True  # Whether to exclude outlier histograms
     use_bumpnet_naming: bool = False  # When true, use mass_<combo>_cat_<final_state> naming
     
+    # Global ranges (set automatically by update_config_paths_with_run_dir)
+    global_ranges_path: Optional[str] = None
+
+    # Pre-postproc histograms
+    also_save_pre_postproc: bool = False
+    pre_postproc_filename: Optional[str] = None
+
     def __post_init__(self):
         """Validate histogram creation configuration."""
         if not self.input_dir:
@@ -327,6 +334,9 @@ class PipelineConfig:
                 output_filename=hist_dict.get("output_filename"),
                 exclude_outliers=hist_dict.get("exclude_outliers", True),
                 use_bumpnet_naming=hist_dict.get("use_bumpnet_naming", False),
+                global_ranges_path=hist_dict.get("global_ranges_path"),         
+                also_save_pre_postproc=hist_dict.get("also_save_pre_postproc", False), 
+                pre_postproc_filename=hist_dict.get("pre_postproc_filename"), 
             )
         
         # Parse run metadata

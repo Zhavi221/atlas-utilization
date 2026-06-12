@@ -78,31 +78,32 @@ class MassCalculationHandler(StateHandler):
         parsed_dir = Path(mc.input_dir)
         if context.parsed_files:
             root_files = [Path(f) for f in context.parsed_files if Path(f).exists()]
+            self.logger.info(
+                f"Using {len(root_files)} file(s) from parsing stage context"
+            )
+            # Parsing already assigned the correct files — no further splitting needed
         else:
             root_files = sorted(parsed_dir.glob("*.root"))
+            self.logger.info(
+                f"No context files — reading {len(root_files)} file(s) from {parsed_dir}"
+            )
+            # Apply batch splitting only when reading from disk
+            batch_idx = context.config.batch_job_index
+            total_batches = context.config.total_batch_jobs
+            if batch_idx is not None and total_batches is not None:
+                total_files = len(root_files)
+                chunk_size = max(1, total_files // total_batches)
+                slice_start = (batch_idx - 1) * chunk_size
+                slice_end = total_files if batch_idx == total_batches else slice_start + chunk_size
+                root_files = root_files[slice_start:slice_end]
+                self.logger.info(
+                    f"Batch {batch_idx}/{total_batches}: "
+                    f"processing files {slice_start+1}-{slice_end} of {total_files}"
+                )
 
         if not root_files:
             self.logger.warning(f"No parsed ROOT files found in {parsed_dir}")
             return context, self._determine_next_state(context)
-
-        # ── Apply batch splitting if configured ──
-        batch_idx = context.config.batch_job_index
-        total_batches = context.config.total_batch_jobs
-
-        if batch_idx is not None and total_batches is not None:
-            total_files = len(root_files)
-            chunk_size = total_files // total_batches
-            slice_start = (batch_idx - 1) * chunk_size
-            slice_end = total_files if batch_idx == total_batches else slice_start + chunk_size
-            root_files = root_files[slice_start:slice_end]
-            self.logger.info(
-                f"Batch {batch_idx}/{total_batches}: "
-                f"processing files {slice_start+1}-{slice_end} of {total_files}"
-            )
-
-        self.logger.info(
-            f"Processing {len(root_files)} parsed file(s) from {parsed_dir}"
-        )
 
         total_created_chunks = 0
 

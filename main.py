@@ -137,6 +137,10 @@ def parse_args():
         parser.error("--run-dir is required when --plots-only or --merge-only is set")
     if args.plots_only and args.merge_only:
         parser.error("--plots-only and --merge-only are mutually exclusive")
+    if args.scan_only and args.merge_only:
+        parser.error("--scan-only and --merge-only are mutually exclusive")
+    if args.scan_only and args.plots_only:
+        parser.error("--scan-only and --plots-only are mutually exclusive")
 
     return args
 
@@ -242,7 +246,8 @@ def main():
         if args.batch_job_index is not None:
             hist_cfg = config_dict.get("histogram_creation_task_config", {})
             hist_cfg["output_filename"] = f"batch_{args.batch_job_index}.root"
-
+            hist_cfg["batch_job_index"] = args.batch_job_index
+            hist_cfg["total_batch_jobs"] = args.total_batch_jobs
         # Create validated config
         config = PipelineConfig.from_dict(config_dict)
         logger.info("Configuration loaded and validated successfully")

@@ -183,6 +183,20 @@ def _create_histograms_from_sqlite(
     output_filename = histograms_config.get("output_filename", "all_histograms.root")
 
     db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
+
+    # Split SQLite files across histogram batch jobs
+    batch_job_index = histograms_config.get("batch_job_index")
+    total_batch_jobs = histograms_config.get("total_batch_jobs")
+    if batch_job_index is not None and total_batch_jobs is not None:
+        sqlite_files = _get_batch_files(
+            sorted(sqlite_files), batch_job_index, total_batch_jobs
+        )
+        db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
+        logger.info(
+            f"Batch {batch_job_index}/{total_batch_jobs}: "
+            f"processing SQLite files: {sqlite_files}"
+        )
+    
     signatures = set()
     for db_path in db_paths:
         signatures.update(list_signatures(db_path))

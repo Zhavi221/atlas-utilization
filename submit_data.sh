@@ -1,16 +1,15 @@
 #!/bin/bash
 # ===========================================================================
 # Submit DATA pipeline (parse_mc: false)
-# Run this first, then submit_mc.sh
 # ===========================================================================
 
 set -e
 
-NUM_JOBS=2
-CONFIG="configWmaxTotal_up4j_minEvt100_subleading.yaml"
+NUM_JOBS=3
+CONFIG="configWmaxTotal_up4j_minEvt10_subleading.yaml"
 CPUS_PER_JOB=4
 MEM_PER_JOB="180gb"
-WALLTIME="2:00:00"
+WALLTIME="12:00:00"
 SCAN_WALLTIME="04:00:00"
 HIST_WALLTIME="24:00:00"
 MERGE_WALLTIME="04:00:00"
@@ -38,17 +37,18 @@ echo "ATLAS Pipeline — DATA submission"
 echo "Run dir: ${RUN_DIR}"
 echo "=============================================="
 
-# Stage 1: parsing + mass_calc + post_processing (data only, no histograms)
-ARRAY_JOB_ID=$(qsub <<EOF
+# Stage 1: submit N individual batch jobs (parsing+mass_calc+post_processing)
+BATCH_JOB_IDS=""
+for i in $(seq 1 $NUM_JOBS); do
+    JOB_ID=$(qsub <<EOF
 #!/bin/bash
 #PBS -q ${QUEUE}
-#PBS -N atlas_data_batch
+#PBS -N atlas_data_batch_${i}
 #PBS -o ${LOG_DIR}/
 #PBS -e ${LOG_DIR}/
 #PBS -l select=1:ncpus=${CPUS_PER_JOB}:mem=${MEM_PER_JOB}
 #PBS -l io=5
 #PBS -l walltime=${WALLTIME}
-#PBS -J 1-${NUM_JOBS}
 
 cd ${PIPELINE_DIR}
 
@@ -57,27 +57,34 @@ source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
 lsetup "views LCG_107 x86_64-el9-gcc14-opt"
 source ${PIPELINE_DIR}/atlasenv/bin/activate
 
-# Override parse_mc to false for data
 python -u main.py --config "${CONFIG}" \
     --tasks parsing,mass_calculating,post_processing \
     --parse-mc false \
-    --batch-job-index \${PBS_ARRAY_INDEX} \
+    --batch-job-index ${i} \
     --total-batch-jobs ${NUM_JOBS} \
     --run-dir "${RUN_DIR}" \
-    > "${LOG_DIR}/batch_\${PBS_ARRAY_INDEX}.out" \
-    2> "${LOG_DIR}/batch_\${PBS_ARRAY_INDEX}.err"
+    > "${LOG_DIR}/batch_${i}.out" \
+    2> "${LOG_DIR}/batch_${i}.err"
 EOF
-)
-echo "Submitted data batch array: ${ARRAY_JOB_ID}"
+    )
+    echo "Submitted batch ${i}: ${JOB_ID}"
+    if [ -z "$BATCH_JOB_IDS" ]; then
+        BATCH_JOB_IDS="${JOB_ID}"
+    else
+        BATCH_JOB_IDS="${BATCH_JOB_IDS}:${JOB_ID}"
+    fi
+done
 
-# Stage 2: scan global ranges
-SCAN_JOB_ID=$(qsub -W depend=afterok:"${ARRAY_JOB_ID}" <<EOF
+echo "All batch jobs: ${BATCH_JOB_IDS}"
+
+# Stage 2: scan — depends on ALL batch jobs
+SCAN_JOB_ID=$(qsub -W depend=afterok:"${BATCH_JOB_IDS}" <<EOF
 #!/bin/bash
 #PBS -q ${QUEUE}
 #PBS -N atlas_data_scan
 #PBS -o ${LOG_DIR}/
 #PBS -e ${LOG_DIR}/
-#PBS -l select=1:ncpus=2:mem=32gb
+#PBS -l select=1:ncpus=2:mem=64gb
 #PBS -l io=5
 #PBS -l walltime=${SCAN_WALLTIME}
 
@@ -95,19 +102,20 @@ python -u main.py --config "${CONFIG}" \
     2> "${LOG_DIR}/scan.err"
 EOF
 )
-echo "Submitted data scan: ${SCAN_JOB_ID} (depends on ${ARRAY_JOB_ID})"
+echo "Submitted scan: ${SCAN_JOB_ID} (depends on all batches)"
 
-# Stage 3: histogram creation array
-HIST_JOB_ID=$(qsub -W depend=afterok:"${SCAN_JOB_ID}" <<EOF
+# Stage 3: histogram jobs — each depends on scan
+HIST_JOB_IDS=""
+for i in $(seq 1 $NUM_JOBS); do
+    JOB_ID=$(qsub -W depend=afterok:"${SCAN_JOB_ID}" <<EOF
 #!/bin/bash
 #PBS -q ${QUEUE}
-#PBS -N atlas_data_hist
+#PBS -N atlas_data_hist_${i}
 #PBS -o ${LOG_DIR}/
 #PBS -e ${LOG_DIR}/
 #PBS -l select=1:ncpus=${CPUS_PER_JOB}:mem=${MEM_PER_JOB}
 #PBS -l io=5
 #PBS -l walltime=${HIST_WALLTIME}
-#PBS -J 1-${NUM_JOBS}
 
 cd ${PIPELINE_DIR}
 
@@ -118,17 +126,25 @@ source ${PIPELINE_DIR}/atlasenv/bin/activate
 
 python -u main.py --config "${CONFIG}" \
     --tasks histogram_creation \
-    --batch-job-index \${PBS_ARRAY_INDEX} \
+    --batch-job-index ${i} \
     --total-batch-jobs ${NUM_JOBS} \
     --run-dir "${RUN_DIR}" \
-    > "${LOG_DIR}/hist_\${PBS_ARRAY_INDEX}.out" \
-    2> "${LOG_DIR}/hist_\${PBS_ARRAY_INDEX}.err"
+    > "${LOG_DIR}/hist_${i}.out" \
+    2> "${LOG_DIR}/hist_${i}.err"
 EOF
-)
-echo "Submitted data histograms: ${HIST_JOB_ID} (depends on ${SCAN_JOB_ID})"
+    )
+    echo "Submitted hist ${i}: ${JOB_ID}"
+    if [ -z "$HIST_JOB_IDS" ]; then
+        HIST_JOB_IDS="${JOB_ID}"
+    else
+        HIST_JOB_IDS="${HIST_JOB_IDS}:${JOB_ID}"
+    fi
+done
 
-# Stage 4: merge
-MERGE_JOB_ID=$(qsub -W depend=afterok:"${HIST_JOB_ID}" <<EOF
+echo "All hist jobs: ${HIST_JOB_IDS}"
+
+# Stage 4: merge — depends on ALL histogram jobs
+MERGE_JOB_ID=$(qsub -W depend=afterok:"${HIST_JOB_IDS}" <<EOF
 #!/bin/bash
 #PBS -q ${QUEUE}
 #PBS -N atlas_data_merge
@@ -152,14 +168,16 @@ python -u main.py --config "${CONFIG}" \
     2> "${LOG_DIR}/merge.err"
 EOF
 )
-echo "Submitted data merge: ${MERGE_JOB_ID} (depends on ${HIST_JOB_ID})"
+echo "Submitted merge: ${MERGE_JOB_ID} (depends on all hist jobs)"
 
 echo ""
 echo "Job chain:"
-echo "  Batch:      ${ARRAY_JOB_ID}"
+echo "  Batches:    ${BATCH_JOB_IDS}"
 echo "  Scan:       ${SCAN_JOB_ID}"
-echo "  Histograms: ${HIST_JOB_ID}"
+echo "  Histograms: ${HIST_JOB_IDS}"
 echo "  Merge:      ${MERGE_JOB_ID}"
 echo ""
-echo "Data run dir: ${RUN_DIR}"
-echo "When complete, run: bash submit_mc.sh"
+echo "Monitor:  qstat -u \$USER"
+echo "Logs:     ${LOG_DIR}/"
+echo "Output:   ${RUN_DIR}/"
+echo ""
