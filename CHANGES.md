@@ -245,13 +245,6 @@ mass_calculation_task_config:
   max_total_particles_in_combination: 4  # default; reduces 624 → 69 combinations
 ```
 
-| Config | Combinations |
-|--------|-------------|
-| No cap | 624 |
-| cap=2  | 14  |
-| cap=3  | 34  |
-| cap=4  | 69  |
-
 ---
 
 ### Fix 6 — Post-processing: merge all chunks by FS_IM key before peak detection (`post_processing_pipeline.py`)
@@ -406,76 +399,6 @@ gc.collect()
 
 The ROOT files on disk are unaffected — only the in-memory Python object is freed.
 
----
-
-### Fix 4 — Parsing config: reduced memory thresholds
-
-**Problem:** `chunk_yield_threshold_bytes: 2147483648` (2 GB) combined with
-`threads: 8` allowed up to 16 GB of awkward arrays to accumulate before any
-flush, leading to memory explosions when running all pipeline stages in one job.
-
-**Fix** in `config.yaml`:
-
-```yaml
-parsing_task_config:
-  chunk_yield_threshold_bytes: 268435456  # 256 MB — flush frequently
-  threads: 2                              # reduce from 8
-```
-
----
-
-## New Files
-
-### `config.yaml`
-Main config for the ATLAS Open Data BumpNet run. Key settings:
-- 10 GeV bin width for histograms
-- Correct MeV kinematic cuts
-- Reduced memory thresholds
-- `max_particles_in_combination: 2` for initial validation run
-  (increase to 4 for full combination set)
-
-### `submit_parsing_only.sh`
-Submits a single PBS job that runs **only the parsing stage**.
-Mass calculation is intentionally excluded to prevent memory explosion.
-
-### `submit_mass_calc.sh`
-Submits one PBS job **per parsed ROOT chunk** for mass calculation.
-Each job processes exactly one ~2 GB chunk, keeping memory under 16 GB.
-A dependent post-processing + histogram job is submitted automatically
-after all chunk jobs complete.
-
-### `submit_mass_postproc.sh`
-Submits mass calculation array job + dependent post-processing + histogram
-creation job for an **existing** parsed data directory (no re-parsing).
-
-Usage:
-```bash
-RUN_DIR=/path/to/existing/run bash submit_mass_postproc.sh
-```
-
-### `submit_hist_asNeta.sh`
-Submits histogram creation only from existing processed SQLite files.
-Bypasses mass calculation and post-processing.
-
-### `submit_minEvt10.sh`
-Full pipeline submission for `min_events_per_fs=10` run, reusing existing
-parsed data. Handles data and MC separately to avoid SQLite locking conflicts.
-No `hadd` — histogram creation reads all SQLite files in one job.
-
-### `configAsNeta.yaml`
-Config matching Neta's parsing settings (25 MeV cuts, min_events=100).
-
-### `configWmaxTotal.yaml`
-Config with `max_total_particles_in_combination: 4`, `min_particles: 1`.
-
-### `configWmaxTotal_up4j.yaml`
-Config with `jets: max: 4`, `parse_mc: true` for data+MC runs.
-
-### `configWmaxTotal_up4j_minEvt10.yaml`
-Config with `min_events_per_fs: 10` to recover rare electron final states.
-
-### `env.sh`
-Environment setup script for the pipeline (LCG view + atlasenv activation).
 
 ---
 
@@ -509,16 +432,6 @@ Raw PHYSLITE files (CERN EOS, streamed via XRootD)
 
 ## Known Issues / Pending Work
 
-### Sub-leading particle combinations (not yet implemented)
-The current code always selects leading particles (highest pT) for each
-combination. `{"Electrons": 1}` always means e₀ (leading electron).
-There is no mechanism to compute e₁+j₀ (sub-leading electron + leading jet)
-as a separate 2-body invariant mass.
-
-Files to modify: `services/calculations/combinatorics.py`,
-`services/calculations/physics_calcs.py`,
-`services/pipelines/mass_calculation_handler.py`
-
 ### Electron isolation cuts (not yet implemented)
 Without isolation cuts, fake electrons from jets dominate the electron
 channel. The `2ex_0mx_1jx_0gx` final state has only ~1 event across
@@ -527,23 +440,8 @@ high-multiplicity fake-electron final states. Standard ATLAS isolation:
 - `ptvarcone30_Nonprompt_All_MaxWeightTTVALooseCone_pt1000 / pt < 0.06`
 - `topoetcone20 / pt < 0.06`
 
-### SM background MC not available for 2024r-pp
-The `2024r-pp_mc` release via atlasopenmagic contains only BSM signal
-samples (Z', W', graviton — DSIDs 301xxx). No SM background MC (Z+jets,
-tt̄, W+jets, QCD) is available for the Run 3 open data release.
-Confirmed with ATLAS Open Data support.
-
 ### _split_by_first_empty_bin truncates sparse distributions
 For final states with low statistics (e.g. 2μ+1j), the first empty bin
 occurs early in the high-mass tail, causing the postproc histogram to
 be truncated. Use `exclude_outliers: false` in histogram creation to
 include the full distribution above the Z peak cut.
-
----
-
-## Data Notes
-
-- ATLAS Open Data 2024r-pp release: 70,201 files, ~65 TB
-- pT stored in MeV in all PHYSLITE branches
-- `2024r-pp_mc`: 14,581 files — BSM signal samples only (not SM background)
-- Luminosity: data ~140 fb⁻¹ (Run 3), MC weighted to match

@@ -1,6 +1,10 @@
 #!/bin/bash
 # ===========================================================================
 # Submit DATA pipeline (parse_mc: false)
+#
+# Job chain:
+#   batch array (parsing+mass_calculating) → postproc (single job) →
+#   scan → histogram array → merge
 # ===========================================================================
 
 set -e
@@ -10,9 +14,10 @@ CONFIG="configWmaxTotal_up4j_minEvt10_subleading.yaml"
 CPUS_PER_JOB=4
 MEM_PER_JOB="180gb"
 WALLTIME="12:00:00"
+POSTPROC_WALLTIME="24:00:00"
 SCAN_WALLTIME="04:00:00"
 HIST_WALLTIME="24:00:00"
-MERGE_WALLTIME="04:00:00"
+MERGE_WALLTIME="08:00:00"
 QUEUE="N"
 
 PIPELINE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -37,7 +42,7 @@ echo "ATLAS Pipeline — DATA submission"
 echo "Run dir: ${RUN_DIR}"
 echo "=============================================="
 
-# Stage 1: submit N individual batch jobs (parsing+mass_calc+post_processing)
+# Stage 1: parsing + mass_calculating only (per batch)
 BATCH_JOB_IDS=""
 for i in $(seq 1 $NUM_JOBS); do
     JOB_ID=$(qsub <<EOF
@@ -58,7 +63,7 @@ lsetup "views LCG_107 x86_64-el9-gcc14-opt"
 source ${PIPELINE_DIR}/atlasenv/bin/activate
 
 python -u main.py --config "${CONFIG}" \
-    --tasks parsing,mass_calculating,post_processing \
+    --tasks parsing,mass_calculating \
     --parse-mc false \
     --batch-job-index ${i} \
     --total-batch-jobs ${NUM_JOBS} \
@@ -68,17 +73,39 @@ python -u main.py --config "${CONFIG}" \
 EOF
     )
     echo "Submitted batch ${i}: ${JOB_ID}"
-    if [ -z "$BATCH_JOB_IDS" ]; then
-        BATCH_JOB_IDS="${JOB_ID}"
-    else
-        BATCH_JOB_IDS="${BATCH_JOB_IDS}:${JOB_ID}"
-    fi
+    BATCH_JOB_IDS="${BATCH_JOB_IDS:+${BATCH_JOB_IDS}:}${JOB_ID}"
 done
-
 echo "All batch jobs: ${BATCH_JOB_IDS}"
 
-# Stage 2: scan — depends on ALL batch jobs
-SCAN_JOB_ID=$(qsub -W depend=afterok:"${BATCH_JOB_IDS}" <<EOF
+# Stage 2: post-processing — single job reading ALL im_batch_*.sqlite files
+POSTPROC_JOB_ID=$(qsub -W depend=afterok:"${BATCH_JOB_IDS}" <<EOF
+#!/bin/bash
+#PBS -q ${QUEUE}
+#PBS -N atlas_data_postproc
+#PBS -o ${LOG_DIR}/
+#PBS -e ${LOG_DIR}/
+#PBS -l select=1:ncpus=4:mem=64gb
+#PBS -l io=5
+#PBS -l walltime=${POSTPROC_WALLTIME}
+
+cd ${PIPELINE_DIR}
+
+export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
+source \${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
+lsetup "views LCG_107 x86_64-el9-gcc14-opt"
+source ${PIPELINE_DIR}/atlasenv/bin/activate
+
+python -u main.py --config "${CONFIG}" \
+    --tasks post_processing \
+    --run-dir "${RUN_DIR}" \
+    > "${LOG_DIR}/postproc.out" \
+    2> "${LOG_DIR}/postproc.err"
+EOF
+)
+echo "Submitted postproc: ${POSTPROC_JOB_ID} (depends on all batches)"
+
+# Stage 3: scan global ranges — depends on postproc
+SCAN_JOB_ID=$(qsub -W depend=afterok:"${POSTPROC_JOB_ID}" <<EOF
 #!/bin/bash
 #PBS -q ${QUEUE}
 #PBS -N atlas_data_scan
@@ -102,9 +129,9 @@ python -u main.py --config "${CONFIG}" \
     2> "${LOG_DIR}/scan.err"
 EOF
 )
-echo "Submitted scan: ${SCAN_JOB_ID} (depends on all batches)"
+echo "Submitted scan: ${SCAN_JOB_ID} (depends on postproc)"
 
-# Stage 3: histogram jobs — each depends on scan
+# Stage 4: histogram creation — per batch, depends on scan
 HIST_JOB_IDS=""
 for i in $(seq 1 $NUM_JOBS); do
     JOB_ID=$(qsub -W depend=afterok:"${SCAN_JOB_ID}" <<EOF
@@ -134,16 +161,11 @@ python -u main.py --config "${CONFIG}" \
 EOF
     )
     echo "Submitted hist ${i}: ${JOB_ID}"
-    if [ -z "$HIST_JOB_IDS" ]; then
-        HIST_JOB_IDS="${JOB_ID}"
-    else
-        HIST_JOB_IDS="${HIST_JOB_IDS}:${JOB_ID}"
-    fi
+    HIST_JOB_IDS="${HIST_JOB_IDS:+${HIST_JOB_IDS}:}${JOB_ID}"
 done
-
 echo "All hist jobs: ${HIST_JOB_IDS}"
 
-# Stage 4: merge — depends on ALL histogram jobs
+# Stage 5: merge — depends on ALL histogram jobs
 MERGE_JOB_ID=$(qsub -W depend=afterok:"${HIST_JOB_IDS}" <<EOF
 #!/bin/bash
 #PBS -q ${QUEUE}
@@ -173,6 +195,7 @@ echo "Submitted merge: ${MERGE_JOB_ID} (depends on all hist jobs)"
 echo ""
 echo "Job chain:"
 echo "  Batches:    ${BATCH_JOB_IDS}"
+echo "  Postproc:   ${POSTPROC_JOB_ID}"
 echo "  Scan:       ${SCAN_JOB_ID}"
 echo "  Histograms: ${HIST_JOB_IDS}"
 echo "  Merge:      ${MERGE_JOB_ID}"
@@ -180,4 +203,3 @@ echo ""
 echo "Monitor:  qstat -u \$USER"
 echo "Logs:     ${LOG_DIR}/"
 echo "Output:   ${RUN_DIR}/"
-echo ""
