@@ -34,13 +34,13 @@ paths:
 
 # ===NAMES====================================================================
 names:
-  run_name:           &run_name           "atlas_full_120"
+  run_name:           &run_name           "atlas_full_fixComb_fixCut"
   histogram_filename: &histogram_filename "atlas_opendata_full_bumpnet.root"
 
 # ===RUN METADATA=============================================================
 run_metadata:
   run_name: *run_name
-  base_output_dir: "/storage/agrp/netalev/data"
+  base_output_dir: "/data"
   batch_job_index: null                  # set by submit.sh (--batch-job-index)
   total_batch_jobs: null                 # set by submit.sh (--total-batch-jobs)
 
@@ -48,7 +48,7 @@ run_metadata:
 # Enable / disable pipeline stages.  Stages run in order:
 #   parsing → mass_calculating → post_processing → histogram_creation
 tasks:
-  do_parsing: false
+  do_parsing: true
   do_mass_calculating: true
   do_post_processing: true
   do_histogram_creation: true
@@ -84,7 +84,7 @@ parsing_task_config:
   parallel_processes: 4
   threads: 8
   env_threshold_memory_mb: 8000
-  chunk_yield_threshold_bytes: 2147483648  # 2 GB
+  chunk_yield_threshold_bytes:  2147483648  # 2 GB
   count_retries_failed_files: 3
   fetching_metadata_timeout: 60
   max_files_to_process: null             # null = all files; set e.g. 3 for a quick test
@@ -103,29 +103,28 @@ parsing_task_config:
 
   # ===EVENT FILTERING===
   particle_counts:
-    electrons: { min: 1, max: 4 }
+    electrons: { min: 0, max: 4 }
     muons:     { min: 0, max: 4 }
-    jets:      { min: 0, max: 10 }
-    bjets:     { min: 0, max: 10 }
-    ljets:     { min: 0, max: 10 }
+    jets:      { min: 0, max: 4 }
+    bjets:     { min: 0, max: 4 }
+    ljets:     { min: 0, max: 4 }
     photons:   { min: 0, max: 4 }
     taus:      { min: 0, max: 4 }
 
   kinematic_cuts:
-    # rel_isolation_max: cone energy / pT (ATLAS); rejects jet fakes
-    electrons: { pt_min: 25.0, eta_max: 2.47, rel_isolation_max: 0.06 }
-    muons:     { pt_min: 25.0, eta_max: 2.5 }
-    jets:      { pt_min: 30.0, eta_max: 4.5 }
-    bjets:     { pt_min: 30.0, eta_max: 4.5 }
-    ljets:     { pt_min: 30.0, eta_max: 4.5 }
-    photons:   { pt_min: 25.0, eta_max: 2.37 }
-    taus:      { pt_min: 20.0, eta_max: 2.5 }
+    electrons: { pt_min: 25000.0, eta_max: 2.47 }
+    muons:     { pt_min: 25000.0, eta_max: 2.5 }
+    jets:      { pt_min: 30000.0, eta_max: 4.5 }
+    bjets:     { pt_min: 30000.0, eta_max: 4.5 }
+    ljets:     { pt_min: 30000.0, eta_max: 4.5 }
+    photons:   { pt_min: 25000.0, eta_max: 2.37 }
+    taus:      { pt_min: 20000.0, eta_max: 2.5 }
 
 # --- 2. Mass Calculation -----------------------------------------------------
 # Computes invariant masses for every valid particle combination per final state.
 mass_calculation_task_config:
   # ===PATHS===
-  input_dir:  "/storage/agrp/netalev/data/atlas_pp_root_files"
+  input_dir:  "/data/atlas_pp_root_files"
   output_dir: *im_arrays_path
 
   # ===PROCESSING===
@@ -137,10 +136,13 @@ mass_calculation_task_config:
   # ===COMBINATORICS===
   objects_to_calculate: [Electrons, Muons, Jets, BJets, LJets, Photons, Taus]
   min_particles_in_combination: 2        # min particle types in a combination
-  max_particles_in_combination: 4        # max particle types
+  max_particles_in_combination: 4        # max particle types was 4 reduces 12,567 → ~28 combinations
   min_count_particle_in_combination: 1   # min count per type
-  max_count_particle_in_combination: 4   # max count per type
+  max_count_particle_in_combination: 4   # max count per type was 4
+  max_total_particles_in_combination: 4
   min_events_per_fs: 100                 # drop final states with fewer events
+  include_subleading: false        # set true to include e1, j1, etc.
+  max_subleading_index: 1          # highest rank index to consider
 
 # --- 3. Post-Processing ------------------------------------------------------
 # Removes known-mass peaks and splits into main / outlier arrays.
@@ -150,7 +152,7 @@ post_processing_task_config:
   output_dir: *im_arrays_processed_path
 
   # ===PROCESSING===
-  peak_detection_bin_width_gev: 10.0
+  peak_detection_bin_width_gev: 10.0 
 
 # --- 4. Histogram Creation ---------------------------------------------------
 # Builds ROOT histograms from processed invariant-mass arrays.
@@ -165,6 +167,6 @@ histogram_creation_task_config:
   # ===OUTPUT===
   single_output_file: true
   output_filename: *histogram_filename
-  exclude_outliers: true
+  exclude_outliers: false # was designed to remove high-mass outliers from very broad distributions, but it doesn't work properly during merging
   use_bumpnet_naming: true               # mass_<combo>_cat_<final_state> format
   apply_peak_removal_at_histogram_level: false

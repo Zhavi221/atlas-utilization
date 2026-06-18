@@ -105,7 +105,10 @@ class MassCalculationConfig:
     max_particles_in_combination: int = 4
     min_count_particle_in_combination: int = 2
     max_count_particle_in_combination: int = 4
+    max_total_particles_in_combination: int = 4
     min_events_per_fs: int = 100  # Minimum events for a final state to be kept
+    include_subleading: bool = False       # set True to include e1, j1, etc.
+    max_subleading_index: int = 1          # highest rank index to consider
     
     def __post_init__(self):
         """Validate mass calculation configuration."""
@@ -176,6 +179,13 @@ class HistogramCreationConfig:
     use_bumpnet_naming: bool = False  # When true, use mass_<combo>_cat_<final_state> naming
     apply_peak_removal_at_histogram_level: bool = False
     
+    # Global ranges (set automatically by update_config_paths_with_run_dir)
+    global_ranges_path: Optional[str] = None
+
+    # Pre-postproc histograms
+    also_save_pre_postproc: bool = False
+    pre_postproc_filename: Optional[str] = None
+
     def __post_init__(self):
         """Validate histogram creation configuration."""
         if not self.input_dir:
@@ -315,7 +325,10 @@ class PipelineConfig:
                 max_particles_in_combination=mass_dict.get("max_particles_in_combination", 4),
                 min_count_particle_in_combination=mass_dict.get("min_count_particle_in_combination", 2),
                 max_count_particle_in_combination=mass_dict.get("max_count_particle_in_combination", 4),
+                max_total_particles_in_combination=mass_dict.get("max_total_particles_in_combination", 4),
                 min_events_per_fs=mass_dict.get("min_events_per_fs", 100),
+                include_subleading=mass_dict.get("include_subleading", False),
+                max_subleading_index=mass_dict.get("max_subleading_index", 1),
             )
         
         # Parse post-processing config if enabled
@@ -343,6 +356,9 @@ class PipelineConfig:
                 apply_peak_removal_at_histogram_level=hist_dict.get(
                     "apply_peak_removal_at_histogram_level", False
                 ),
+                global_ranges_path=hist_dict.get("global_ranges_path"),
+                also_save_pre_postproc=hist_dict.get("also_save_pre_postproc", False),
+                pre_postproc_filename=hist_dict.get("pre_postproc_filename"),
             )
         
         # Parse run metadata

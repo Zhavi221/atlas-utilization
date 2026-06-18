@@ -10,6 +10,7 @@ from typing import Dict, Iterator, List
 from collections import Counter
 
 from services.calculations import consts, physics_calcs
+from services.calculations.combinatorics import get_count, get_start
 
 
 class IMCalculator:
@@ -121,7 +122,14 @@ class IMCalculator:
         return final_state
 
     @staticmethod
-    def does_final_state_contain_combination(final_state: str, combination: Dict[str, int]) -> bool:
+    def does_final_state_contain_combination(final_state: str, combination: Dict) -> bool:
+        """
+        Check whether a final state has enough particles to satisfy a combination.
+
+        For sub-leading combinations the event needs start + count particles
+        of each type, not just count.  Works with both plain-int and
+        (count, start_index) combination values.
+        """
         fs_particles = final_state.split('_')
         for str_amount_particle in fs_particles:
             if len(str_amount_particle) < 2:
@@ -137,8 +145,11 @@ class IMCalculator:
                 continue
 
             fs_particle_amount = int(amount_to_calc)
-            required_amount = combination[particle]
-            if fs_particle_amount < required_amount:
+            value = combination[particle]
+            count = get_count(value)
+            start = get_start(value)
+            # Need at least start + count particles available in this final state
+            if fs_particle_amount < start + count:
                 return False
         return True
 
@@ -151,5 +162,9 @@ class IMCalculator:
         return physics_calcs.filter_events_by_kinematics(events, kinematic_cuts)
 
     def slice_by_field(self, events, particle_counts, field_to_slice_by="pt"):
+        """
+        Slice particle arrays by rank window [start : start + count].
+        Delegates to physics_calcs which handles both int and tuple values.
+        """
         return physics_calcs.slice_events_by_field(
             events, particle_counts, field_to_slice_by)

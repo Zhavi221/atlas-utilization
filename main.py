@@ -10,6 +10,7 @@ Supports:
   - Per-stage input override via absolute paths in config.yaml
   - Merge-only mode via --merge-only --run-dir <path>
   - Post-run plot regeneration via --plots-only --run-dir <path>
+  - MC/data separation via --parse-mc true/false
 """
 
 import sys
@@ -95,6 +96,10 @@ def parse_args():
         "--run-dir", type=str, default=None,
         help="Pre-created shared run directory (skips timestamped dir creation)"
     )
+    batch_group.add_argument(
+        "--parse-mc", type=str, default=None, choices=["true", "false"],
+        help="Override parse_mc from config (true/false)"
+    )
 
     # --- Task override ---
     batch_group.add_argument(
@@ -107,6 +112,10 @@ def parse_args():
     # --- Post-run options ---
     post_group = parser.add_argument_group("Post-Run Options")
     post_group.add_argument(
+        "--scan-only", action="store_true",
+        help="Pre-scan processed arrays to compute global histogram ranges"
+    )
+    post_group.add_argument(
         "--merge-only", action="store_true",
         help="Merge batch outputs: hadd histograms + aggregate stats + generate plots"
     )
@@ -118,6 +127,8 @@ def parse_args():
     args = parser.parse_args()
 
     # Validation
+    if args.scan_only and args.run_dir is None:
+        parser.error("--run-dir is required when --scan-only is set")
     if args.batch_job_index is not None and args.total_batch_jobs is None:
         parser.error("--total-batch-jobs is required when --batch-job-index is set")
     if args.total_batch_jobs is not None and args.batch_job_index is None:
@@ -126,6 +137,10 @@ def parse_args():
         parser.error("--run-dir is required when --plots-only or --merge-only is set")
     if args.plots_only and args.merge_only:
         parser.error("--plots-only and --merge-only are mutually exclusive")
+    if args.scan_only and args.merge_only:
+        parser.error("--scan-only and --merge-only are mutually exclusive")
+    if args.scan_only and args.plots_only:
+        parser.error("--scan-only and --plots-only are mutually exclusive")
 
     return args
 
@@ -170,6 +185,19 @@ def main():
             return 0
 
         # ------------------------------------------------------------------
+        # SCAN-ONLY MODE: compute global histogram ranges
+        # ------------------------------------------------------------------
+        if args.scan_only:
+            logger.info(f"Scan-only mode: computing global ranges from {args.run_dir}")
+            config_dict = load_config(args.config)
+            config_dict = update_config_paths_with_run_dir(config_dict, args.run_dir)
+            config = PipelineConfig.from_dict(config_dict)
+            executor = PipelineExecutor(config)
+            executor.scan_global_ranges(args.run_dir)
+            logger.info("✓ Global ranges computed successfully")
+            return 0
+        
+        # ------------------------------------------------------------------
         # NORMAL / BATCH PIPELINE MODE
         # ------------------------------------------------------------------
         logger.info(f"Loading configuration from: {args.config}")
@@ -181,6 +209,11 @@ def main():
             config_dict["run_metadata"]["batch_job_index"] = args.batch_job_index
             config_dict["run_metadata"]["total_batch_jobs"] = args.total_batch_jobs
 
+        # Override parse_mc from CLI
+        if args.parse_mc is not None:
+            config_dict.setdefault("parsing_task_config", {})
+            config_dict["parsing_task_config"]["parse_mc"] = args.parse_mc == "true"
+            logger.info(f"parse_mc override from CLI: {args.parse_mc}")
         # Override task toggles from CLI (--tasks flag)
         if args.tasks:
             valid_tasks = {"parsing", "mass_calculating", "post_processing", "histogram_creation"}
@@ -213,7 +246,8 @@ def main():
         if args.batch_job_index is not None:
             hist_cfg = config_dict.get("histogram_creation_task_config", {})
             hist_cfg["output_filename"] = f"batch_{args.batch_job_index}.root"
-
+            hist_cfg["batch_job_index"] = args.batch_job_index
+            hist_cfg["total_batch_jobs"] = args.total_batch_jobs
         # Create validated config
         config = PipelineConfig.from_dict(config_dict)
         logger.info("Configuration loaded and validated successfully")

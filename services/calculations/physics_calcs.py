@@ -11,6 +11,7 @@ import gc
 from typing import Dict, Iterator, Tuple, Optional
 
 from services.calculations import consts
+from services.calculations.combinatorics import get_count, get_start
 
 
 def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
@@ -97,7 +98,11 @@ def limit_particles_in_fs(final_state: str, threshold: int) -> str:
     return final_state
 
 
-def is_finalstate_contain_combination(final_state: str, combination: Dict[str, int]) -> bool:
+def is_finalstate_contain_combination(final_state: str, combination: Dict) -> bool:
+    """
+    Check whether a final state has enough particles to satisfy a combination.
+    Works with both plain-int and (count, start_index) combination values.
+    """
     fs_particles = final_state.split('_')
     for str_amount_particle in fs_particles:
         if len(str_amount_particle) < 2:
@@ -112,18 +117,27 @@ def is_finalstate_contain_combination(final_state: str, combination: Dict[str, i
             continue
 
         fs_particle_amount = int(amount_to_calc)
-        required_amount = combination[particle]
-        if fs_particle_amount < required_amount:
+        value = combination[particle]
+        count = get_count(value)
+        start = get_start(value)
+        # Need at least start + count particles available
+        if fs_particle_amount < start + count:
             return False
     return True
 
 
 def filter_events_by_particle_counts(
     events: ak.Array,
-    particle_counts: Dict[str, int],
+    particle_counts: Dict,
     is_exact_count: bool = False,
     is_particle_counts_range: bool = False
 ) -> ak.Array:
+    """
+    Filter events by particle counts.
+    Accepts both plain-int and (count, start_index) combination values.
+    For sub-leading combinations, filters to events that have at least
+    start + count particles of each required type.
+    """
     if len(events) == 0:
         return events
 
@@ -144,9 +158,18 @@ def filter_events_by_particle_counts(
             range_dict = value
             particle_mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
         elif is_exact_count:
-            particle_mask = (obj_count == value)
+            count = get_count(value)
+            start = get_start(value)
+            if start == 0:
+                # leading only: exact count as before
+                particle_mask = (obj_count == count)
+            else:
+                # sub-leading: need at least start + count particles
+                particle_mask = (obj_count >= start + count)
         else:
-            particle_mask = (obj_count >= value)
+            count = get_count(value)
+            start = get_start(value)
+            particle_mask = (obj_count >= start + count)
 
         combined_mask = combined_mask & particle_mask
 
@@ -170,17 +193,31 @@ def filter_events_by_particle_counts(
 
 def slice_events_by_field(
     events: ak.Array,
-    particle_counts: Dict[str, int],
+    particle_counts: Dict,
     field_to_slice_by: str
 ) -> ak.Array:
-    for obj, count in particle_counts.items():
+    """
+    Sort each particle type by field_to_slice_by (descending) and slice
+    out the requested window [start : start + count].
+
+    Works with both plain-int values (start=0) and (count, start_index) tuples.
+
+    Example:
+        particle_counts = {"Electrons": (1, 1), "Jets": (1, 0)}
+        → takes e₁ (second-highest pT electron) and j₀ (leading jet)
+    """
+    for obj, value in particle_counts.items():
         actual_field = find_actual_field_name(events.fields, obj)
         if not actual_field:
             continue
 
+        count = get_count(value)
+        start = get_start(value)
+
         obj_array = events[actual_field]
         sorted_obj_array = obj_array[ak.argsort(obj_array[field_to_slice_by], ascending=False)]
-        sliced_obj_array = sorted_obj_array[:, :count]
+        # Slice window: [start : start + count]
+        sliced_obj_array = sorted_obj_array[:, start : start + count]
         events[actual_field] = sliced_obj_array
 
     return events

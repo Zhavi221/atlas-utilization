@@ -5,8 +5,11 @@ Wires together all services and executes the state machine.
 Supports consolidated plot generation from output data.
 
 Architecture (multi-job mode):
-  Each batch job runs the full pipeline and saves:
+  Each batch job runs parsing + mass_calc + post_processing and saves:
     - batch_N_stats.json   → logs/
+  The scan job (--scan-only) runs after all batch jobs and saves:
+    - global_ranges.json   → logs/
+  The histogram array jobs run after scan and save:
     - batch_N.root         → histograms/
   The merge job (--merge-only) combines everything via:
     - hadd histograms/batch_*.root → histograms/<output_filename>
@@ -129,6 +132,39 @@ class PipelineExecutor:
 
         self.logger.info(f"Saved batch stats to: {stats_path}")
 
+
+    def scan_global_ranges(self, run_dir: str):
+        """
+        Pre-scan all processed SQLite files to compute global min/max per
+        bumpnet signature. Saves result to logs/global_ranges.json.
+        Must run before histogram creation batches.
+        """
+        from services.pipelines.histograms_pipeline import compute_global_ranges, save_global_ranges
+
+        proc_dir = os.path.join(run_dir, "im_arrays_processed")
+        logs_dir = os.path.join(run_dir, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+
+        sqlite_files = sorted([
+            f for f in os.listdir(proc_dir) if f.endswith(".sqlite")
+        ])
+        if not sqlite_files:
+            self.logger.error(f"No processed SQLite files found in {proc_dir}")
+            raise RuntimeError(f"No processed SQLite files found in {proc_dir}")
+
+        self.logger.info(f"Scanning {len(sqlite_files)} SQLite files for global ranges...")
+
+        hc = self.config.histogram_creation_config
+        exclude_outliers = hc.exclude_outliers if hc else True
+
+        ranges = compute_global_ranges(sqlite_files, proc_dir, exclude_outliers=exclude_outliers)
+
+        output_path = os.path.join(logs_dir, "global_ranges.json")
+        save_global_ranges(ranges, output_path)
+        self.logger.info(
+            f"Saved global ranges for {len(ranges)} signatures to {output_path}"
+        )
+
     def merge_outputs(self, run_dir: str):
         """
         Merge outputs from all batch jobs:
@@ -165,9 +201,11 @@ class PipelineExecutor:
                 if result.returncode == 0:
                     self.logger.info(f"hadd succeeded: {merged_path}")
                     # Clean up batch files
+                    archive_dir = Path(hist_dir) / "batch_files_archive"
+                    archive_dir.mkdir(exist_ok=True)
                     for bf in batch_roots:
-                        bf.unlink()
-                        self.logger.debug(f"Removed batch file: {bf}")
+                        bf.rename(archive_dir / bf.name)   
+                        self.logger.debug(f"Archived batch file: {bf.name}")
                 else:
                     self.logger.error(f"hadd failed (rc={result.returncode}): {result.stderr}")
             except FileNotFoundError:
@@ -180,6 +218,33 @@ class PipelineExecutor:
         else:
             self.logger.info("No batch_*.root files found in histograms/ – skipping hadd")
 
+        
+        # ---- 1b. Optionally also produce pre-postproc histograms ----
+        hc = self.config.histogram_creation_config
+        if hc and getattr(hc, 'also_save_pre_postproc', False):
+            from services.pipelines.histograms_pipeline import create_histograms
+            im_dir = os.path.join(run_dir, "im_arrays")
+            im_sqlite_files = sorted([
+                f for f in os.listdir(im_dir) if f.endswith(".sqlite")
+            ])
+            if im_sqlite_files:
+                self.logger.info("Producing pre-postproc histograms from im_arrays/")
+                nopp_config = {
+                    "input_dir": im_dir,
+                    "output_dir": hist_dir,
+                    "bin_width_gev": hc.bin_width_gev,
+                    "single_output_file": True,
+                    "output_filename": hc.pre_postproc_filename,
+                    "exclude_outliers": False,
+                    "use_bumpnet_naming": hc.use_bumpnet_naming,
+                    "global_ranges_path": os.path.join(
+                        run_dir, "logs", "global_ranges.json"
+                    ),
+                }
+                create_histograms(nopp_config, file_list=im_sqlite_files)
+                self.logger.info(
+                    f"Pre-postproc histograms saved to {hc.pre_postproc_filename}"
+                )
         # ---- 2. Aggregate batch stats ----
         batch_stats_files = sorted(Path(logs_dir).glob("batch_*_stats.json"))
         if batch_stats_files:
@@ -330,7 +395,6 @@ class PipelineExecutor:
         return stats
 
     def _read_parsed_data_stats(self, parsed_dir: str):
-        """Read all parsed ROOT files and compute consolidated stats."""
         import uproot
         import numpy as np
 
@@ -343,8 +407,7 @@ class PipelineExecutor:
 
         total_events = 0
         total_size_bytes = 0
-        particle_counts = {}      # {type: total_count}
-        particle_dists = {}       # {type: [per-event counts]}
+        particle_counts = {}
         events_per_file = []
 
         for rf in root_files:
@@ -358,18 +421,16 @@ class PipelineExecutor:
                     total_events += n_events
                     events_per_file.append(n_events)
 
-                    # Discover particle branches (nElectrons, nMuons, …)
                     for branch_name in tree.keys():
                         if branch_name.startswith("n") and branch_name != "nEvents":
-                            ptype = branch_name[1:]  # e.g. "Electrons"
+                            ptype = branch_name[1:]
+                            # Only read sum, not full array — avoids memory blowup
                             counts = tree[branch_name].array(library="np")
-                            total_for_type = int(np.sum(counts))
-                            particle_counts[ptype] = particle_counts.get(ptype, 0) + total_for_type
-                            if ptype not in particle_dists:
-                                particle_dists[ptype] = []
-                            particle_dists[ptype].extend(counts.tolist())
+                            particle_counts[ptype] = particle_counts.get(ptype, 0) + int(np.sum(counts))
+                            del counts  # free immediately
             except Exception as e:
                 self.logger.warning(f"Could not read {rf}: {e}")
+
 
         avg_per_file = total_events / len(root_files) if root_files else 0
 
@@ -380,7 +441,7 @@ class PipelineExecutor:
             'total_events': total_events,
             'total_chunks': len(root_files),
             'total_size_mb': total_size_bytes / (1024 * 1024),
-            'total_time_sec': 0,   # not available from disk
+            'total_time_sec': 0,
             'average_events_per_file': avg_per_file,
             'max_memory_mb': 0,
             'timeout_count': 0,
@@ -389,11 +450,11 @@ class PipelineExecutor:
 
         particle_stats = {
             'particle_counts': particle_counts,
-            'distributions': particle_dists,
+            'distributions': {},   # dropped — too large for 671 files
             'events_per_file': events_per_file,
         }
 
-        return parsing_stats, particle_stats
+        return parsing_stats, particle_stats    
 
     def _read_im_array_stats(self, im_dir: str):
         """Read invariant mass array (.npy) files and compute stats.

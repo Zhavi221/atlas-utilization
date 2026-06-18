@@ -18,6 +18,57 @@ import math
 from services.storage.sqlite_shards import list_signatures, iter_arrays_for_signature
 
 
+def save_global_ranges(ranges: Dict, output_path: str):
+    import json
+    with open(output_path, "w") as f:
+        json.dump(ranges, f, indent=2)
+    logging.getLogger(__name__).info(f"Saved global ranges to {output_path}")
+
+def load_global_ranges(path: str) -> Dict[str, Tuple[float, float]]:
+    import json
+    with open(path) as f:
+        data = json.load(f)
+    return {k: tuple(v) for k, v in data.items()}
+
+def compute_global_ranges(
+    sqlite_files: List[str],
+    input_dir: str,
+    exclude_outliers: bool = True,
+) -> Dict[str, Tuple[float, float]]:
+    """
+    Scan ALL processed SQLite files and compute global min/max per bumpnet_name.
+    Returns dict: {bumpnet_name: (global_min, global_max)}
+    Save result to JSON before running histogram creation batches.
+    """
+    logger = logging.getLogger(__name__)
+    db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
+
+    signatures = set()
+    for db_path in db_paths:
+        signatures.update(list_signatures(db_path))
+    signatures = sorted(signatures)
+
+    if exclude_outliers:
+        signatures = [s for s in signatures if not s.endswith("_outliers")]
+
+    grouped = _group_signatures_by_bumpnet(signatures)
+    logger.info(f"Computing global ranges for {len(grouped)} bumpnet signatures...")
+
+    ranges = {}
+    for bumpnet_name, group_sigs in grouped.items():
+        gmin, gmax = float("inf"), float("-inf")
+        for sig in group_sigs:
+            for db_path in db_paths:
+                for chunk in iter_arrays_for_signature(db_path, sig):
+                    if len(chunk) > 0:
+                        gmin = min(gmin, float(np.min(chunk)))
+                        gmax = max(gmax, float(np.max(chunk)))
+        if gmin < float("inf"):
+            ranges[bumpnet_name] = (gmin, gmax)
+
+    logger.info(f"Computed ranges for {len(ranges)} signatures")
+    return ranges
+
 def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = None):
     logger = _init_logging()
 
@@ -138,6 +189,10 @@ def _create_histograms_from_sqlite(
     output_dir = histograms_config["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
 
+    # Load global ranges if available
+    global_ranges_path = histograms_config.get("global_ranges_path")
+    global_ranges = load_global_ranges(global_ranges_path) if global_ranges_path else None
+
     bin_width_gev = histograms_config["bin_width_gev"]
     bin_widths_gev = [bin_width_gev] if isinstance(bin_width_gev, (int, float)) else bin_width_gev
     use_bumpnet_naming = histograms_config.get("use_bumpnet_naming", False)
@@ -146,6 +201,20 @@ def _create_histograms_from_sqlite(
     output_filename = histograms_config.get("output_filename", "all_histograms.root")
 
     db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
+
+    # Split SQLite files across histogram batch jobs
+    batch_job_index = histograms_config.get("batch_job_index")
+    total_batch_jobs = histograms_config.get("total_batch_jobs")
+    if batch_job_index is not None and total_batch_jobs is not None:
+        sqlite_files = _get_batch_files(
+            sorted(sqlite_files), batch_job_index, total_batch_jobs
+        )
+        db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
+        logger.info(
+            f"Batch {batch_job_index}/{total_batch_jobs}: "
+            f"processing SQLite files: {sqlite_files}"
+        )
+    
     signatures = set()
     for db_path in db_paths:
         signatures.update(list_signatures(db_path))
@@ -171,7 +240,8 @@ def _create_histograms_from_sqlite(
             hist_count = 0
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
-                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger, apply_peak_removal
+                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
+                    global_ranges=global_ranges,
                 )
                 if hists:
                     _write_hists_to_shared_file(hists, root_filepath, logger)
@@ -180,7 +250,8 @@ def _create_histograms_from_sqlite(
         else:
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
-                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger, apply_peak_removal
+                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
+                    global_ranges=global_ranges,
                 )
                 if hists:
                     root_filename = f"{bumpnet_name}_hists.root"
@@ -225,7 +296,7 @@ def _group_signatures_by_bumpnet(signatures: List[str]) -> Dict[str, List[str]]:
         elif cleaned.endswith("_outliers"):
             cleaned = cleaned[:-9]
 
-        match = re.search(r"_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)$", cleaned)
+        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([emjg\d]+)$", cleaned)
         if not match:
             continue
         fs_str, im_str = match.groups()
@@ -280,30 +351,47 @@ def _create_merged_histograms_from_sqlite_signatures(
     hist_name_base: str,
     bin_widths_gev: List[float],
     logger: logging.Logger,
+    global_ranges: Optional[Dict] = None,
     apply_peak_removal: bool = False,
 ) -> List[ROOT.TH1F]:
-    global_min, global_max = float("inf"), float("-inf")
-    has_data = False
 
-    for signature in signatures:
-        for chunk in _iter_signature_chunks(signature, db_paths):
-            has_data = True
-            global_min = min(global_min, float(np.min(chunk)))
-            global_max = max(global_max, float(np.max(chunk)))
+    if global_ranges is not None:
+        if hist_name_base not in global_ranges:
+            logger.warning(
+                f"{hist_name_base} not found in global_ranges — skipping. "
+                "Re-run scan-only job to regenerate global_ranges.json."
+            )
+            return []
+        global_min, global_max = global_ranges[hist_name_base]
+        logger.debug(f"{hist_name_base}: using global range [{global_min:.1f}, {global_max:.1f}]")
+    else:
+        # No global ranges provided — compute from available data
+        # WARNING: this will produce batch-local edges, hadd will fail
+        logger.warning(
+            f"{hist_name_base}: no global_ranges provided — "
+            "computing from batch data only. hadd merging will likely fail!"
+        )
+        global_min, global_max = float("inf"), float("-inf")
+        for signature in signatures:
+            for chunk in _iter_signature_chunks(signature, db_paths):
+                global_min = min(global_min, float(np.min(chunk)))
+                global_max = max(global_max, float(np.max(chunk)))
 
-    if not has_data:
-        logger.warning(f"No valid data found for {hist_name_base}")
+    if global_min == float("inf"):
         return []
+
+    if 'cat' not in hist_name_base and 'hCat' not in hist_name_base:
+        raise ValueError(
+            f"Invalid histogram name base '{hist_name_base}': must contain 'cat'"
+        )
 
     histograms = []
     for bin_width in bin_widths_gev:
         nbins = max(1, math.ceil((global_max - global_min) / bin_width))
         hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
-        if "cat" not in hist_name_base and "hCat" not in hist_name_base:
-            raise ValueError(
-                f"Invalid histogram name base '{hist_name_base}': must contain 'cat' for BumpNet compatibility"
-            )
-        histograms.append(ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max))
+        histograms.append(
+            ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+        )
 
     for signature in signatures:
         for chunk in _iter_signature_chunks(signature, db_paths):
@@ -315,12 +403,11 @@ def _create_merged_histograms_from_sqlite_signatures(
             _apply_peak_removal_to_histogram(hist)
     return histograms
 
-
 def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
     groups = defaultdict(list)
     unmatched_files = []
     for filename in im_files:
-        match = re.search(r'_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)', filename)
+        match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([emjg\d]+)', filename)
         if match:
             fs_str, im_str = match.groups()
             bumpnet_name = _convert_to_bumpnet_name(fs_str, im_str)
@@ -334,22 +421,38 @@ def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
 
 
 def _convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
-    particles = re.findall(r'(\d+)([emjgtbl])', im_str)
-    combo_parts = [f"{p}{c}" for c, p in particles if c != '0']
-    combo = "".join(combo_parts) if combo_parts else "none"
+    """
+    Convert FS and IM strings to a BumpNet histogram name.
 
-    fs_particles = re.findall(r'(\d+)([emjgtbl])', fs_str)
-    fs_formatted = "_".join(f"{c}{p}x" for c, p in fs_particles)
+    IM string is now index-based (e.g. "e0e1j0") so it passes through
+    directly as the combo part — no conversion needed.
+
+    FS string remains count-based (e.g. "2e_0m_3j_0g") and is formatted
+    as before (e.g. "2ex_0mx_3jx_0gx").
+
+    Examples:
+      fs="2e_0m_3j_0g"  im="e0j0"   → mass_e0j0_cat_2ex_0mx_3jx_0gx
+      fs="2e_0m_3j_0g"  im="e0e1j0" → mass_e0e1j0_cat_2ex_0mx_3jx_0gx
+      fs="2e_0m_3j_0g"  im="e1j0"   → mass_e1j0_cat_2ex_0mx_3jx_0gx  (future sub-leading)
+
+    The regex in _group_signatures_by_bumpnet that feeds this function
+    also needs to be updated.
+    """
+    # IM part is already index-based — use directly as combo
+    combo = im_str if im_str else "none"
+
+    # FS part: count-based "2e_0m_3j_0g" → "2ex_0mx_3jx_0gx"
+    fs_particles = re.findall(r'(\d+)([emjg])', fs_str)
+    fs_formatted  = "_".join(f"{c}{p}x" for c, p in fs_particles)
 
     result = f"mass_{combo}_cat_{fs_formatted}"
 
     if 'cat' not in result and 'hCat' not in result:
         raise ValueError(
-            f"Generated histogram name '{result}' doesn't contain 'cat' or 'hCat' "
-            "- this will cause UnboundLocalError in BumpNet"
+            f"Generated histogram name '{result}' doesn't contain 'cat' — "
+            "BumpNet incompatible"
         )
     return result
-
 
 def _process_im_arrays_bumpnet(
     im_arrays_dir: str, output_dir: str, bin_widths_gev: list,

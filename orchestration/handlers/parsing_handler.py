@@ -11,6 +11,8 @@ from pathlib import Path
 import uproot
 import awkward as ak
 
+import gc
+
 from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
@@ -133,7 +135,14 @@ class ParsingHandler(StateHandler):
         
         # Parse each release year
         for release_year, file_urls in metadata.items():
-            
+            # ── Skip MC keys when parse_mc=False ─────────────────────────────────────
+            # The fetcher always separates data and MC into separate keys (e.g.
+            # '2024r-pp' and '2024r-pp_mc'). parse_mc controls whether MC is
+            # included in the parsing run, not whether it is separated.
+            if release_year.endswith("_mc") and not parsing_config.parse_mc:
+                self.logger.info(f"Skipping MC key '{release_year}' (parse_mc=False)")
+                continue
+
             self.logger.info(
                 f"Parsing {len(file_urls)} files for release year: {release_year}"
             )
@@ -196,6 +205,8 @@ class ParsingHandler(StateHandler):
                         f"Saved chunk {chunk.chunk_index}: "
                         f"{chunk.event_count} events, {chunk.size_mb:.1f} MB → {file_path}"
                     )
+                    del chunk
+                    gc.collect()
         
         # Flush remaining events
         final_chunk = self.accumulator.flush()
@@ -215,6 +226,8 @@ class ParsingHandler(StateHandler):
             self.logger.info(
                 f"Saved final chunk: {final_chunk.event_count} events, {final_chunk.size_mb:.1f} MB → {file_path}"
             )
+            del final_chunk;
+            gc.collect()
         
         # Create parsing statistics
         end_time = datetime.now()

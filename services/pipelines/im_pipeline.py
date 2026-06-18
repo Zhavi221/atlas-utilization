@@ -13,13 +13,14 @@ import awkward as ak
 import numpy as np
 
 from services.calculations.im_calculator import IMCalculator
+from services.calculations.combinatorics import get_count, get_start
 
 
 def process_final_state(
     final_state: str,
     fs_events: ak.Array,
     filename: str,
-    all_combinations: List[Dict[str, int]],
+    all_combinations: List[Dict],
     config: Dict,
     output_dir: str,
     logger: logging.Logger,
@@ -135,7 +136,7 @@ def _convert_array_to_gev(inv_mass: ak.Array) -> ak.Array:
 
 def _calculate_combination_invariant_mass(
     fs_events: ak.Array,
-    combination: Dict[str, int],
+    combination: Dict,
     config: Dict,
     calculator: IMCalculator,
     logger: logging.Logger,
@@ -281,17 +282,47 @@ def _fs_dict_exceeding_threshold(fs_im_mapping: Dict, threshold: int) -> bool:
 def prepare_im_combination_name(
     filename: str,
     final_state: str,
-    combination: Dict[str, int]
+    combination: Dict,
 ) -> str:
+    """
+    Build the SQLite signature name for a given IM combination.
+
+    IM part encodes each selected particle as letter + rank index.
+    Works with both plain-int values (start=0) and (count, start_index) tuples.
+
+    Examples (leading only, start=0):
+        {"Electrons": (1, 0), "Jets": (1, 0)}       → IM_e0j0
+        {"Electrons": (2, 0), "Jets": (1, 0)}       → IM_e0e1j0
+        {"Electrons": (1, 0), "Muons": (1, 0)}      → IM_e0m0
+
+    Examples (sub-leading, start>0):
+        {"Electrons": (1, 1), "Jets": (1, 0)}       → IM_e1j0
+        {"Electrons": (1, 0), "Jets": (1, 1)}       → IM_e0j1
+        {"Electrons": (1, 1), "Jets": (1, 1)}       → IM_e1j1
+        {"Electrons": (2, 1), "Jets": (1, 0)}       → IM_e1e2j0
+
+    The name is unambiguous: IM_e1j0 always means sub-leading electron
+    + leading jet (2-body invariant mass).
+    """
     base_filename = filename.replace(".root", "")
 
-    e_count = combination.get("Electrons", 0)
-    j_count = combination.get("Jets", 0)
-    m_count = combination.get("Muons", 0)
-    g_count = combination.get("Photons", 0)
-    t_count = combination.get("Taus", 0)
-    b_count = combination.get("BJets", 0)
-    l_count = combination.get("LJets", 0)
+    # Canonical particle order matches BumpNet convention
+    PARTICLE_ORDER = [
+        ("Electrons", "e"),
+        ("Muons",     "m"),
+        ("Jets",      "j"),
+        ("Photons",   "g"),
+    ]
 
-    combination_part = f"{e_count}e_{m_count}m_{j_count}j_{g_count}g_{t_count}t_{b_count}b_{l_count}l"
-    return f"{base_filename}_FS_{final_state}_IM_{combination_part}"
+    im_parts = []
+    for ptype, letter in PARTICLE_ORDER:
+        if ptype not in combination:
+            continue
+        value = combination[ptype]
+        count = get_count(value)
+        start = get_start(value)
+        for idx in range(start, start + count):
+            im_parts.append(f"{letter}{idx}")
+
+    im_str = "".join(im_parts)   # e.g. "e0j0", "e1j0", "e0e1j0"
+    return f"{base_filename}_FS_{final_state}_IM_{im_str}"
