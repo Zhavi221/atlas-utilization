@@ -296,7 +296,8 @@ def _group_signatures_by_bumpnet(signatures: List[str]) -> Dict[str, List[str]]:
         elif cleaned.endswith("_outliers"):
             cleaned = cleaned[:-9]
 
-        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([emjg\d]+)$", cleaned)
+        # match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([emjg\d]+)$", cleaned)
+        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g(?:_\d+t)?(?:_\d+b)?(?:_\d+l)?)_IM_([emjgtbl\d]+)$", cleaned)
         if not match:
             continue
         fs_str, im_str = match.groups()
@@ -442,7 +443,8 @@ def _convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
     combo = im_str if im_str else "none"
 
     # FS part: count-based "2e_0m_3j_0g" → "2ex_0mx_3jx_0gx"
-    fs_particles = re.findall(r'(\d+)([emjg])', fs_str)
+    #fs_particles = re.findall(r'(\d+)([emjg])', fs_str)
+    fs_particles = re.findall(r'(\d+)([emjgtbl])', fs_str)
     fs_formatted  = "_".join(f"{c}{p}x" for c, p in fs_particles)
 
     result = f"mass_{combo}_cat_{fs_formatted}"
