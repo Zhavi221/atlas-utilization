@@ -254,7 +254,8 @@ class PipelineExecutor:
             self.logger.info(f"Aggregated stats saved to: {agg_path}")
 
         # ---- 3. Generate plots ----
-        self.generate_plots_from_output(run_dir)
+        # self.generate_plots_from_output(run_dir)# disabled for full runs — too slow
+        self.logger.info("Plot generation skipped for batch run (run --plots-only separately if needed)")
 
     @staticmethod
     def _aggregate_batch_stats(stats_files: list[Path]) -> dict:

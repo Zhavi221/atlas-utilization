@@ -105,15 +105,16 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
     output_dir = config["output_dir"]
     bin_width = config["peak_detection_bin_width_gev"]
 
-    batch_idx = config.get("batch_job_index")
-    if batch_idx is None:
-        # Fall back to parsing from shard names like im_batch_3.sqlite
-        for f in sqlite_files:
-            m = re.search(r"(\d+)", f)
-            if m:
-                batch_idx = int(m.group(1))
-                break
-    shard_name = f"processed_batch_{batch_idx if batch_idx else 1}.sqlite"
+    # Get batch parameters for parallelization
+    batch_job_index = config.get("batch_job_index")
+    total_batch_jobs = config.get("total_batch_jobs")
+
+    # Output shard name based on batch index
+    if batch_job_index is not None:
+        shard_name = f"processed_batch_{batch_job_index}.sqlite"
+    else:
+        shard_name = "processed_batch_1.sqlite"
+
     shard_path = os.path.join(output_dir, shard_name)
     if os.path.exists(shard_path):
         os.remove(shard_path)
@@ -124,42 +125,47 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
     for filename in sqlite_files:
         signatures.update(list_signatures(os.path.join(input_dir, filename)))
 
-    logger.info(
-        f"Processing {len(signatures)} signatures from {len(sqlite_files)} IM shard file(s) "
-        f"into {shard_name}"
-    )
-# NEW — group by FS_IM key first, then merge all chunks:
-    # group signatures by FS_IM key (strip batch/chunk prefix)
     from collections import defaultdict
     fs_im_groups = defaultdict(list)
     for sig in signatures:
-        # extract FS_IM part: everything from "_FS_" onward
         m = re.search(r'(_FS_.+)', sig)
         fs_im_key = m.group(1) if m else sig
         fs_im_groups[fs_im_key].append(sig)
 
-    logger.info(f"Grouped {len(signatures)} signatures into {len(fs_im_groups)} unique FS_IM keys")
+    # Split FS_IM keys across parallel postproc jobs
+    all_keys = sorted(fs_im_groups.keys())
+    if batch_job_index is not None and total_batch_jobs is not None:
+        batch_job_index = int(batch_job_index)
+        total_batch_jobs = int(total_batch_jobs)
+        keys_per_job = len(all_keys) // total_batch_jobs
+        start = (batch_job_index - 1) * keys_per_job
+        end = start + keys_per_job if batch_job_index < total_batch_jobs else len(all_keys)
+        keys_to_process = all_keys[start:end]
+        logger.info(
+            f"Postproc batch {batch_job_index}/{total_batch_jobs}: "
+            f"processing {len(keys_to_process)}/{len(all_keys)} FS_IM keys "
+            f"→ {shard_name}"
+        )
+    else:
+        keys_to_process = all_keys
+
+    logger.info(
+        f"Processing {len(signatures)} signatures from {len(sqlite_files)} IM shard file(s) "
+        f"into {shard_name}"
+    )
 
     written = 0
-    COMMIT_EVERY = 1000
+    COMMIT_EVERY = 100
     processed = 0
     try:
-        for fs_im_key in sorted(fs_im_groups.keys()):
+        for fs_im_key in keys_to_process:
             chunk_sigs = fs_im_groups[fs_im_key]
             chunks = []
             for sig in chunk_sigs:
                 for filename in sqlite_files:
                     db_path = os.path.join(input_dir, filename)
                     chunks.extend(iter_arrays_for_signature(db_path, sig))
-    # written = 0
-    # COMMIT_EVERY = 1000  # commit every 1000 signatures to keep WAL small
-    # processed = 0
-    # try:
-    #     for signature in sorted(signatures):
-    #         chunks = []
-    #         for filename in sqlite_files:
-    #             db_path = os.path.join(input_dir, filename)
-    #             chunks.extend(iter_arrays_for_signature(db_path, signature))
+
             if not chunks:
                 continue
 
@@ -180,18 +186,22 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
                 writer.append_array(f"{fs_im_key}_outliers", outliers_array)
                 written += 1
 
-            processed += 1                          # ← new
-            if processed % COMMIT_EVERY == 0:       # ← new
-                writer.commit()                     # ← new: periodic commit
-                logger.info(f"Post-processing progress: {processed}/{len(fs_im_key)} signatures committed")  # ← new
+            processed += 1
+            if processed % COMMIT_EVERY == 0:
+                writer.commit()
+                logger.info(
+                    f"Post-processing progress: {processed}/{len(keys_to_process)} "
+                    f"FS_IM keys committed"
+                )
 
-        writer.commit()  # ← final commit for remainder    
+        writer.commit()
     finally:
         writer.close()
 
-    logger.info(f"Post-processing complete. Created {written} processed array chunks in {shard_name}.")
+    logger.info(
+        f"Post-processing complete. Created {written} processed array chunks in {shard_name}."
+    )
     return [shard_name]
-
 
 def _process_single_array(
     filename: str, input_dir: str, output_dir: str,
