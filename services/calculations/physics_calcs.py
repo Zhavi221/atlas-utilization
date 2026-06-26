@@ -68,11 +68,10 @@ def group_by_final_state(events: ak.Array) -> Iterator[Tuple[str, ak.Array]]:
     g = getattr(particle_counts, "Photons", zero_array)
     t = getattr(particle_counts, "Taus", zero_array)
     b = getattr(particle_counts, "BJets", zero_array)
-    l = getattr(particle_counts, "LJets", zero_array)
 
     all_events_fs = [
-        f"{e}e_{m}m_{j}j_{g}g_{t}t_{b}b_{l}l"
-        for e, m, j, g, t, b, l in zip(e, m, j, g, t, b, l)
+        f"{e}e_{m}m_{j}j_{g}g_{t}t_{b}b"
+        for e, m, j, g, t, b in zip(e, m, j, g, t, b)
     ]
     unique_fs = set(all_events_fs)
 
@@ -227,8 +226,8 @@ def _kinematic_cuts_is_per_object(cuts: Optional[Dict]) -> bool:
     if not cuts:
         return False
     markers = (
-        "Electrons", "Muons", "Jets", "BJets", "LJets", "Photons", "Taus",
-        "electrons", "muons", "jets", "bjets", "ljets", "photons", "taus",
+        "Electrons", "Muons", "Jets", "BJets", "Photons", "Taus",
+        "electrons", "muons", "jets", "bjets", "photons", "taus",
     )
     return any(k in cuts for k in markers)
 

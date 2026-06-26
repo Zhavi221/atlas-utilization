@@ -297,7 +297,7 @@ def _group_signatures_by_bumpnet(signatures: List[str]) -> Dict[str, List[str]]:
             cleaned = cleaned[:-9]
 
         # match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([emjg\d]+)$", cleaned)
-        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g(?:_\d+t)?(?:_\d+b)?(?:_\d+l)?)_IM_([emjgtbl\d]+)$", cleaned)
+        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g(?:_\d+t)?(?:_\d+b)?)_IM_([emjgtb\d]+)$", cleaned)
         if not match:
             continue
         fs_str, im_str = match.groups()
@@ -408,7 +408,7 @@ def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
     groups = defaultdict(list)
     unmatched_files = []
     for filename in im_files:
-        match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([emjg\d]+)', filename)
+        match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g(?:_\d+t)?(?:_\d+b)?)_IM_([emjgtb\d]+)', filename)
         if match:
             fs_str, im_str = match.groups()
             bumpnet_name = _convert_to_bumpnet_name(fs_str, im_str)
@@ -434,7 +434,8 @@ def _convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
     Examples:
       fs="2e_0m_3j_0g"  im="e0j0"   → mass_e0j0_cat_2ex_0mx_3jx_0gx
       fs="2e_0m_3j_0g"  im="e0e1j0" → mass_e0e1j0_cat_2ex_0mx_3jx_0gx
-      fs="2e_0m_3j_0g"  im="e1j0"   → mass_e1j0_cat_2ex_0mx_3jx_0gx  (future sub-leading)
+      fs="2e_0m_3j_0g"  im="e1j0"   → mass_e1j0_cat_2ex_0mx_3jx_0gx  (sub-leading)
+      fs="1e_0m_0j_0g_1bx"  im="b0e0"   → mass_b0e0_cat_1ex_0mx_0jx_0gx_1bx for btag case
 
     The regex in _group_signatures_by_bumpnet that feeds this function
     also needs to be updated.
@@ -444,7 +445,7 @@ def _convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
 
     # FS part: count-based "2e_0m_3j_0g" → "2ex_0mx_3jx_0gx"
     #fs_particles = re.findall(r'(\d+)([emjg])', fs_str)
-    fs_particles = re.findall(r'(\d+)([emjgtbl])', fs_str)
+    fs_particles = re.findall(r'(\d+)([emjgtb])', fs_str)
     fs_formatted  = "_".join(f"{c}{p}x" for c, p in fs_particles)
 
     result = f"mass_{combo}_cat_{fs_formatted}"

@@ -125,9 +125,8 @@ class FileParser:
         score = jets[btag_field]
         is_bjet = score >= threshold
         obj_events["BJets"] = jets[is_bjet]
-        obj_events["LJets"] = jets[~is_bjet]
+        obj_events["Jets"] = jets[~is_bjet]
         # In tagging mode, treat tagged jets as the canonical jet categories.
-        obj_events.pop("Jets", None)
         return obj_events
     
     @staticmethod
