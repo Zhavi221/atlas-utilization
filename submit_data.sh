@@ -9,13 +9,13 @@
 
 set -e
 
-NUM_JOBS=3
+NUM_JOBS=40
 CONFIG="configWmaxTotal_up4j_minEvt10_subleading.yaml"
 CPUS_PER_JOB=4
 MEM_PER_JOB="180gb"
-WALLTIME="12:00:00"
-POSTPROC_WALLTIME="24:00:00"
-SCAN_WALLTIME="04:00:00"
+WALLTIME="72:00:00"        # full walltime for parsing+mass_calc
+POSTPROC_WALLTIME="72:00:00"  # post-processing on all 20 SQLite files
+SCAN_WALLTIME="08:00:00"
 HIST_WALLTIME="24:00:00"
 MERGE_WALLTIME="08:00:00"
 QUEUE="N"

@@ -116,9 +116,23 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
         shard_name = "processed_batch_1.sqlite"
 
     shard_path = os.path.join(output_dir, shard_name)
+    already_done = set()
     if os.path.exists(shard_path):
-        os.remove(shard_path)
-
+        try:
+            import sqlite3 as _sqlite3
+            conn = _sqlite3.connect(shard_path, timeout=30)
+            rows = conn.execute(
+                "SELECT DISTINCT signature FROM array_chunks"
+            ).fetchall()
+            conn.close()
+            for (sig,) in rows:
+                key = sig[:-5] if sig.endswith("_main") else \
+                    sig[:-9] if sig.endswith("_outliers") else sig
+                already_done.add(key)
+            logger.info(f"Resume: skipping {len(already_done)//2} already-done FS_IM keys")
+        except Exception as e:
+            logger.warning(f"Could not read shard for resume: {e}")
+    # Remove: if os.path.exists(shard_path): os.remove(shard_path)
     writer = SqliteArrayShardWriter(shard_path)
 
     signatures = set()
@@ -159,6 +173,8 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
     processed = 0
     try:
         for fs_im_key in keys_to_process:
+            if fs_im_key in already_done:
+                continue
             chunk_sigs = fs_im_groups[fs_im_key]
             chunks = []
             for sig in chunk_sigs:
