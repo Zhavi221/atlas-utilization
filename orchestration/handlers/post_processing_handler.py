@@ -35,6 +35,7 @@ class PostProcessingHandler(StateHandler):
             "output_dir": pp.output_dir,
             "peak_detection_bin_width_gev": pp.peak_detection_bin_width_gev,
             "batch_job_index": context.config.batch_job_index,
+            "total_batch_jobs": context.config.total_batch_jobs,
         }
 
         # If the previous stage produced files, pass them explicitly
