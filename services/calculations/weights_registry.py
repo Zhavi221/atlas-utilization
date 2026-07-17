@@ -172,3 +172,45 @@ class WeightsRegistry:
             weights[source_prefix] = compute_normalization(metadata, luminosity)
 
         return cls(weights, default_weight=default_weight)
+
+
+def build_and_save_registry(
+    source_to_dsid: dict,
+    fetcher,
+    weighting_config,
+    output_path: str,
+    source_to_campaign: Optional[dict] = None,
+) -> "WeightsRegistry":
+    """
+    Fetch metadata for the given sources' DSIDs, build a weights registry, and
+    persist it to ``output_path``.
+
+    This is the producer counterpart to the histogram-stage consumer: it runs
+    where DSIDs are known and writes the ``weights_registry.json`` that the
+    histogram stage later reads.
+
+    Args:
+        source_to_dsid: {source_prefix: dsid} for every source to weight.
+        fetcher: A MetadataFetcher (needs fetch_mc_metadata_for_datasets).
+        weighting_config: MCWeightingConfig (luminosity + require_metadata).
+        output_path: Where to write weights_registry.json.
+        source_to_campaign: Optional {source_prefix: campaign} for per-campaign
+            luminosity.
+
+    Returns:
+        The saved WeightsRegistry.
+    """
+    dsids = sorted(set(source_to_dsid.values()))
+    logging.info("Fetching MC metadata for %d unique DSID(s)", len(dsids))
+    metadata_by_dsid = fetcher.fetch_mc_metadata_for_datasets(
+        dsids, require_metadata=weighting_config.require_metadata
+    )
+    registry = WeightsRegistry.build_from_metadata(
+        source_to_dsid, metadata_by_dsid, weighting_config, source_to_campaign
+    )
+    registry.save(output_path)
+    logging.info(
+        "Wrote weights registry with %d weighted source(s) to %s",
+        len(registry), output_path,
+    )
+    return registry
