@@ -7,6 +7,7 @@ No orchestration logic, no state management.
 
 import logging
 import awkward as ak
+import numpy as np
 import uproot
 import itertools
 from typing import Optional
@@ -81,7 +82,7 @@ class FileParser:
             all_tree_branches,
             release_year
         )
-        
+
         if not obj_branches:
             logging.warning(f"No particles found in schema for file {file_path}")
             return None
@@ -101,33 +102,40 @@ class FileParser:
             batch_size
         )
         if enable_jet_tagging:
-            obj_events = FileParser._split_jets_by_btag(
-                obj_events,
-                btag_field=jet_btag_field,
-                threshold=jet_btag_threshold,
-        )
-        
+            obj_events = FileParser._calculate_btagging_and_split(obj_events)
         return ak.zip(obj_events, depth_limit=1)
 
     @staticmethod
-    def _split_jets_by_btag(
+    def _calculate_btagging_and_split(
         obj_events: dict[str, ak.Array],
-        btag_field: str,
-        threshold: float,
-    ) -> dict[str, ak.Array]:
-        """
-        Optionally split Jets into BJets/LJets using a configurable b-tag score field.
-        """
-        jets = obj_events.get("Jets")
-        if jets is None or btag_field not in jets.fields:
-            return obj_events
 
-        score = jets[btag_field]
-        is_bjet = score >= threshold
-        obj_events["BJets"] = jets[is_bjet]
-        obj_events["Jets"] = jets[~is_bjet]
-        # In tagging mode, treat tagged jets as the canonical jet categories.
-        return obj_events
+    ):
+        """
+        For each Jet objects in each event, calculates the b-tagging discriminant.
+        Then, decides if each jet is a bjet or not. If bjet, stores in obj_events["BJet"] and removes from obj_events["Jets"]
+        Otherwise, leaves the Jet be.
+        """
+        # TODO Find a cleaner way to determine if dealing with nanoAOD, PHYSLITE, etc.
+        if "Jet_btagDeepFlavB" in obj_events["DirectObjects"].fields:
+            # CMS: Discriminant is pre-calculated as the Jet_btagDeepFlavB field. Can change to a different algorithm if needed.
+            # See https://cms-opendata-workshop.github.io/workshop2024-lesson-physics-objects/instructor/05-btagging.html
+            is_bjet = obj_events["DirectObjects"]["Jet_btagDeepFlavB"] > 0.5
+        elif "BTagging_AntiKt4EMPFlowAuxDyn.DL1dv01_pb" in obj_events["DirectObjects"].fields:
+            # ATLAS
+            indices = obj_events["DirectObjects"]["AnalysisJetsAuxDyn.btaggingLink/AnalysisJetsAuxDyn.btaggingLink.m_persIndex"]
+            pb = obj_events["DirectObjects"]["BTagging_AntiKt4EMPFlowAuxDyn.DL1dv01_pb"][indices]
+            pc = obj_events["DirectObjects"]["BTagging_AntiKt4EMPFlowAuxDyn.DL1dv01_pc"][indices]
+            pu = obj_events["DirectObjects"]["BTagging_AntiKt4EMPFlowAuxDyn.DL1dv01_pu"][indices]
+            # DL1d score: log(pb / (fc*pc + (1-fc)*pu)), fc=0.018 is standard ATLAS.
+            fc = 0.018
+            dl1d = np.log(pb / (fc * pc + (1 - fc) * pu))
+            mask = dl1d > 0
+            print(dl1d[mask])
+            is_bjet = dl1d > 2.51
+        else:
+            return obj_events
+        obj_events["BJets"] = obj_events["Jets"][is_bjet]
+        obj_events["Jets"] = obj_events["Jets"][~is_bjet]        
     
     @staticmethod
     def _get_data_tree_name(
@@ -175,6 +183,7 @@ class FileParser:
         
         obj_branches = {}
         objects = schema_config["objects"]
+        direct_objects = schema_config.get("direct_objects", [])
         naming_pattern = schema_config.get("naming_pattern", "dotted")
         
         for obj_name, fields in objects.items():
@@ -189,7 +198,8 @@ class FileParser:
             
             if obj_branches_for_obj:
                 obj_branches[obj_name] = obj_branches_for_obj
-        
+        # Keep direct object names as-is, but store them under the "DirectObjects" key.
+        obj_branches.update({"DirectObjects": {k: k for k in direct_objects}})
         return obj_branches
     
     @staticmethod
@@ -407,7 +417,7 @@ class FileParser:
             }
             if accessible_branches and FileParser._can_calculate_inv_mass(
                 list(accessible_branches.values())
-            ):
+            ) or obj_name == "DirectObjects":
                 accessible_obj_branches[obj_name] = accessible_branches
         
         return accessible_obj_branches
