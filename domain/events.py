@@ -12,14 +12,15 @@ import awkward as ak
 @dataclass(frozen=True)
 class EventBatch:
     """A batch of events from a single file."""
-    
+
     events: ak.Array
     file_id: int
     release_year: str
     size_bytes: int
     event_count: int
     processing_time_sec: float
-    
+    source_url: Optional[str] = None  # original file URL/path (for DSID-mixing guard)
+
     def __post_init__(self):
         """Validate the event batch."""
         if self.event_count < 0:

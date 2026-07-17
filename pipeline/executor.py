@@ -737,8 +737,11 @@ class PipelineExecutor:
                 max_wait_time=300
             )
             services['file_parser'] = FileParser()
+            mc_cfg = getattr(self.config, "mc_weighting_config", None)
+            split_by_dataset = bool(mc_cfg and mc_cfg.enabled)
             services['event_accumulator'] = EventAccumulator(
-                chunk_threshold_bytes=pc.chunk_yield_threshold_bytes
+                chunk_threshold_bytes=pc.chunk_yield_threshold_bytes,
+                split_by_dataset=split_by_dataset,
             )
             services['threaded_processor'] = ThreadedFileProcessor(
                 file_parser=services['file_parser'],

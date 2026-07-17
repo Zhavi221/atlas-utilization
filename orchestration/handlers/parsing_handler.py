@@ -174,6 +174,7 @@ class ParsingHandler(StateHandler):
                         ),
                         event_count=len(filtered),
                         processing_time_sec=batch.processing_time_sec,
+                        source_url=batch.source_url,
                     )
 
                 # Accumulate batch into chunks

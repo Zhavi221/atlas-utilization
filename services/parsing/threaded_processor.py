@@ -196,7 +196,8 @@ class ThreadedFileProcessor:
             release_year=release_year,
             size_bytes=size_bytes,
             event_count=event_count,
-            processing_time_sec=processing_time
+            processing_time_sec=processing_time,
+            source_url=file_url,
         )
     
     def _create_progress_bar(self, total: int):
