@@ -1,0 +1,132 @@
+
+stages:
+  - function
+  - generate
+  - train
+  - predict
+  - plot
+
+
+function:
+  stage: function
+  image: python:3.11
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - python3 sample_generation/function.py --config configs/ci_pipeline.yaml
+  artifacts:
+    paths:
+      - test/function_bkg/
+
+
+generate_train:
+  stage: generate
+  image: python:3.11
+  dependencies:
+    - function
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - python3 sample_generation/generate.py --config configs/ci_pipeline.yaml --input_paths "test/function_bkg" --output_dir "test/generated/train/percent_with_signal_1.0"
+  artifacts:
+    paths:
+      - test/generated/train/percent_with_signal_1.0
+
+generate_test_1:
+  stage: generate
+  image: python:3.11
+  dependencies:
+    - function
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - python3 sample_generation/generate.py --config configs/ci_pipeline.yaml --input_paths "test/function_bkg" --output_dir "test/generated/test/percent_with_signal_1.0"
+  artifacts:
+    paths:
+      - test/generated/test/percent_with_signal_1.0
+
+generate_test_0:
+  stage: generate
+  image: python:3.11
+  dependencies:
+    - function
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - python3 sample_generation/generate.py --config configs/ci_pipeline.yaml --input_paths "test/function_bkg" --output_dir "test/generated/test/percent_with_signal_0.0" --percent_with_signal 0.0
+  artifacts:
+    paths:
+      - test/generated/test/percent_with_signal_0.0
+
+generate_val:
+  stage: generate
+  image: python:3.11
+  dependencies:
+    - function
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - python3 sample_generation/generate.py --config configs/ci_pipeline.yaml --input_paths "test/function_bkg" --output_dir "test/generated/val/percent_with_signal_1.0"
+  artifacts:
+    paths:
+      - test/generated/val/percent_with_signal_1.0
+
+train:
+  stage: train
+  image: python:3.11
+  dependencies:
+    - generate_train
+    - generate_val
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - python3 ml_scripts/train.py --config configs/ci_pipeline.yaml
+  artifacts:
+    paths:
+      - test/model_func/Znet3_func
+
+predict_1:
+  stage: predict
+  image: python:3.11
+  dependencies:
+    - generate_test_1
+    - generate_test_0
+    - train
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - python3 ml_scripts/predict.py --config configs/ci_pipeline.yaml --input_dirs test/generated/test/percent_with_signal_1.0 --output_dirs test/prediction_sig
+  artifacts:
+    paths:
+      - test/prediction_sig
+
+predict_0:
+  stage: predict
+  image: python:3.11
+  dependencies:
+    - generate_test_1
+    - generate_test_0
+    - train
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - python3 ml_scripts/predict.py --config configs/ci_pipeline.yaml --input_dirs test/generated/test/percent_with_signal_0.0 --output_dirs test/prediction_bkg
+  artifacts:
+    paths:
+      - test/prediction_bkg
+
+plot:
+  stage: plot
+  image: python:3.11
+  dependencies:
+    - predict_1
+    - predict_0
+    - generate_test_1
+    - generate_test_0
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - python3 plotting/plot.py --config configs/ci_pipeline.yaml
+  artifacts:
+    paths:
+      - test/plots

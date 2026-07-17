@@ -1,0 +1,74 @@
+tasks:
+  do_predict: false
+  do_plot: true
+
+raw_cuts:
+  min_num_bins: 25
+  min_total_events: 100
+  min_num_events: 0.35
+  skipped_bins: 0
+
+predict:
+  checkpoint_path: /project/def-arguinj/shared/Nghia_WS/Analysis2p0/250902/model_analysis2p0_signal0p5_nobloss/Znet3_analysis2p0_signal0p5/best_model.ckpt
+  batch_size: 5000
+  seed: 42
+  num_workers: 4
+  input_dirs: [
+    "/project/def-arguinj/shared/Nghia_WS/Analysis2p0/250902/Test_300k_MC20_analysis2p0_with_gaussian_signal_seed_3_percent_with_signal_0.0", 
+    "/project/def-arguinj/shared/Nghia_WS/Analysis2p0/250902/Test_300k_MC20_analysis2p0_with_gaussian_signal_seed_3_percent_with_signal_1.0"
+    ]
+  output_dirs: [
+    "temp/baseline/performance/MC20_analysis2.0/gpr-func-forms/prediction/prediction_nghia_bkg",
+    "temp/baseline/performance/MC20_analysis2.0/gpr-func-forms/prediction/prediction_nghia_sig",
+    ]
+
+plot:
+  datasets:
+  - output_dir: temp/baseline/performance/MC20_analysis2.0/gpr-func-forms/plots/plots_nghia
+    sig_input_dir: /project/def-arguinj/shared/Nghia_WS/Analysis2p0/250902/Test_300k_MC20_analysis2p0_with_gaussian_signal_seed_3_percent_with_signal_1.0
+    sig_prediction_dir: temp/baseline/performance/MC20_analysis2.0/gpr-func-forms/prediction/prediction_nghia_sig
+    bkg_input_dir: /project/def-arguinj/shared/Nghia_WS/Analysis2p0/250902/Test_300k_MC20_analysis2p0_with_gaussian_signal_seed_3_percent_with_signal_0.0
+    bkg_prediction_dir: temp/baseline/performance/MC20_analysis2.0/gpr-func-forms/prediction/prediction_nghia_bkg
+  what_to_plot:
+  - roc_curve
+  - z_distributions
+  - deltaz_distributions
+  - deltaz_vs_zLR
+  - deltaz_vs_zLR_bin_ratio
+  - deltaz_vs_bin_content
+  - deltaz_vs_background
+  - deltaz_vs_mass
+  - z_extremum
+  - zmax_distributions
+  - deltazmax_distributions
+  - deltazmax_vs_zLRmax
+  - deltazmax_vs_zLRmax_bin_ratio
+  - deltazmax_vs_zLRmax_bin_number
+  - deltazmax_vs_bins
+  - false_discovery_rate_plot
+  - false_discovery_rate_table
+  - examples
+  conditions:
+    n_examples: 50
+    signal_examples_condition: abs(perf_sig.z_pred_max[i] - perf_sig.z_lr_max[i]) < 0.5
+    background_examples_condition: abs(perf_bkg.z_pred_max[i] - perf_bkg.z_lr_max[i]) < 0.5
+    deltaz_lim:
+    - -5
+    - 5
+    deltazmax_lim:
+    - -5
+    - 5
+    interpolate: false
+    outliers_zmax_threshold: 5
+    outliers_in_std_units: false
+  format: pdf
+  seed: 10
+  max_rows: 10000
+  verbose: true
+  shuffle: true
+  edge:
+  - 0.1
+  - 1
+  show: false
+  plot_std_dist: true
+  plot_kde: true

@@ -1,0 +1,96 @@
+tasks:
+  do_smooth: false
+  do_prepare_bsm: false
+  do_predict: false
+  do_plot: false
+
+raw_cuts:
+  min_num_bins: 25
+  min_total_events: 100
+  min_num_events: 0.35
+  skipped_bins: 0
+
+smooth:
+  input_path: ANA-EXOT-2023-18/analysis2.0/BSM/sample.root
+  output_dir: ANA-EXOT-2023-18/analysis2.0/BSM/smoothed
+  seed: 42
+  smooth_method: ''
+  verbose: false
+  reject_zlr: true
+
+prepare_bsm:
+
+  # --- NOTE: binning must be the same between BSM sample and smoothed curves --- #
+
+  input_path: ANA-EXOT-2023-18/analysis2.0/BSM/sample.root
+  smooth_dir: ANA-EXOT-2023-18/analysis2.0/BSM/smoothed
+  output_dir: ANA-EXOT-2023-18/analysis2.0/BSM/sample/prepared_data
+  pool: 40
+  hypothesis_signal_function: gaussian
+  hypothesis_signal_width: 1.0
+
+predict:
+  checkpoint_path: ANA-EXOT-2023-18/analysis2.0/BumpNetModel_42/best_model.ckpt
+  batch_size: 5000
+  seed: 42
+  num_workers: 4
+  input_dirs: [
+    "ANA-EXOT-2023-18/analysis2.0/BSM/sample/prepared_data",
+    ]
+  output_dirs: [
+    "ANA-EXOT-2023-18/analysis2.0/BSM/sample/prediction"
+    ]
+
+plot:
+  datasets:
+  - output_dir: ANA-EXOT-2023-18/analysis2.0/BSM/sample/plots
+    sig_input_dir: ANA-EXOT-2023-18/analysis2.0/BSM/sample/prepared_data
+    sig_prediction_dir: ANA-EXOT-2023-18/analysis2.0/BSM/sample/prediction
+  what_to_plot:
+  - deltaz_vs_zLR
+  - deltazmax_vs_zLRmax
+  - deltazmax_vs_zLRmax_bin_ratio
+  - zmax_bin_distributions
+  - deltazmax_bin_distributions
+  - deltazmax_bin_vs_zLRmax_bin_number
+  - deltazmax_bin_vs_zLRmax_bin_ratio
+  - deltazmax_bin_vs_zLRmax_ratio
+  - deltazmax_bin_vs_zLRmax_number
+  - predictions_heatmap
+  - examples
+  conditions:
+    n_examples: 1000
+    signal_examples_condition: abs(perf_sig.z_pred_max[i] - perf_sig.z_lr_max[i]) > 4
+    background_examples_condition: abs(perf_bkg.z_pred_max[i] - perf_bkg.z_lr_max[i]) > 4
+    selection:
+      observable:
+        e: "==1"
+        j: "==1"
+      final_state:
+        ex: ">=1"
+        mx: "==0"
+        bx: "==0"
+        jx: "==2"
+        Zx: "==0"
+      charge: "OS"
+    deltaz_lim:
+    - -5
+    - 5
+    deltazmax_lim:
+    - -5
+    - 5
+    interpolate: false
+    outliers_zmax_threshold: 5
+    outliers_in_std_units: false
+    order_examples_by_significance: true
+  format: pdf
+  seed: 10
+  max_rows: 10000
+  verbose: true
+  shuffle: true
+  edge:
+  - 0.1
+  - 1
+  show: false
+  plot_std_dist: true
+  plot_kde: false

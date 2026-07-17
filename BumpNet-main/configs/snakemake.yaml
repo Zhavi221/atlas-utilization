@@ -1,0 +1,20 @@
+#container: "/srv/beegfs/scratch/groups/rodem/containers/BumpNet_20250828.sif"
+container: "/sps/atlas/b/bosoriopascual/BumpNet/BumpNet_20250828.sif"
+
+directory: "ANA-EXOT-2023-18/analysis2.0"
+
+n_parallel: 50
+n_BN: 5
+
+train_size: 1_000_000
+
+split_shapes: false
+
+sys:
+  - "NOSYS"
+  # - "GEN_muR_05_muF_10"
+  # - "GEN_muR_20_muF_10"
+  # - "GEN_muR_10_muF_05"
+  # - "GEN_muR_10_muF_20"
+
+mode_smoothing : ["accepted"] # ,rejected

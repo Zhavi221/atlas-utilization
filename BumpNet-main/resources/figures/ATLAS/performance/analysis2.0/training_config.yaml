@@ -1,0 +1,23 @@
+name: Znet3_analysis2p0_signal0p5
+cuda_visible_devices: '0'
+output_dir: temp/model_analysis2p0_signal0p5_nobloss
+train_dir: temp/Train_1p5M_MC20_analysis2p0_and_func_bkg_with_gaussian_signal_seed_1_percent_with_signal_0.5
+val_dir: temp/Valid_150k_MC20_analysis2p0_and_func_bkg_with_gaussian_signal_seed_2_percent_with_signal_0.5
+resume_from_checkpoint: null
+batch_size: 2048
+num_epochs: 300
+min_delta: 1.0e-06
+rel_mse: false
+z_loss_wt: 1
+b_loss_wt: 0
+b_loss_type: mse
+learning_rate: 0.001
+lr_scheduler:
+  CosineAnnealingLR:
+    T_max: -1
+    eta_min: 1.0e-06
+    last_epoch: -1
+    verbose: true
+num_workers: 4
+comet:
+  project_name: DDP

@@ -1,0 +1,65 @@
+tasks:
+  do_generate_toys_bkg_only: false
+  do_predict_toys_bkg_only: false
+  do_plot_toys_bkg_only: false
+  do_analyze_split_ds: true
+generate_toys_bkg_only:
+  name: split_DS_AB
+  output_dir: /project/def-arguinj/shared/JF_WS
+  backgrounds:
+    mc20_analysis2p0:
+      dir: /project/def-arguinj/shared/Nghia_WS/Analysis2p0/250902/Smoothed_MC20_analysis2p0/
+  n_pseudo_experiments: 10000
+  seed: 42
+  pool: 40
+  pe_per_shard: 1000
+  split_DS_AB: True        # write A/B files per PE
+  ds_fraction_A: 0.5 
+predict_toys_bkg_only:
+  checkpoint: /lustre09/project/6003740/shared/Nghia_WS/Analysis2p0/250922/model_analysis2p0_signal0p5_halved_stat/Znet3_analysis2p0_signal0p5/best_model.ckpt
+  input_dir: /project/def-arguinj/shared/JF_WS/split_DS_AB
+  output_dir: /project/def-arguinj/shared/JF_WS/predictions_split_DS_AB_signal0p5_statscommresults
+  smooth_dir: /project/def-arguinj/shared/Nghia_WS/Analysis2p0/250902/Smoothed_MC20_analysis2p0/
+  compute_Z_LR: true
+  ds_fraction_A: 0.5
+  max_pe: 10000
+  pool: 40
+  verbose: 1
+plot_toys_bkg_only:
+  input_dir: /project/def-arguinj/shared/JF_WS/predictions_MC20_analysis2p0_signal1p0
+  input_dir_hist: /project/def-arguinj/shared/JF_WS/MC20_analysis2p0
+  smooth_dir: /project/def-arguinj/shared/Nghia_WS/Analysis2p0/250902/Smoothed_MC20_analysis2p0/
+  output_dir: /project/def-arguinj/shared/JF_WS/plots_MC20_analysis2p0_signal1p0_edge0.10_deltaZtests
+  dpi: 300
+  format: png
+  show: true
+  edge:
+  - 0.10
+  - 1.0
+  max_pes: 1000
+  min_nbins: 25
+  do_zmax_analysis: true
+  check_coincident_mass_bumps: false
+  coincidence_threshold: 4.0
+  use_predbin_lr: false
+  do_top10_analysis: false
+  do_deltaZ_plots: true 
+  do_binwise_deltaZ: false
+analyze_split_ds:
+  input_dir: "/project/def-arguinj/shared/JF_WS/predictions_split_DS_AB_signal0p5_statscommresults"
+  input_dir_hist: "/project/def-arguinj/shared/JF_WS/split_DS_AB"
+  output_dir: "/project/def-arguinj/shared/JF_WS/plots_split_ds_signal0p5_statscommresults_0p10edge"
+  edge: [0.1, 1.00]
+  min_nbins: 25
+  examples: 20
+  seed: 42
+  dpi: 300
+  format: "png"
+  max_pes: 10000
+  plot_deltaZmax: false
+  triplet_plots:
+    logy: true
+    "relpos_edges": [0.10, 0.25, 0.35, 0.50, 0.70, 0.90, 1.00]
+    "nevents_edges": [100000000, 5000, 500, 50, 20, 5, 2, 1, 0]  
+    plot_relpos_triplets: false
+    plot_nevents_triplets: false

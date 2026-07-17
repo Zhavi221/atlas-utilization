@@ -1,0 +1,63 @@
+executor: slurm
+jobs: 30
+use-conda: true
+printshellcmds: true
+use-apptainer: true
+apptainer-args: " --nv -B /sps/atlas/s/scalvet/ML/BN/ "
+latency-wait: 60
+
+default-resources:
+    slurm_partition: "hpc"
+    slurm_account: "atlas"
+    cpus_per_task: 10
+    mem: 32G
+    runtime: 1440  # in minutes (1440 = 24h, 2880 = 48h, 4320 = 72h)
+    slurm_extra: "-L sps"
+
+
+set-resources:
+    function:
+        slurm_partition: "hpc"
+        slurm_account: "atlas"
+        cpus_per_task: 1
+        mem: 32G
+        runtime: 144  # in minutes (1440 = 24h, 2880 = 48h, 4320 = 72h)
+        slurm_extra: "-L sps"
+
+    generate:
+        slurm_partition: "hpc"
+        slurm_account: "atlas"
+        cpus_per_task: 10
+        mem: 32G
+        runtime: 1440  # in minutes (1440 = 24h, 2880 = 48h, 4320 = 72h)
+        slurm_extra: "-L sps"
+    
+    train:
+        slurm_partition: "gpu"
+        slurm_account: "atlas"
+        cpus_per_task: 4
+        runtime: 2880 # in minutes (1440 = 24h, 2880 = 48h, 4320 = 72h)
+        slurm_extra: "--nodes=4 --gpus=1 -L sps"
+        mem_mb: 20_000
+
+    predict_raw:
+        slurm_partition: "hpc"
+        slurm_account: "atlas"
+        cpus_per_task: 4
+        mem: 32G
+        runtime: 144  # in minutes (1440 = 24h, 2880 = 48h, 4320 = 72h)
+        slurm_extra: "-L sps"
+
+    predict_generated:
+        slurm_partition: "hpc"
+        slurm_account: "atlas"
+        cpus_per_task: 4
+        mem: 32G
+        runtime: 144  # in minutes (1440 = 24h, 2880 = 48h, 4320 = 72h)
+        slurm_extra: "-L sps"
+    
+    #mergeBN_raw:
+    #    executor: local
+    #plot_raw:
+    #    executor: local
+

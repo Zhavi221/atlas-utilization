@@ -1,0 +1,30 @@
+# IDE folders
+.idea/
+.vscode/
+
+# Other private, user dependent files
+configs/*.json
+# Except this sole file that's an example
+!configs/baseline_DMfunc.json
+
+# Other runtime artifacts
+*/__pycache__
+ml_scripts/cometml-runs
+*.egg-info/
+
+# OS artifacts
+*/.DS_Store
+
+# Output file types that should never be backed up
+*.pyc
+*.png
+*.ipynb_checkpoints
+*.log
+*.npy
+*.out
+*.swp
+.cache
+.snakemake
+
+# Personal working directory
+temp/

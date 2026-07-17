@@ -1,0 +1,78 @@
+
+raw_cuts:
+  min_num_bins: 25
+  min_total_events: 100
+  min_num_events: 0.35
+  skipped_bins: 0.0
+
+smooth:
+  input_path: ANA-EXOT-2023-18/analysis2.0/rebinned/NOSYS/rebinned.root
+  output_dir: ANA-EXOT-2023-18/analysis2.0/smoothed/NOSYS
+  smooth_method: '' 
+  verbose: false
+  n_examples: 10
+  seed: 42
+  reject_zlr: false
+
+generate:
+  output_dir: ANA-EXOT-2023-18/analysis2.0/generated/NOSYS
+  input_paths: ["ANA-EXOT-2023-18/analysis2.0/smoothed/NOSYS"]
+  injected_signal_function: gaussian
+  hypothesis_signal_function: gaussian
+  seed: 1
+  pool: 40
+  injected_signal_width: 1.0
+  hypothesis_signal_width: 1.0
+  percent_with_signal: 0.0
+  edge:
+  - 10
+  - 0
+  z_range:
+  - 1
+  - 10
+  number_of_samples: 100_000.0
+  optimization_tolerance: 0.0001
+
+
+predict:
+  checkpoint_path: BumpNet/Ethan_model/best_model.ckpt
+  batch_size: 500
+  num_workers: 1
+  seed: 42
+  input_dirs: ["ANA-EXOT-2023-18/analysis2.0/rebinned/NOSYS"]
+  output_dirs: ["ANA-EXOT-2023-18/analysis2.0/prediction/raw_NOSYS/"] 
+
+plot:
+  datasets:
+  - output_dir: ANA-EXOT-2023-18/analysis2.0/plots/BumpNet/raw_NOSYS
+    bkg_input_dir: ANA-EXOT-2023-18/analysis2.0/rebinned/NOSYS
+    bkg_prediction_dir: ANA-EXOT-2023-18/analysis2.0/prediction/raw_NOSYS/
+    nominal_input_dir: ANA-EXOT-2023-18/analysis2.0/smoothed/NOSYS
+    nominal_prediction_dir: ANA-EXOT-2023-18/analysis2.0/prediction/smoothed/NOSYS/
+  what_to_plot:
+    - examples
+    - systematic_ratio
+    - z_extremum
+    - false_discovery_rate_table
+    - zmax_bin_distributions
+    - deltazmax_vs_zLRmax
+    - correlation_stat_false_discoveries
+  conditions:
+    n_examples: 600
+    signal_examples_condition: abs(perf_sig.z_pred_max[i] - perf_sig.z_lr_max[i])
+      > 4
+    background_examples_condition: perf_bkg.z_pred_max[i] >= 5
+    interpolate: false
+    outliers_zmax_threshold: 5
+    outliers_in_std_units: false
+  seed: 10
+  max_rows: 10000
+  verbose: true
+  shuffle: false
+  format: "png"
+  edge:
+  - 0.1
+  - 1
+  show: false
+  plot_std_dist: false
+  plot_kde: false

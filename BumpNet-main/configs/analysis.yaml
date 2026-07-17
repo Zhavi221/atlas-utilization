@@ -1,0 +1,203 @@
+# This is the baseline config file which defines the basic block for the BumpNet analysis. Works best together with the snakemake workflow analysis.smk
+
+# Tasks to perform if the DDP.py workflow is used. Not necessary for snakemake execution.
+tasks:
+  do_smooth: false
+  do_function: false
+  do_split: false
+  do_stretch: false
+  do_systematics: false
+  do_generate: false
+  do_merge: false
+  do_train: false
+  do_predict: false
+  do_merge_BN_output: false
+  do_plot: false
+
+raw_cuts:
+  min_num_bins: 25
+  min_total_events: 100
+  min_num_events: 0.35
+  skipped_bins: 0.0
+  blacklist: [
+    # ------ 1l + 1j final state ------ #
+    "mass_m0j0_cat_0ex_1mx_0bx_1jx_0Zx",
+    "mass_e0j0_cat_1ex_0mx_0bx_1jx_0Zx",
+
+    # ------ Z-object "gap" histograms ------ #
+    "mass_m0m1_cat_0ex_2mx_0bx_0jx_0Zx_OS",
+    "mass_m0m1_cat_0ex_2mx_0bx_1jx_0Zx_OS",
+    "mass_m0m1_cat_0ex_2mx_0bx_2jx_0Zx_OS",
+    "mass_m0m1_cat_0ex_2mx_1bx_0jx_0Zx_OS",
+    "mass_m0m1_cat_0ex_2mx_1bx_1jx_0Zx_OS",
+    "mass_m0m1_cat_0ex_2mx_2bx_0jx_0Zx_OS"
+  ]
+
+smooth:
+  input_path: ANA-EXOT-2023-18/analysis2.0/rebinned/NOSYS/rebinned.root
+  output_dir: ANA-EXOT-2023-18/analysis2.0/smoothed
+  #nominal_dir:  # optional 
+  seed: 42
+  smooth_method: ''
+  verbose: false
+  reject_zlr: false
+
+function:
+  smooth_dir: ANA-EXOT-2023-18/analysis2.0/smoothed
+  output_dir: ANA-EXOT-2023-18/analysis2.0/functions
+  background_functions:
+  - exponential
+  - linear
+  - one_over_x
+  - one_over_x_squared
+  - one_over_x_cubed
+  - one_over_x_to_4th
+  - one_over_x_to_nth
+  - parabola_half
+  - ln_negative
+  - cos_quarter
+  - cosh_half
+  seed: 42
+  rescale_minimum: 0
+  number_of_samples: 11000
+
+split:
+  output_base_dir: ANA-EXOT-2023-18/analysis2.0/bkg_split
+  train_frac: 0.8
+  val_frac: 0.1
+  test_frac: 0.1
+  seed: 42
+  input_paths: ["ANA-EXOT-2023-18/analysis2.0/functions", "ANA-EXOT-2023-18/analysis2.0/smoothed"]
+
+generate:
+  output_dir: ANA-EXOT-2023-18/analysis2.0/generated/train/percent_with_signal_1.0
+  input_paths: ["ANA-EXOT-2023-18/analysis2.0/bkg_split/train/smoothed", "ANA-EXOT-2023-18/analysis2.0/bkg_split/train/functions"]
+  injected_signal_function: gaussian
+  hypothesis_signal_function: gaussian
+  seed: 1
+  pool: 40
+  injected_signal_width: 1.0
+  hypothesis_signal_width: 1.0
+  percent_with_signal: 1.0
+  edge:
+  - 0.1
+  - 1
+  z_range:
+  - 1
+  - 10
+  number_of_samples: 1000000.0
+  optimization_tolerance: 0.0001
+
+
+merge:
+  input_paths: ["ANA-EXOT-2023-18/analysis2.0/generated/train/percent_with_signal_1.0/seed_1", "ANA-EXOT-2023-18/analysis2.0/generated/train/percent_with_signal_1.0/seed_2"]
+  seed: 42
+  output_dir: ANA-EXOT-2023-18/analysis2.0/generated/train/percent_with_signal_1.0
+  shuffle: false
+
+
+train:
+  name: BumpNetModel
+  cuda_visible_devices: '0'
+  output_dir: ANA-EXOT-2023-18/analysis2.0/
+  train_dir: ANA-EXOT-2023-18/analysis2.0/generated/train/percent_with_signal_1.0
+  val_dir: ANA-EXOT-2023-18/analysis2.0/generated/val/percent_with_signal_1.0
+  resume_from_checkpoint: null
+  seed: 42
+  batch_size: 1000
+  num_epochs: 200
+  min_delta: 1.0e-06
+  rel_mse: false
+  z_loss_wt: 1
+  b_loss_wt: 0.0001
+  b_loss_type: mse_err
+  learning_rate: 0.001
+  lr_scheduler:
+    CosineAnnealingLR:
+      T_max: -1
+      eta_min: 1.0e-06
+      last_epoch: -1
+      verbose: true
+  num_workers: 4
+  ### Select a logger if you want to use one. See the README file for further explanations.
+  #comet:
+  #  project_name: DDP
+  csv_logger:
+    name: BumpNet
+  #device: 'gpu'
+  device: 'cuda' # for ccin2p3
+
+predict:
+  checkpoint_path: ANA-EXOT-2023-18/analysis2.0/BumpNetModel_42/best_model.ckpt
+  seed: 42
+  batch_size: 5000
+  num_workers: 4
+  input_dirs: [
+    "ANA-EXOT-2023-18/analysis2.0/generated/test/percent_with_signal_1.0",
+    "ANA-EXOT-2023-18/analysis2.0/generated/test/percent_with_signal_0.0"
+    ]
+  output_dirs: [
+    "ANA-EXOT-2023-18/analysis2.0/prediction_42/percent_with_signal_1.0",
+    "ANA-EXOT-2023-18/analysis2.0/prediction_42/percent_with_signal_0.0"
+    ]
+
+mergeBNoutput:
+  input_dirs: [
+    "ANA-EXOT-2023-18/analysis2.0/prediction_42/percent_with_signal_1.0",
+    ]
+  output_dir: ANA-EXOT-2023-18/analysis2.0/prediction/
+
+validateMergingBN:
+  predictions: 
+    - ANA-EXOT-2023-18/analysis2.0/prediction_42/
+  input_dir_B: ANA-EXOT-2023-18/analysis2.0/generated/test/percent_with_signal_0.0
+  input_dir_S: ANA-EXOT-2023-18/analysis2.0/generated/test/percent_with_signal_1.0
+  predictions_B: ANA-EXOT-2023-18/analysis2.0/prediction_42/percent_with_signal_0.0
+  predictions_S: ANA-EXOT-2023-18/analysis2.0/prediction_42/percent_with_signal_1.0
+  predictions_merge_B: ANA-EXOT-2023-18/analysis2.0/prediction/percent_with_signal_0.0
+  predictions_merge_S: ANA-EXOT-2023-18/analysis2.0/prediction/percent_with_signal_1.0
+  output_dir: ANA-EXOT-2023-18/analysis2.0/prediction_plot/
+  format: png
+
+plot:
+  datasets:
+  - output_dir: ANA-EXOT-2023-18/analysis2.0/plots/BumpNet/analysis/
+    bkg_input_dir: ANA-EXOT-2023-18/analysis2.0/generated/test/percent_with_signal_0.0
+    bkg_prediction_dir: ANA-EXOT-2023-18/analysis2.0/prediction/percent_with_signal_0.0
+  what_to_plot:
+  - examples
+  - roc_curve
+  - z_distributions
+  - deltaz_distributions
+  - deltaz_vs_zLR
+  - z_extremum
+  - zmax_distributions
+  - deltazmax_distributions
+  - deltazmax_vs_zLRmax
+  - false_discovery_rate_table
+  - zmax_bin_distributions
+  - correlation_stat_false_discoveries
+  conditions:
+    n_examples: 100
+    signal_examples_condition: perf_sig.z_pred_max[i] >= 5
+    background_examples_condition: perf_bkg.z_pred_max[i] >= 5
+    deltaz_lim:
+    - -5
+    - 5
+    deltazmax_lim:
+    - -5
+    - 5
+    interpolate: false
+    outliers_zmax_threshold: 5
+    outliers_in_std_units: false
+  format: png
+  seed: 10
+  max_rows: 10000
+  verbose: true
+  shuffle: false
+  edge:
+  - 0.1
+  - 1
+  show: false
+  plot_std_dist: false
+  plot_kde: false

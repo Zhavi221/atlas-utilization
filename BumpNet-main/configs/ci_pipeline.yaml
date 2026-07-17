@@ -1,0 +1,133 @@
+tasks:
+  do_smooth: false
+  do_function: false
+  do_split: false
+  do_generate: false
+  do_merge: false
+  do_train: false
+  do_predict: false
+  do_plot: false
+  
+raw_cuts:
+  min_num_bins: 1
+  min_total_events: 1
+  min_num_events: 0
+  skipped_bins: 0
+
+smooth:
+  name: MC_bkg_smoothed
+  input_path: input/ci/rebinned_NOSYS.root
+  output_dir: test/
+  seed: 42
+  smooth_method: ''
+  verbose: false
+
+function:
+  output_dir: test/function_bkg
+  background_functions:
+  - exponential
+  seed: 42
+  rescale_minimum: 0
+  number_of_samples: 100
+
+split:
+  output_base_dir: test/bkg_split
+  train_frac: 0.8
+  val_frac: 0.1
+  test_frac: 0.1
+  seed: 42
+  input_paths: ["test/function_bkg"]
+
+generate:
+  output_dir: test/generated/train/percent_with_signal_1.0
+  input_paths: ["test/function_bkg"]
+  injected_signal_function: gaussian
+  hypothesis_signal_function: gaussian
+  seed: 1
+  pool: 40
+  injected_signal_width: 1.0
+  hypothesis_signal_width: 1.0
+  percent_with_signal: 1.0
+  edge:
+  - 0.1
+  - 1
+  z_range:
+  - 1
+  - 10
+  number_of_samples: 100.0
+  optimization_tolerance: 0.0001
+
+
+train:
+  name: Znet3_func
+  cuda_visible_devices: '0'
+  output_dir: test/model_func
+  train_dir: test/generated/train/percent_with_signal_1.0
+  val_dir: test/generated/val/percent_with_signal_1.0
+  resume_from_checkpoint: null
+  seed: 42
+  batch_size: 100
+  num_epochs: 1
+  min_delta: 1.0e-06
+  rel_mse: false
+  z_loss_wt: 1
+  b_loss_wt: 0.0001
+  b_loss_type: mse_err
+  learning_rate: 0.001
+  lr_scheduler:
+    CosineAnnealingLR:
+      T_max: -1
+      eta_min: 1.0e-06
+      last_epoch: -1
+      verbose: true
+  num_workers: 1
+  device: 'cpu'
+
+predict:
+  checkpoint_path: test/model_func/Znet3_func/best_model.ckpt
+  seed: 42
+  batch_size: 100
+  num_workers: 4
+  input_dirs: ["test/generated/test/percent_with_signal_1.0"]
+  output_dirs: ["test/prediction_sig_42"]
+
+
+mergeBNoutput:
+  input_dirs: [
+    "test/prediction_sig_42",
+    ]
+  output_dir: "test/prediction_sig"
+
+plot:
+  datasets:
+  - output_dir: test/plots
+    sig_input_dir: test/generated/test/percent_with_signal_1.0
+    sig_prediction_dir: test/prediction_sig
+    bkg_input_dir: test/generated/test/percent_with_signal_0.0
+    bkg_prediction_dir: test/prediction_bkg
+  what_to_plot:
+  - roc_curve
+  - z_distributions
+  - examples
+  conditions:
+    n_examples: 1
+    deltaz_lim:
+    - -5
+    - 5
+    deltazmax_lim:
+    - -5
+    - 5
+    interpolate: false
+    outliers_zmax_threshold: 5
+    outliers_in_std_units: false
+  format: pdf
+  seed: 10
+  max_rows: 10000
+  verbose: true
+  shuffle: true
+  edge:
+  - 0.1
+  - 1
+  show: false
+  plot_std_dist: true
+  plot_kde: false
