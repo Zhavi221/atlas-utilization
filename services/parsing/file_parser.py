@@ -108,8 +108,7 @@ class FileParser:
     @staticmethod
     def _calculate_btagging_and_split(
         obj_events: dict[str, ak.Array],
-
-    ):
+    ) -> dict[str, ak.Array]:
         """
         For each Jet objects in each event, calculates the b-tagging discriminant.
         Then, decides if each jet is a bjet or not. If bjet, stores in obj_events["BJet"] and removes from obj_events["Jets"]
@@ -130,12 +129,12 @@ class FileParser:
             fc = 0.018
             dl1d = np.log(pb / (fc * pc + (1 - fc) * pu))
             mask = dl1d > 0
-            print(dl1d[mask])
             is_bjet = dl1d > 2.51
         else:
             return obj_events
         obj_events["BJets"] = obj_events["Jets"][is_bjet]
-        obj_events["Jets"] = obj_events["Jets"][~is_bjet]        
+        obj_events["Jets"] = obj_events["Jets"][~is_bjet]
+        return obj_events
     
     @staticmethod
     def _get_data_tree_name(
