@@ -42,6 +42,12 @@ class HistogramCreationHandler(StateHandler):
             "batch_job_index": context.config.batch_job_index,
         }
 
+        # Attach the MC weights registry when MC weighting is enabled so that
+        # histograms are filled with per-source normalization weights.
+        weights_registry = self._load_weights_registry(context)
+        if weights_registry is not None:
+            config_dict["weights_registry"] = weights_registry
+
         # If the previous stage produced files, pass them explicitly
         file_list = None
         if context.processed_files:
@@ -61,3 +67,29 @@ class HistogramCreationHandler(StateHandler):
         next_state = self._determine_next_state(context)
         self._log_state_exit(context, next_state)
         return context, next_state
+
+    def _load_weights_registry(self, context: PipelineContext):
+        """
+        Load the MC weights registry when MC weighting is enabled.
+
+        The registry is expected to be persisted (as weights_registry.json)
+        next to the histogram input directory by an upstream step that knows
+        each source file's DSID. Returns None when weighting is disabled or no
+        registry is available (histograms then fill with unit weights).
+        """
+        mc_cfg = getattr(context.config, "mc_weighting_config", None)
+        if mc_cfg is None or not mc_cfg.enabled:
+            return None
+
+        from pathlib import Path
+        from services.calculations.weights_registry import WeightsRegistry
+
+        hc = context.config.histogram_creation_config
+        registry_path = str(Path(hc.input_dir) / "weights_registry.json")
+        registry = WeightsRegistry.load(registry_path)
+        if registry is None:
+            self.logger.warning(
+                f"MC weighting enabled but no weights registry found at {registry_path}; "
+                "histograms will use unit weights"
+            )
+        return registry
