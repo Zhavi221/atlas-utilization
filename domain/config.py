@@ -189,6 +189,54 @@ class HistogramCreationConfig:
 
 
 @dataclass(frozen=True)
+class MCWeightingConfig:
+    """
+    Configuration for Monte-Carlo event weighting.
+
+    Holds the analysis-level constants that are NOT part of the per-dataset
+    metadata: the target integrated luminosity the simulated samples are
+    normalized to (which can vary by MC campaign), and whether to enforce
+    that every dataset actually has the metadata needed to normalize it. The
+    physics inputs (cross section, k-factor, filter efficiency, sum of
+    weights) come from the dataset metadata, not here.
+    """
+
+    enabled: bool = False
+    target_luminosity_fb: float = 1.0  # default/fallback target luminosity in fb^-1
+    # Optional per-campaign override, e.g. {"mc16a": 36.2, "mc16d": 44.3, "mc16e": 58.5}.
+    luminosity_by_campaign: Optional[dict] = None
+    # When True, a dataset missing REQUIRED metadata (cross_section_pb, sumOfWeights)
+    # is a hard error rather than being silently skipped/unweighted. Missing
+    # kFactor / genFiltEff are NOT errors — they default to 1.0 (no correction),
+    # which is physically valid (e.g. already-NLO or unfiltered samples).
+    require_metadata: bool = False
+
+    def __post_init__(self):
+        """Validate MC weighting configuration."""
+        if self.target_luminosity_fb < 0:
+            raise ValueError(
+                f"target_luminosity_fb must be non-negative, got {self.target_luminosity_fb}"
+            )
+        if self.luminosity_by_campaign:
+            for campaign, lumi in self.luminosity_by_campaign.items():
+                if lumi < 0:
+                    raise ValueError(
+                        f"luminosity for campaign '{campaign}' must be non-negative, got {lumi}"
+                    )
+
+    def get_luminosity(self, campaign: Optional[str] = None) -> float:
+        """
+        Resolve the target luminosity for a given MC campaign.
+
+        Falls back to ``target_luminosity_fb`` when the campaign is unknown or
+        no per-campaign map is configured.
+        """
+        if campaign and self.luminosity_by_campaign:
+            return self.luminosity_by_campaign.get(campaign, self.target_luminosity_fb)
+        return self.target_luminosity_fb
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     """
     Complete pipeline configuration.
@@ -204,6 +252,9 @@ class PipelineConfig:
     mass_calculation_config: Optional[MassCalculationConfig] = None
     post_processing_config: Optional[PostProcessingConfig] = None
     histogram_creation_config: Optional[HistogramCreationConfig] = None
+
+    # Cross-cutting configuration
+    mc_weighting_config: Optional[MCWeightingConfig] = None
     
     # Run metadata
     run_name: str = "pipeline_run"
@@ -345,15 +396,27 @@ class PipelineConfig:
                 ),
             )
         
+        # Parse MC weighting config (optional cross-cutting section)
+        mc_weighting_config = None
+        mc_dict = config_dict.get("mc_weighting_config")
+        if mc_dict:
+            mc_weighting_config = MCWeightingConfig(
+                enabled=mc_dict.get("enabled", False),
+                target_luminosity_fb=mc_dict.get("target_luminosity_fb", 1.0),
+                luminosity_by_campaign=mc_dict.get("luminosity_by_campaign"),
+                require_metadata=mc_dict.get("require_metadata", False),
+            )
+
         # Parse run metadata
         run_metadata = config_dict.get("run_metadata", {})
-        
+
         return cls(
             tasks=tasks,
             parsing_config=parsing_config,
             mass_calculation_config=mass_calculation_config,
             post_processing_config=post_processing_config,
             histogram_creation_config=histogram_creation_config,
+            mc_weighting_config=mc_weighting_config,
             run_name=run_metadata.get("run_name", "pipeline_run"),
             batch_job_index=run_metadata.get("batch_job_index"),
             total_batch_jobs=run_metadata.get("total_batch_jobs"),

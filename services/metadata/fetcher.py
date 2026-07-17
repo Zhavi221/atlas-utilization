@@ -14,7 +14,7 @@ from typing import Optional
 import atlasopenmagic as atom
 
 from services import consts
-from domain.metadata import ReleaseMetadata
+from domain.metadata import ReleaseMetadata, MCDatasetMetadata
 
 
 class MetadataFetcher:
@@ -264,6 +264,122 @@ class MetadataFetcher:
         
         return separated
     
+    def fetch_mc_metadata(self, dataset_id) -> Optional[MCDatasetMetadata]:
+        """
+        Fetch Monte-Carlo metadata for a single dataset (DSID).
+
+        Uses atlasopenmagic ``get_metadata`` which returns all metadata fields
+        for the dataset. Fields missing from the source (e.g. kFactor,
+        genFiltEff on some samples) fall back to physics-safe defaults (1.0).
+
+        Args:
+            dataset_id: The dataset number (DSID), as int or str.
+
+        Returns:
+            MCDatasetMetadata for the dataset, or None if metadata could not be
+            fetched or lacks the fields required to normalize the sample.
+        """
+        try:
+            raw = atom.get_metadata(str(dataset_id))
+        except Exception as e:
+            logging.warning(f"Could not fetch MC metadata for dataset {dataset_id}: {e}")
+            return None
+
+        if not raw:
+            logging.warning(f"No MC metadata returned for dataset {dataset_id}")
+            return None
+
+        cross_section_pb = self._to_float(raw.get("cross_section_pb"))
+        sum_of_weights = self._to_float(raw.get("sumOfWeights"))
+
+        if cross_section_pb is None or sum_of_weights is None or sum_of_weights == 0:
+            logging.warning(
+                f"Dataset {dataset_id} missing required normalization fields "
+                f"(cross_section_pb={cross_section_pb}, sumOfWeights={sum_of_weights}); skipping"
+            )
+            return None
+
+        # k-factor and filter efficiency default to 1.0 when absent (no correction).
+        k_factor = self._to_float(raw.get("kFactor"))
+        gen_filt_eff = self._to_float(raw.get("genFiltEff"))
+        n_events = self._to_int(raw.get("nEvents"))
+        dataset_number = self._to_int(raw.get("dataset_number")) or int(dataset_id)
+
+        return MCDatasetMetadata(
+            dataset_number=dataset_number,
+            cross_section_pb=cross_section_pb,
+            sum_of_weights=sum_of_weights,
+            k_factor=k_factor if k_factor is not None else 1.0,
+            gen_filt_eff=gen_filt_eff if gen_filt_eff is not None else 1.0,
+            n_events=n_events,
+            physics_short=raw.get("physics_short"),
+            generator=raw.get("generator"),
+        )
+
+    def fetch_mc_metadata_for_datasets(
+        self,
+        dataset_ids,
+        require_metadata: bool = False,
+    ) -> dict:
+        """
+        Fetch MC metadata for many datasets (DSIDs).
+
+        Args:
+            dataset_ids: Iterable of dataset numbers (DSIDs).
+            require_metadata: When True, raise if any dataset lacks the required
+                metadata to normalize it (cross_section_pb, sumOfWeights).
+                When False, such datasets are skipped and simply omitted.
+
+        Returns:
+            Dict mapping dataset_number (int) -> MCDatasetMetadata for every
+            dataset that resolved successfully.
+
+        Raises:
+            ValueError: If require_metadata is True and one or more datasets
+                could not be resolved.
+        """
+        resolved = {}
+        missing = []
+
+        for dataset_id in dataset_ids:
+            md = self.fetch_mc_metadata(dataset_id)
+            if md is None:
+                missing.append(dataset_id)
+            else:
+                resolved[md.dataset_number] = md
+
+        if missing and require_metadata:
+            raise ValueError(
+                f"require_metadata is enabled but {len(missing)} dataset(s) lack "
+                f"required normalization metadata: {missing}"
+            )
+        if missing:
+            logging.warning(
+                f"Skipping {len(missing)} dataset(s) without required metadata: {missing}"
+            )
+
+        return resolved
+
+    @staticmethod
+    def _to_float(value) -> Optional[float]:
+        """Coerce a metadata value to float, returning None if not possible."""
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _to_int(value) -> Optional[int]:
+        """Coerce a metadata value to int, returning None if not possible."""
+        if value is None or value == "":
+            return None
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
+
     def to_release_metadata(
         self,
         release_files: dict[str, list[str]]
