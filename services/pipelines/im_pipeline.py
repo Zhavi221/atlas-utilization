@@ -311,7 +311,9 @@ def prepare_im_combination_name(
         ("Electrons", "e"),
         ("Muons",     "m"),
         ("Jets",      "j"),
+        ("BJets",     "b"),
         ("Photons",   "g"),
+        ("Taus",      "t"),
     ]
 
     im_parts = []
