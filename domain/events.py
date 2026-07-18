@@ -45,7 +45,8 @@ class EventChunk:
     size_bytes: int
     event_count: int
     file_ids: tuple[int, ...]  # Use tuple for immutability
-    
+    dsid: Optional[int] = None  # MC dataset number when the chunk is single-DSID
+
     def __post_init__(self):
         """Validate the event chunk."""
         if self.chunk_index < 0:
@@ -67,35 +68,38 @@ class EventChunk:
         cls,
         batches: list[EventBatch],
         chunk_index: int,
-        release_year: str
+        release_year: str,
+        dsid: Optional[int] = None
     ) -> 'EventChunk':
         """
         Create an EventChunk from multiple EventBatches.
-        
+
         Args:
             batches: List of event batches to combine
             chunk_index: Index of this chunk in the sequence
             release_year: Release year for this chunk
-            
+            dsid: MC dataset number, when all batches share one DSID
+
         Returns:
             EventChunk with concatenated events
         """
         if not batches:
             raise ValueError("Cannot create EventChunk from empty batch list")
-        
+
         # Concatenate all events
         combined_events = ak.concatenate([batch.events for batch in batches])
-        
+
         # Calculate totals
         total_size = sum(batch.size_bytes for batch in batches)
         total_events = sum(batch.event_count for batch in batches)
         file_ids = tuple(batch.file_id for batch in batches)
-        
+
         return cls(
             events=combined_events,
             chunk_index=chunk_index,
             release_year=release_year,
             size_bytes=total_size,
             event_count=total_events,
-            file_ids=file_ids
+            file_ids=file_ids,
+            dsid=dsid
         )
