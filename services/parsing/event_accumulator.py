@@ -127,10 +127,16 @@ class EventAccumulator:
         
         self._warn_if_mixed_dsids()
 
+        # Only label the chunk with a DSID when splitting by dataset guarantees
+        # the chunk is single-DSID; otherwise a chunk may be mixed and a label
+        # would be misleading.
+        chunk_dsid = self._current_dsid if self._split_by_dataset else None
+
         chunk = EventChunk.from_batches(
             batches=self._current_batches,
             chunk_index=self._chunk_index,
-            release_year=self._current_release_year
+            release_year=self._current_release_year,
+            dsid=chunk_dsid
         )
 
         self._chunk_index += 1

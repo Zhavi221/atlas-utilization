@@ -37,6 +37,7 @@ from typing import Optional
 # DSID (rucio container numbers, file-sequence indices like _000001) must
 # return None and fall back to the default weight instead.
 _DSID_PATTERNS = (
+    re.compile(r"dsid_?(\d{6,8})"),            # dsid410470 / dsid_410470 (our chunk filenames)
     re.compile(r"[Tt]e[Vv]\.(\d{6})\."),      # ...TeV.410470.  (canonical)
     re.compile(r"\.(\d{6})\.[A-Za-z]"),        # .410470.PhPy8... (DSID before physics_short)
 )
