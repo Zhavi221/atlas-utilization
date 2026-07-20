@@ -161,8 +161,7 @@ class ParsingHandler(StateHandler):
                 release_year=release_year,
                 batch_size=40_000,
                 enable_jet_tagging=parsing_config.enable_jet_tagging,
-                jet_btag_field=parsing_config.jet_btag_field,
-                jet_btag_threshold=parsing_config.jet_btag_threshold,
+                jet_btagging_thresholds=parsing_config.jet_btagging_thresholds,
                 on_success=on_success,
                 on_error=on_error
             ):

@@ -74,8 +74,9 @@ parsing_task_config:
       pt_min: 25.0
       eta_max: 2.37
   enable_jet_tagging: true
-  jet_btag_field: btagDeepFlavB
-  jet_btag_threshold: 0.5
+  jet_btagging_thresholds:
+    btagDeepFlavB: 0.5
+    DL1d: 2.51
 mass_calculation_task_config:
   input_dir: /storage/agrp/netalev/data/atlas_pp_root_files
   output_dir: ./output/im_arrays

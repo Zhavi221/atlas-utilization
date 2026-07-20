@@ -30,8 +30,7 @@ class FileParser:
         release_year: str,
         batch_size: int = 40_000,
         enable_jet_tagging: bool = False,
-        jet_btag_field: str = "btagDeepFlavB",
-        jet_btag_threshold: float = 0.5,
+        jet_btagging_thresholds: Optional[dict[str, float]] = None,
     ) -> Optional[ak.Array]:
         """
         Parse a single ROOT file and return events.
@@ -54,8 +53,7 @@ class FileParser:
                     batch_size,
                     file_path,
                     enable_jet_tagging,
-                    jet_btag_field,
-                    jet_btag_threshold,
+                    jet_btagging_thresholds,
                 )
         except Exception as e:
             logging.warning(f"Failed to open file {file_path}: {e}")
@@ -69,8 +67,7 @@ class FileParser:
         batch_size: int,
         file_path: str,
         enable_jet_tagging: bool,
-        jet_btag_field: str,
-        jet_btag_threshold: float,
+        jet_btagging_thresholds: Optional[dict[str, float]]
     ) -> Optional[ak.Array]:
         """Parse an already-opened ROOT file."""
         tree_name = FileParser._get_data_tree_name(root_file.keys(), tree_names)
@@ -102,7 +99,7 @@ class FileParser:
             batch_size
         )
         if enable_jet_tagging:
-            obj_events = FileParser._calculate_btagging_and_split(obj_events)
+            obj_events = FileParser._calculate_btagging_and_split(obj_events, jet_btagging_thresholds)
         # Strip out DirectObjects -- they are not physics objects!
         obj_events.pop("DirectObjects")
         return ak.zip(obj_events, depth_limit=1)
@@ -110,17 +107,20 @@ class FileParser:
     @staticmethod
     def _calculate_btagging_and_split(
         obj_events: dict[str, ak.Array],
+        jet_btagging_thresholds: Optional[dict[str, float]]
     ) -> dict[str, ak.Array]:
         """
         For each Jet objects in each event, calculates the b-tagging discriminant.
-        Then, decides if each jet is a bjet or not. If bjet, stores in obj_events["BJet"] and removes from obj_events["Jets"]
-        Otherwise, leaves the Jet be.
+        Then, decides if each jet is a bjet or not, using the per-algorithm threshold in `jet_btagging_thresholds`.
+        If bjet, stores in obj_events["BJet"] and removes from obj_events["Jets"]. Otherwise, leaves the Jet be.
         """
         # TODO Find a cleaner way to determine if dealing with nanoAOD, PHYSLITE, etc.
+        # TODO Maybe add an explicit check if the algorithm-specific threshold exists in the configuration dict before
+        # accessing it. However, I'd rather fail parsing then give false physics data.
         if "Jet_btagDeepFlavB" in obj_events["DirectObjects"].fields:
             # CMS: Discriminant is pre-calculated as the Jet_btagDeepFlavB field. Can change to a different algorithm if needed.
             # See https://cms-opendata-workshop.github.io/workshop2024-lesson-physics-objects/instructor/05-btagging.html
-            is_bjet = obj_events["DirectObjects"]["Jet_btagDeepFlavB"] > 0.5
+            is_bjet = obj_events["DirectObjects"]["Jet_btagDeepFlavB"] > jet_btagging_thresholds["Jet_btagDeepFlavB"]
         elif "BTagging_AntiKt4EMPFlowAuxDyn.DL1dv01_pb" in obj_events["DirectObjects"].fields:
             # ATLAS
             indices = obj_events["DirectObjects"]["AnalysisJetsAuxDyn.btaggingLink/AnalysisJetsAuxDyn.btaggingLink.m_persIndex"]
@@ -130,8 +130,7 @@ class FileParser:
             # DL1d score: log(pb / (fc*pc + (1-fc)*pu)), fc=0.018 is standard ATLAS.
             fc = 0.018
             dl1d = np.log(pb / (fc * pc + (1 - fc) * pu))
-            mask = dl1d > 0
-            is_bjet = dl1d > 2.51
+            is_bjet = dl1d > jet_btagging_thresholds["DL1d"]
         else:
             return obj_events
         obj_events["BJets"] = obj_events["Jets"][is_bjet]
