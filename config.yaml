@@ -88,9 +88,10 @@ parsing_task_config:
   count_retries_failed_files: 3
   fetching_metadata_timeout: 60
   max_files_to_process: null             # null = all files; set e.g. 3 for a quick test
-  enable_jet_tagging: false              # when true, split Jets into BJets/LJets if btag field exists
-  jet_btag_field: "btagDeepFlavB"        # field read from Jets collection
-  jet_btag_threshold: 0.5                # score >= threshold -> BJets
+  enable_jet_tagging: false              # when true, split Jets into BJets/LJets. Must give thresholds for btagging discriminants!
+  jet_btagging_thresholds:
+    btagDeepFlavB: 0.5
+    DL1d: 2.51
 
   # ===ROOT TREES===
   possible_data_tree_names:

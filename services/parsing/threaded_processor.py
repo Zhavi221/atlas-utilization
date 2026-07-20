@@ -49,8 +49,7 @@ class ThreadedFileProcessor:
         release_year: str,
         batch_size: int = 40_000,
         enable_jet_tagging: bool = False,
-        jet_btag_field: str = "btagDeepFlavB",
-        jet_btag_threshold: float = 0.5,
+        jet_btagging_thresholds: Optional[dict[str, float]] = None,
         on_success: Optional[Callable[[str, int, float], None]] = None,
         on_error: Optional[Callable[[str, Exception], None]] = None
     ) -> Iterator[EventBatch]:
@@ -80,8 +79,7 @@ class ThreadedFileProcessor:
                     release_year,
                     batch_size,
                     enable_jet_tagging,
-                    jet_btag_field,
-                    jet_btag_threshold,
+                    jet_btagging_thresholds,
                 ): file_url
                 for file_url in file_urls
             }
@@ -129,8 +127,7 @@ class ThreadedFileProcessor:
         release_year: str,
         batch_size: int,
         enable_jet_tagging: bool,
-        jet_btag_field: str,
-        jet_btag_threshold: float,
+        jet_btagging_thresholds: Optional[dict[str, float]],
     ) -> Optional[tuple]:
         """
         Parse a single file (runs in thread).
@@ -153,8 +150,7 @@ class ThreadedFileProcessor:
             release_year=release_year,
             batch_size=batch_size,
             enable_jet_tagging=enable_jet_tagging,
-            jet_btag_field=jet_btag_field,
-            jet_btag_threshold=jet_btag_threshold,
+            jet_btagging_thresholds=jet_btagging_thresholds,
         )
         
         processing_time = time.time() - start_time
