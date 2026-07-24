@@ -116,7 +116,7 @@ class FileParser:
         threshold: float,
     ) -> dict[str, ak.Array]:
         """
-        Optionally split Jets into BJets/LJets using a configurable b-tag score field.
+        Optionally split Jets into BJets/Jets using a configurable b-tag score field.
         """
         jets = obj_events.get("Jets")
         if jets is None or btag_field not in jets.fields:

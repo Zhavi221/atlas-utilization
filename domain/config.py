@@ -99,7 +99,7 @@ class MassCalculationConfig:
     
     # Combinatorics configuration
     objects_to_calculate: tuple[str, ...] = (
-        "Electrons", "Muons", "Jets", "BJets", "LJets", "Photons", "Taus"
+        "Electrons", "Muons", "Jets", "BJets", "Photons", "Taus"
     )
     min_particles_in_combination: int = 2
     max_particles_in_combination: int = 4
@@ -310,7 +310,7 @@ class PipelineConfig:
             # Handle objects_to_calculate (can be None or list)
             objects_raw = mass_dict.get("objects_to_calculate")
             objects = tuple(objects_raw) if objects_raw else (
-                "Electrons", "Muons", "Jets", "BJets", "LJets", "Photons", "Taus"
+                "Electrons", "Muons", "Jets", "BJets", "Photons", "Taus"
             )
             
             mass_calculation_config = MassCalculationConfig(

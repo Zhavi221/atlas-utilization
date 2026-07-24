@@ -88,7 +88,7 @@ parsing_task_config:
   count_retries_failed_files: 3
   fetching_metadata_timeout: 60
   max_files_to_process: null             # null = all files; set e.g. 3 for a quick test
-  enable_jet_tagging: false              # when true, split Jets into BJets/LJets if btag field exists
+  enable_jet_tagging: false              # when true, split Jets into BJets/Jets if btag field exists
   jet_btag_field: "btagDeepFlavB"        # field read from Jets collection
   jet_btag_threshold: 0.5                # score >= threshold -> BJets
 
@@ -107,7 +107,6 @@ parsing_task_config:
     muons:     { min: 0, max: 4 }
     jets:      { min: 0, max: 4 }
     bjets:     { min: 0, max: 4 }
-    ljets:     { min: 0, max: 4 }
     photons:   { min: 0, max: 4 }
     taus:      { min: 0, max: 4 }
 
@@ -116,7 +115,6 @@ parsing_task_config:
     muons:     { pt_min: 25000.0, eta_max: 2.5 }
     jets:      { pt_min: 30000.0, eta_max: 4.5 }
     bjets:     { pt_min: 30000.0, eta_max: 4.5 }
-    ljets:     { pt_min: 30000.0, eta_max: 4.5 }
     photons:   { pt_min: 25000.0, eta_max: 2.37 }
     taus:      { pt_min: 20000.0, eta_max: 2.5 }
 
@@ -134,7 +132,7 @@ mass_calculation_task_config:
   fs_chunk_threshold_bytes: 2000000000  # 2 GB
 
   # ===COMBINATORICS===
-  objects_to_calculate: [Electrons, Muons, Jets, BJets, LJets, Photons, Taus]
+  objects_to_calculate: [Electrons, Muons, Jets, BJets, Photons, Taus]
   min_particles_in_combination: 2        # min particle types in a combination
   max_particles_in_combination: 4        # max particle types was 4 reduces 12,567 → ~28 combinations
   min_count_particle_in_combination: 1   # min count per type
