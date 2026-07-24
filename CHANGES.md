@@ -445,3 +445,19 @@ For final states with low statistics (e.g. 2μ+1j), the first empty bin
 occurs early in the high-mass tail, causing the postproc histogram to
 be truncated. Use `exclude_outliers: false` in histogram creation to
 include the full distribution above the Z peak cut.
+
+### Running single-call does not create `logs/global_ranges.json`
+
+E.g. doing `python main.py` or `bash submit.sh`. But the setup works if run in stages. For a single job: 
+
+```
+# 1. Run everything except histogram creation
+python main.py --tasks parsing,mass_calculating,post_processing
+# prints run_dir e.g. ./output/atlas_full_fixComb_fixCut_<timestamp>
+
+# 2. Compute the global ranges
+python main.py --scan-only --run-dir <run_dir>
+
+# 3. Finish with histogram creation
+python main.py --tasks histogram_creation --run-dir <run_dir>
+```

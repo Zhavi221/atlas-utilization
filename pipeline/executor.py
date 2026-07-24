@@ -490,7 +490,7 @@ class PipelineExecutor:
             particle_pattern = re.compile(r'(\d+)([emjgtbl])')
             particle_name_map = {
                 'e': 'Electrons', 'm': 'Muons', 'j': 'Jets', 'g': 'Photons',
-                't': 'Taus', 'b': 'BJets', 'l': 'LJets'
+                't': 'Taus', 'b': 'BJets'
             }
 
             for sf in sqlite_files:
@@ -558,7 +558,7 @@ class PipelineExecutor:
         particle_pattern = re.compile(r'(\d+)([emjgtbl])')
         particle_name_map = {
             'e': 'Electrons', 'm': 'Muons', 'j': 'Jets', 'g': 'Photons',
-            't': 'Taus', 'b': 'BJets', 'l': 'LJets'
+            't': 'Taus', 'b': 'BJets'
         }
 
         for nf in npy_files:

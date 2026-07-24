@@ -87,6 +87,12 @@ source ${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
 lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 ```
 
+Make sure python (check with `which python`) points you to `cvmfs`. You then still need to install some dependencies: 
+
+```
+pip install --user -r docker/requirements.txt
+```
+
 ## Usage
 
 Everything is controlled through one file: **`config.yaml`**.
@@ -189,3 +195,24 @@ python main.py --help
   --merge-only               Merge batch outputs (hadd + aggregate stats + plots)
   --plots-only               Re-generate plots from an existing run
 ```
+
+## Naming convension
+
+| letter | particle |
+|--------|----------|
+| e | Electrons |
+| m | Muons |
+| j | Jets |
+| b | b-jets |
+| g | Photons |
+| t | Taus |
+
+The output histograms read as: 
+
+`ROI_mass_j0j1t0_cat_0ex_0mx_4jx_0gx_1tx_0bx_width_10.0`
+
+- `ROI`: region of interest
+- `mass_j0j1t0`: invariant mass of the two leading jets and the leading $\tau$
+- `cat`: category - which objects are present in this event
+- `0ex`: zero electrons etc.
+- `width_10.0`: bin width (GeV)
