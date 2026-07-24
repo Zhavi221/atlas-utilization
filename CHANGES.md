@@ -446,11 +446,18 @@ occurs early in the high-mass tail, causing the postproc histogram to
 be truncated. Use `exclude_outliers: false` in histogram creation to
 include the full distribution above the Z peak cut.
 
-### Running single-files does not create `logs/global_ranges.json`
+### Running single-call does not create `logs/global_ranges.json`
 
-Not a problem if you ran multi-jobs (`submit.sh` with `NUM_JOBS>1`). 
-Current workaround: After the job crashed due to this error, you can still finish it with 
+E.g. doing `python main.py` or `bash submit.sh`. But the setup works if run in stages. For a single job: 
+
 ```
-python main.py --scan-only --run-dir <run_dir> # creates the json file
-python main.py --tasks histogram_creation --run-dir <run_dir> # resume where left off
+# 1. Run everything except histogram creation
+python main.py --tasks parsing,mass_calculating,post_processing
+# prints run_dir e.g. ./output/atlas_full_fixComb_fixCut_<timestamp>
+
+# 2. Compute the global ranges
+python main.py --scan-only --run-dir <run_dir>
+
+# 3. Finish with histogram creation
+python main.py --tasks histogram_creation --run-dir <run_dir>
 ```
