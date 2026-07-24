@@ -87,6 +87,12 @@ source ${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh
 lsetup "views LCG_106a_ATLAS_1 x86_64-el9-gcc14-opt"
 ```
 
+Make sure python (check with `which python`) points you to `cvmfs`. You then still need to install some dependencies: 
+
+```
+pip install --user -r docker/requirements.txt
+```
+
 ## Usage
 
 Everything is controlled through one file: **`config.yaml`**.
