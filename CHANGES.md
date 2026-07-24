@@ -445,3 +445,12 @@ For final states with low statistics (e.g. 2μ+1j), the first empty bin
 occurs early in the high-mass tail, causing the postproc histogram to
 be truncated. Use `exclude_outliers: false` in histogram creation to
 include the full distribution above the Z peak cut.
+
+### Running single-files does not create `logs/global_ranges.json`
+
+Not a problem if you ran multi-jobs (`submit.sh` with `NUM_JOBS>1`). 
+Current workaround: After the job crashed due to this error, you can still finish it with 
+```
+python main.py --scan-only --run-dir <run_dir> # creates the json file
+python main.py --tasks histogram_creation --run-dir <run_dir> # resume where left off
+```

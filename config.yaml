@@ -40,7 +40,7 @@ names:
 # ===RUN METADATA=============================================================
 run_metadata:
   run_name: *run_name
-  base_output_dir: "/data"
+  base_output_dir: "./output"
   batch_job_index: null                  # set by submit.sh (--batch-job-index)
   total_batch_jobs: null                 # set by submit.sh (--total-batch-jobs)
 
@@ -124,7 +124,7 @@ parsing_task_config:
 # Computes invariant masses for every valid particle combination per final state.
 mass_calculation_task_config:
   # ===PATHS===
-  input_dir:  "/data/atlas_pp_root_files"
+  input_dir:  *parsed_data_path
   output_dir: *im_arrays_path
 
   # ===PROCESSING===
