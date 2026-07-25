@@ -360,7 +360,8 @@ def _create_merged_histograms_from_sqlite_signatures(
         if hist_name_base not in global_ranges:
             logger.warning(
                 f"{hist_name_base} not found in global_ranges — skipping. "
-                "Re-run scan-only job to regenerate global_ranges.json."
+                "Delete histograms/global_ranges.json and re-run histogram "
+                "creation to regenerate it."
             )
             return []
         global_min, global_max = global_ranges[hist_name_base]

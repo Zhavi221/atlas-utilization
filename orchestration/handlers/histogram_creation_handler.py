@@ -4,6 +4,8 @@ HistogramCreationHandler - Handles histogram creation state.
 Delegates to the histograms_pipeline module.
 """
 
+import fcntl
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +31,11 @@ class HistogramCreationHandler(StateHandler):
             return context, self._determine_next_state(context)
 
         start = datetime.now()
+
+        # Global bin edges must exist before any histogram is filled, so the
+        # scan runs first — otherwise concurrent batch jobs would each pick
+        # their own local min/max and `hadd` would fail to merge them.
+        self._ensure_global_ranges(hc)
 
         config_dict = {
             "input_dir": hc.input_dir,
@@ -63,3 +70,54 @@ class HistogramCreationHandler(StateHandler):
         next_state = self._determine_next_state(context)
         self._log_state_exit(context, next_state)
         return context, next_state
+
+    def _ensure_global_ranges(self, hc) -> None:
+        """
+        Compute global min/max per bumpnet signature across ALL processed
+        SQLite shards and save to ``hc.global_ranges_path``, unless it has
+        already been computed (e.g. by a concurrent histogram batch job).
+        """
+        global_ranges_path = getattr(hc, 'global_ranges_path', None)
+        if not global_ranges_path:
+            return
+        if os.path.exists(global_ranges_path):
+            self.logger.info(f"Using existing global ranges: {global_ranges_path}")
+            return
+
+        proc_dir = hc.input_dir
+        if not os.path.isdir(proc_dir):
+            self.logger.error(f"Cannot compute global ranges — input dir not found: {proc_dir}")
+            raise RuntimeError(f"Cannot compute global ranges — input dir not found: {proc_dir}")
+
+        sqlite_files = sorted(f for f in os.listdir(proc_dir) if f.endswith(".sqlite"))
+        if not sqlite_files:
+            self.logger.error(f"No processed SQLite files found in {proc_dir}")
+            raise RuntimeError(f"No processed SQLite files found in {proc_dir}")
+
+        ranges_dir = os.path.dirname(global_ranges_path)
+        os.makedirs(ranges_dir, exist_ok=True)
+        lock_path = global_ranges_path + ".lock"
+
+        from services.pipelines.histograms_pipeline import compute_global_ranges, save_global_ranges
+
+        with open(lock_path, "w") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                if os.path.exists(global_ranges_path):
+                    self.logger.info(
+                        f"Global ranges already computed by a concurrent job: {global_ranges_path}"
+                    )
+                    return
+
+                self.logger.info(
+                    f"Scanning {len(sqlite_files)} SQLite files for global ranges..."
+                )
+                ranges = compute_global_ranges(
+                    sqlite_files, proc_dir, exclude_outliers=hc.exclude_outliers
+                )
+                save_global_ranges(ranges, global_ranges_path)
+                self.logger.info(
+                    f"Saved global ranges for {len(ranges)} signatures to {global_ranges_path}"
+                )
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)

@@ -7,10 +7,13 @@ Supports consolidated plot generation from output data.
 Architecture (multi-job mode):
   Each batch job runs parsing + mass_calc + post_processing and saves:
     - batch_N_stats.json   → logs/
-  The scan job (--scan-only) runs after all batch jobs and saves:
-    - global_ranges.json   → logs/
-  The histogram array jobs run after scan and save:
+  The histogram array jobs run after all batch jobs and save:
     - batch_N.root         → histograms/
+  The first histogram job to reach HISTOGRAM_CREATION computes the global
+  bin-edge ranges as its first step and saves them to:
+    - global_ranges.json   → histograms/
+  (see HistogramCreationHandler._ensure_global_ranges) so that later
+  histogram jobs reuse the same edges and `hadd` merges correctly.
   The merge job (--merge-only) combines everything via:
     - hadd histograms/batch_*.root → histograms/<output_filename>
     - JSON stats aggregation
@@ -133,38 +136,6 @@ class PipelineExecutor:
         self.logger.info(f"Saved batch stats to: {stats_path}")
 
 
-    def scan_global_ranges(self, run_dir: str):
-        """
-        Pre-scan all processed SQLite files to compute global min/max per
-        bumpnet signature. Saves result to logs/global_ranges.json.
-        Must run before histogram creation batches.
-        """
-        from services.pipelines.histograms_pipeline import compute_global_ranges, save_global_ranges
-
-        proc_dir = os.path.join(run_dir, "im_arrays_processed")
-        logs_dir = os.path.join(run_dir, "logs")
-        os.makedirs(logs_dir, exist_ok=True)
-
-        sqlite_files = sorted([
-            f for f in os.listdir(proc_dir) if f.endswith(".sqlite")
-        ])
-        if not sqlite_files:
-            self.logger.error(f"No processed SQLite files found in {proc_dir}")
-            raise RuntimeError(f"No processed SQLite files found in {proc_dir}")
-
-        self.logger.info(f"Scanning {len(sqlite_files)} SQLite files for global ranges...")
-
-        hc = self.config.histogram_creation_config
-        exclude_outliers = hc.exclude_outliers if hc else True
-
-        ranges = compute_global_ranges(sqlite_files, proc_dir, exclude_outliers=exclude_outliers)
-
-        output_path = os.path.join(logs_dir, "global_ranges.json")
-        save_global_ranges(ranges, output_path)
-        self.logger.info(
-            f"Saved global ranges for {len(ranges)} signatures to {output_path}"
-        )
-
     def merge_outputs(self, run_dir: str):
         """
         Merge outputs from all batch jobs:
@@ -237,9 +208,7 @@ class PipelineExecutor:
                     "output_filename": hc.pre_postproc_filename,
                     "exclude_outliers": False,
                     "use_bumpnet_naming": hc.use_bumpnet_naming,
-                    "global_ranges_path": os.path.join(
-                        run_dir, "logs", "global_ranges.json"
-                    ),
+                    "global_ranges_path": os.path.join(hist_dir, "global_ranges.json"),
                 }
                 create_histograms(nopp_config, file_list=im_sqlite_files)
                 self.logger.info(
