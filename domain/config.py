@@ -56,8 +56,7 @@ class ParsingConfig:
     possible_data_tree_names: tuple[str, ...] = ("CollectionTree",)
     max_files_to_process: Optional[int] = None  # Limit files (for testing)
     enable_jet_tagging: bool = False
-    jet_btag_field: str = "btagDeepFlavB"
-    jet_btag_threshold: float = 0.5
+    jet_btagging_thresholds: Optional[dict] = None
 
     # Optional selection (from YAML): applied after reading each file, before chunking
     particle_counts: Optional[dict] = None
@@ -81,6 +80,9 @@ class ParsingConfig:
             raise ValueError("jobs_logs_path cannot be empty")
         if not isinstance(self.enable_jet_tagging, bool):
             raise ValueError("enable_jet_tagging must be a boolean")
+        if self.enable_jet_tagging and not self.jet_btagging_thresholds:
+            # TODO add algorithm-specific validation
+            raise ValueError("jet_btagging_thresholds must be specified when enable_jet_tagging is set")
 
 
 @dataclass(frozen=True)
@@ -296,8 +298,7 @@ class PipelineConfig:
                 possible_data_tree_names=tuple(parsing_dict.get("possible_data_tree_names", ["CollectionTree"])),
                 max_files_to_process=parsing_dict.get("max_files_to_process"),
                 enable_jet_tagging=parsing_dict.get("enable_jet_tagging", False),
-                jet_btag_field=parsing_dict.get("jet_btag_field", "btagDeepFlavB"),
-                jet_btag_threshold=parsing_dict.get("jet_btag_threshold", 0.5),
+                jet_btagging_thresholds=parsing_dict.get("jet_btagging_thresholds", None),
                 particle_counts=parsing_dict.get("particle_counts"),
                 kinematic_cuts=parsing_dict.get("kinematic_cuts"),
             )

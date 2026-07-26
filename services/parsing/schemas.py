@@ -25,6 +25,19 @@ BASE_OBJECTS = {
     "Taus": ["pt", "eta", "phi", "mass"]
 }
 
+# Objects required for b-tagging in PHYSLITE files; they store the btagging
+# data in a separate container, linked to by the AnalysisJets objects.
+PHYSLITE_BTAGGING_OBJECTS = [
+    "AnalysisJetsAuxDyn.btaggingLink/AnalysisJetsAuxDyn.btaggingLink.m_persIndex",
+    "BTagging_AntiKt4EMPFlowAuxDyn.DL1dv01_pb",
+    "BTagging_AntiKt4EMPFlowAuxDyn.DL1dv01_pc",
+    "BTagging_AntiKt4EMPFlowAuxDyn.DL1dv01_pu"
+]
+
+NANOAOD_BTAGGING_OBJECTS = [
+    "Jet_btagDeepFlavB"
+]
+
 # Mapping from specific record IDs to their release year/schema identifier
 # This will be populated when schemas are extracted from record IDs
 RECORD_ID_TO_SCHEMA = {
@@ -41,6 +54,9 @@ RECORD_ID_TO_SCHEMA = {
 # - "branch_suffix": suffix after object name (empty string if none)
 # - "object_mappings": map from canonical object names to branch object names
 # - "objects": dict of canonical object names to required fields
+# - "direct_objects": Objects which are accessed *directly*, with no naming
+#    pattern / suffix / prefix. Intended for internal use only!
+
 RELEASE_SCHEMAS = {
     "2024r-pp": {
         "naming_pattern": "dotted",  # AnalysisElectronsAuxDyn.pt
@@ -53,7 +69,8 @@ RELEASE_SCHEMAS = {
             "Photons": "Photons",
             "Taus": "TauJets"
         },
-        "objects": BASE_OBJECTS.copy()
+        "objects": BASE_OBJECTS.copy(),
+        "direct_objects": PHYSLITE_BTAGGING_OBJECTS.copy()
     },
     "cms-nanoaod": {
         "naming_pattern": "flat",  # Electron_pt, Electron_eta, Muon_pt, etc.
@@ -69,10 +86,11 @@ RELEASE_SCHEMAS = {
         "objects": {
             "Electrons": ["pt", "eta", "phi", "mass"],
             "Muons": ["pt", "eta", "phi", "mass"],
-            "Jets": ["pt", "eta", "phi", "mass", "btagDeepFlavB"],
+            "Jets": ["pt", "eta", "phi", "mass"],
             "Photons": ["pt", "eta", "phi", "mass"],  # NanoAOD includes Photon_mass
             "Taus": ["pt", "eta", "phi", "mass", "charge", "decayMode", "idDeepTau2017v2p1VSjet"]
-        }
+        },
+        "direct_objects": NANOAOD_BTAGGING_OBJECTS.copy()
     },
     "2024r-hi": {
         "naming_pattern": "dotted",  # MuonsAuxDyn.pt
