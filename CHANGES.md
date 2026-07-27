@@ -461,3 +461,7 @@ python main.py --scan-only --run-dir <run_dir>
 # 3. Finish with histogram creation
 python main.py --tasks histogram_creation --run-dir <run_dir>
 ```
+
+### $$\Delta R$$-based overlap removal missing
+
+E.g. `ROI_mass_g0t0_cat_0ex_0mx_4jx_1gx_1tx_0bx_width_10.0` strong peak in first bin, as photon and tau are the same. 
