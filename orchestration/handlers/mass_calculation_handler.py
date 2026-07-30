@@ -101,9 +101,13 @@ class MassCalculationHandler(StateHandler):
                     f"processing files {slice_start+1}-{slice_end} of {total_files}"
                 )
 
-        if not root_files:
+        if not root_files: # handle case of no files to process
             self.logger.warning(f"No parsed ROOT files found in {parsed_dir}")
-            return context, self._determine_next_state(context)
+            sqlite_writer.close() # create empty shard file
+            updated = context.with_im_files([shard_name])
+            next_state = self._determine_next_state(updated)
+            self._log_state_exit(context, next_state)
+            return updated, next_state
 
         total_created_chunks = 0
 
