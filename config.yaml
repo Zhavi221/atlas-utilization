@@ -152,6 +152,7 @@ post_processing_task_config:
 
   # ===PROCESSING===
   peak_detection_bin_width_gev: 10.0 
+  z_peak_cutoff: 115.0   # GeV; drop dilepton masses below this to cut the Z peak (0 disables)
 
 # --- 4. Histogram Creation ---------------------------------------------------
 # Builds ROOT histograms from processed invariant-mass arrays.
