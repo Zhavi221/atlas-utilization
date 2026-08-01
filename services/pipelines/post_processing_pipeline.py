@@ -23,6 +23,7 @@ from services.storage.sqlite_shards import (
 
 
 DEFAULT_Z_PEAK_CUTOFF_GEV = 115.0
+DEFAULT_MAX_MASS_CUTOFF_GEV = 10_000.0
 
 # Signature layout: <prefix>_FS_<final_state>_IM_<letter><rank>...
 _IM_PART_PATTERN = re.compile(r'_IM_([a-z0-9]+)(?:_main|_outliers)?$')
@@ -79,6 +80,7 @@ def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> Li
     output_dir = config["output_dir"]
     peak_detection_bin_width_gev = config["peak_detection_bin_width_gev"]
     z_peak_cutoff = config["z_peak_cutoff"]
+    max_mass_cutoff = config["max_mass_cutoff"]
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -140,7 +142,8 @@ def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> Li
     for im_array_filename in im_array_files:
         try:
             output_files = _process_single_array(
-                im_array_filename, input_dir, output_dir, peak_detection_bin_width_gev, logger, z_peak_cutoff
+                im_array_filename, input_dir, output_dir, peak_detection_bin_width_gev, logger,
+                z_peak_cutoff, max_mass_cutoff
             )
             if output_files:
                 processed_files.extend(output_files)
@@ -156,6 +159,7 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
     output_dir = config["output_dir"]
     bin_width = config["peak_detection_bin_width_gev"]
     z_peak_cutoff = config["z_peak_cutoff"]
+    max_mass_cutoff = config["max_mass_cutoff"]
 
     batch_idx = config.get("batch_job_index")
     if batch_idx is None:
@@ -221,6 +225,7 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
 
             # Remove the Z resonance before peak detection
             arr, _removed = _apply_z_peak_cut(arr, fs_im_key, z_peak_cutoff, logger)
+            arr = arr[arr <= max_mass_cutoff] if max_mass_cutoff > 0 else arr
             if len(arr) == 0:
                 continue
 
@@ -253,7 +258,8 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
 def _process_single_array(
     filename: str, input_dir: str, output_dir: str,
     peak_detection_bin_width_gev: float, logger: logging.Logger,
-    z_peak_cutoff: float = DEFAULT_Z_PEAK_CUTOFF_GEV
+    z_peak_cutoff: float = DEFAULT_Z_PEAK_CUTOFF_GEV,
+    max_mass_cutoff: float = DEFAULT_MAX_MASS_CUTOFF_GEV
 ) -> List[str]:
     file_path = os.path.join(input_dir, filename)
     im_array = np.load(file_path)
@@ -266,6 +272,7 @@ def _process_single_array(
 
     # Remove the Z resonance before peak detection
     im_array, _removed = _apply_z_peak_cut(im_array, base_name, z_peak_cutoff, logger)
+    im_array = im_array[im_array <= max_mass_cutoff] if max_mass_cutoff > 0 else im_array
     if len(im_array) == 0:
         logger.warning(f"Array {filename} is empty after the Z-peak cut, skipping")
         return []

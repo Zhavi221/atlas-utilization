@@ -35,6 +35,7 @@ class PostProcessingHandler(StateHandler):
             "output_dir": pp.output_dir,
             "peak_detection_bin_width_gev": pp.peak_detection_bin_width_gev,
             "z_peak_cutoff": pp.z_peak_cutoff,
+            "max_mass_cutoff": pp.max_mass_cutoff,
             "batch_job_index": context.config.batch_job_index,
         }
 
