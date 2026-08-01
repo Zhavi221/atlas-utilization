@@ -459,10 +459,13 @@ class PipelineExecutor:
     def _read_im_array_stats(self, im_dir: str):
         """Read invariant mass array (.npy) files and compute stats.
 
-        Filenames follow the pattern:
-            <prefix>_FS_<Xe>_<Xm>_<Xj>_<Xg>_IM_<Ye>_<Ym>_<Yj>_<Yg>.npy
+        Names follow the pattern built by prepare_im_combination_name():
+            <prefix>_FS_<Xe>_<Xm>_<Xj>_<Xg>_<Xt>_<Xb>_IM_<letter><rank>...
+        The FS part is count-first (2e = two electrons); the IM part lists one
+        entry per particle as letter + rank index (e0e1j0 = the two leading
+        electrons plus the leading jet).
         Example:
-            parsed_2024r-pp_batch2_final_FS_2e_2m_4j_2g_IM_2e_2m_4j_2g.npy
+            parsed_2024r-pp_batch2_final_FS_2e_0m_4j_0g_0t_0b_IM_e0e1j0.npy
         """
         import re
         import numpy as np
@@ -487,7 +490,7 @@ class PipelineExecutor:
             fs_im_pattern = re.compile(
                 r'_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)$'
             )
-            particle_pattern = re.compile(r'(\d+)([emjgtbl])')
+            particle_pattern = re.compile(r'([emjgtb])(\d+)')
             particle_name_map = {
                 'e': 'Electrons', 'm': 'Muons', 'j': 'Jets', 'g': 'Photons',
                 't': 'Taus', 'b': 'BJets'
@@ -522,15 +525,20 @@ class PipelineExecutor:
 
                     if channel not in unique_channels:
                         unique_channels.add(channel)
+                        # IM part carries one entry per particle as letter+rank
+                        # ("e0e1j0" = 2 electrons + 1 jet), so distinct letters
+                        # give the number of particle types involved.
                         im_particles = particle_pattern.findall(im_str)
-                        involved_types = 0
-                        for count_str, pchar in im_particles:
-                            count = int(count_str)
-                            if count > 0:
-                                involved_types += 1
-                                pname = particle_name_map.get(pchar, pchar)
+                        if not im_particles:
+                            self.logger.debug(f"Could not parse IM part: {signature}")
+                            continue
+                        involved_types = set()
+                        for pchar, _rank in im_particles:
+                            pname = particle_name_map.get(pchar, pchar)
+                            if pname not in involved_types:
+                                involved_types.add(pname)
                                 combos_per_object[pname] = combos_per_object.get(pname, 0) + 1
-                        combo_sizes[involved_types] = combo_sizes.get(involved_types, 0) + 1
+                        combo_sizes[len(involved_types)] = combo_sizes.get(len(involved_types), 0) + 1
 
             return {
                 'total_final_states': len(unique_fs),
@@ -555,7 +563,7 @@ class PipelineExecutor:
         fs_im_pattern = re.compile(
             r'_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)'
         )
-        particle_pattern = re.compile(r'(\d+)([emjgtbl])')
+        particle_pattern = re.compile(r'([emjgtb])(\d+)')
         particle_name_map = {
             'e': 'Electrons', 'm': 'Muons', 'j': 'Jets', 'g': 'Photons',
             't': 'Taus', 'b': 'BJets'
@@ -582,17 +590,22 @@ class PipelineExecutor:
                 if channel not in unique_channels:
                     unique_channels.add(channel)
                     # --- Per-object participation in unique channels ---
+                    # IM part carries one entry per particle as letter+rank
+                    # ("e0e1j0" = 2 electrons + 1 jet), so distinct letters
+                    # give the number of particle types involved.
                     im_particles = particle_pattern.findall(im_str)
-                    involved_types = 0
-                    for count_str, pchar in im_particles:
-                        count = int(count_str)
-                        if count > 0:
-                            involved_types += 1
-                            pname = particle_name_map.get(pchar, pchar)
+                    if not im_particles:
+                        self.logger.debug(f"Could not parse IM part: {nf.name}")
+                        continue
+                    involved_types = set()
+                    for pchar, _rank in im_particles:
+                        pname = particle_name_map.get(pchar, pchar)
+                        if pname not in involved_types:
+                            involved_types.add(pname)
                             combos_per_object[pname] = combos_per_object.get(pname, 0) + 1
 
                     # --- Channel size (number of particle types involved) ---
-                    combo_sizes[involved_types] = combo_sizes.get(involved_types, 0) + 1
+                    combo_sizes[len(involved_types)] = combo_sizes.get(len(involved_types), 0) + 1
 
             except Exception as e:
                 self.logger.warning(f"Could not read {nf}: {e}")
