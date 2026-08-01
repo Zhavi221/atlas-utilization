@@ -19,9 +19,23 @@ from services.storage.sqlite_shards import list_signatures, iter_arrays_for_sign
 
 
 def save_global_ranges(ranges: Dict, output_path: str):
+    """
+    Write the ranges atomically: concurrent histogram batch jobs test for the
+    existence of this file to decide whether to skip the scan, so it must never
+    be observable in a partially-written state.
+    """
     import json
-    with open(output_path, "w") as f:
-        json.dump(ranges, f, indent=2)
+    tmp_path = f"{output_path}.tmp.{os.getpid()}"
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(ranges, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, output_path)
+    except BaseException:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
     logging.getLogger(__name__).info(f"Saved global ranges to {output_path}")
 
 def load_global_ranges(path: str) -> Dict[str, Tuple[float, float]]:

@@ -80,6 +80,9 @@ class HistogramCreationHandler(StateHandler):
         global_ranges_path = getattr(hc, 'global_ranges_path', None)
         if not global_ranges_path:
             return
+        # Safe to skip the lock here only because save_global_ranges() publishes
+        # the file with an atomic rename — the path either does not exist or is
+        # complete, never half-written.
         if os.path.exists(global_ranges_path):
             self.logger.info(f"Using existing global ranges: {global_ranges_path}")
             return
