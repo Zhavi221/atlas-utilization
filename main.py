@@ -112,10 +112,6 @@ def parse_args():
     # --- Post-run options ---
     post_group = parser.add_argument_group("Post-Run Options")
     post_group.add_argument(
-        "--scan-only", action="store_true",
-        help="Pre-scan processed arrays to compute global histogram ranges"
-    )
-    post_group.add_argument(
         "--merge-only", action="store_true",
         help="Merge batch outputs: hadd histograms + aggregate stats + generate plots"
     )
@@ -127,8 +123,6 @@ def parse_args():
     args = parser.parse_args()
 
     # Validation
-    if args.scan_only and args.run_dir is None:
-        parser.error("--run-dir is required when --scan-only is set")
     if args.batch_job_index is not None and args.total_batch_jobs is None:
         parser.error("--total-batch-jobs is required when --batch-job-index is set")
     if args.total_batch_jobs is not None and args.batch_job_index is None:
@@ -137,10 +131,6 @@ def parse_args():
         parser.error("--run-dir is required when --plots-only or --merge-only is set")
     if args.plots_only and args.merge_only:
         parser.error("--plots-only and --merge-only are mutually exclusive")
-    if args.scan_only and args.merge_only:
-        parser.error("--scan-only and --merge-only are mutually exclusive")
-    if args.scan_only and args.plots_only:
-        parser.error("--scan-only and --plots-only are mutually exclusive")
 
     return args
 
@@ -184,19 +174,6 @@ def main():
             logger.info("✓ Merge completed successfully")
             return 0
 
-        # ------------------------------------------------------------------
-        # SCAN-ONLY MODE: compute global histogram ranges
-        # ------------------------------------------------------------------
-        if args.scan_only:
-            logger.info(f"Scan-only mode: computing global ranges from {args.run_dir}")
-            config_dict = load_config(args.config)
-            config_dict = update_config_paths_with_run_dir(config_dict, args.run_dir)
-            config = PipelineConfig.from_dict(config_dict)
-            executor = PipelineExecutor(config)
-            executor.scan_global_ranges(args.run_dir)
-            logger.info("✓ Global ranges computed successfully")
-            return 0
-        
         # ------------------------------------------------------------------
         # NORMAL / BATCH PIPELINE MODE
         # ------------------------------------------------------------------
