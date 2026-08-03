@@ -112,6 +112,14 @@ class ParsingHandler(StateHandler):
         
         # ---- Apply batch splitting if configured ----
         metadata = dict(context.metadata)  # mutable copy
+        # Filter to only requested release years (supports _mc suffix convention)
+        if parsing_config.release_years:
+            metadata = {k: v for k, v in metadata.items()
+                        if k in parsing_config.release_years}
+            self.logger.info(
+                f"Filtered metadata to release_years={parsing_config.release_years}: "
+                f"{list(metadata.keys())}"
+            )
         batch_idx = context.config.batch_job_index
         total_batches = context.config.total_batch_jobs
         

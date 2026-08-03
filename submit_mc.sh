@@ -10,13 +10,13 @@
 set -e
 
 NUM_JOBS=3
-CONFIG="configWmaxTotal_up4j_minEvt10_subleading.yaml"
+CONFIG="configWmaxTotal_up4j_minEvt10_subleading_btag_4.yaml"
 CPUS_PER_JOB=4
-MEM_PER_JOB="180gb"
-WALLTIME="12:00:00"
+MEM_PER_JOB="20gb"
+WALLTIME="24:00:00"
 POSTPROC_WALLTIME="24:00:00"
 SCAN_WALLTIME="04:00:00"
-HIST_WALLTIME="24:00:00"
+HIST_WALLTIME="12:00:00"
 MERGE_WALLTIME="04:00:00"
 QUEUE="N"
 

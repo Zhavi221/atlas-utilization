@@ -55,7 +55,7 @@ class FetchMetadataHandler(StateHandler):
             #     )
             # AFTER: separation always happens inside fetcher.fetch()
             metadata = self.fetcher.fetch(
-                release_years=list(parsing_config.release_years) if parsing_config.release_years else None,
+                release_years=[y.replace("_mc", "") for y in parsing_config.release_years] if parsing_config.release_years else None,
                 record_ids=list(parsing_config.specific_record_ids) if parsing_config.specific_record_ids else None,
             )
             # ── END CHANGE 7 ─────────────────────────────────────────────────
