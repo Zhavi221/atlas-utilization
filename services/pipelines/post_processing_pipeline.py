@@ -244,7 +244,7 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
             processed += 1                          # ← new
             if processed % COMMIT_EVERY == 0:       # ← new
                 writer.commit()                     # ← new: periodic commit
-                logger.info(f"Post-processing progress: {processed}/{len(fs_im_groups)} signatures committed")  # ← new
+                logger.info(f"Post-processing progress: {processed}/{len(keys_to_process)} signatures committed")  # ← new
 
         writer.commit()  # ← final commit for remainder    
     finally:

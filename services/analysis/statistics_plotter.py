@@ -474,7 +474,10 @@ class StatisticsPlotter:
         if combo_sizes:
             sizes = sorted(combo_sizes.keys())
             counts = [combo_sizes[s] for s in sizes]
-            bars = ax4.bar([f'{s}-body' for s in sizes], counts,
+            # Size is the number of particle *types* in the channel, not the
+            # particle count — e0e1j0 is 2 types (3 particles).
+            bars = ax4.bar([f'{s} type' if s == 1 else f'{s} types' for s in sizes],
+                          counts,
                           color=self.COLORS['accent'], edgecolor='white', linewidth=1.5)
             for bar, v in zip(bars, counts):
                 ax4.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),

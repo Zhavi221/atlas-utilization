@@ -18,7 +18,6 @@ YAML_PARTICLE_KEYS: Dict[str, str] = {
     "muons": "Muons",
     "jets": "Jets",
     "bjets": "BJets",
-    "ljets": "LJets",
     "photons": "Photons",
     "taus": "Taus",
 }
