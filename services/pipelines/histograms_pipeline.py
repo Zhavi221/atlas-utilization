@@ -30,6 +30,23 @@ def load_global_ranges(path: str) -> Dict[str, Tuple[float, float]]:
         data = json.load(f)
     return {k: tuple(v) for k, v in data.items()}
 
+def _round_bins_to_width(global_min: float, global_max: float, bin_width: float):
+    """
+    Bin edges on an absolute grid s.t. every edge is a multiple of `bin_width`.
+
+    Returns (nbins, lo, hi). The realized width is exactly ``bin_width``, and ``hi``
+    is strictly above ``global_max`` so the maximum value lands in the last bin
+    rather than in the overflow bin.
+
+    The lower edge is clamped at 0.
+    """
+    lo = max(0.0, math.floor(global_min / bin_width) * bin_width)
+    nbins = max(1, int(math.floor((global_max - lo) / bin_width)) + 1)
+    if lo + nbins * bin_width <= global_max:   # float-rounding guard
+        nbins += 1
+    return nbins, lo, lo + nbins * bin_width
+
+
 def compute_global_ranges(
     sqlite_files: List[str],
     input_dir: str,
@@ -331,9 +348,9 @@ def _create_histograms_for_signature(
 
     histograms = []
     for bin_width in bin_widths_gev:
-        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
+        nbins, lo, hi = _round_bins_to_width(float(global_min), float(global_max), bin_width)
         hist_name = f"ROI_{signature}_width_{bin_width}"
-        hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+        hist = ROOT.TH1F(hist_name, hist_name, nbins, lo, hi)
         histograms.append(hist)
 
     for chunk in _iter_signature_chunks(signature, db_paths):
@@ -388,10 +405,10 @@ def _create_merged_histograms_from_sqlite_signatures(
 
     histograms = []
     for bin_width in bin_widths_gev:
-        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
+        nbins, lo, hi = _round_bins_to_width(float(global_min), float(global_max), bin_width)
         hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
         histograms.append(
-            ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+            ROOT.TH1F(hist_name, hist_name, nbins, lo, hi)
         )
 
     for signature in signatures:
@@ -535,7 +552,7 @@ def _create_merged_histograms_streaming(
 
     histograms = []
     for bin_width in bin_widths_gev:
-        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
+        nbins, lo, hi = _round_bins_to_width(float(global_min), float(global_max), bin_width)
         hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
         if 'cat' not in hist_name_base and 'hCat' not in hist_name_base:
             logger.error(
@@ -545,7 +562,7 @@ def _create_merged_histograms_streaming(
             raise ValueError(
                 f"Invalid histogram name base '{hist_name_base}': must contain 'cat' for BumpNet compatibility"
             )
-        hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+        hist = ROOT.TH1F(hist_name, hist_name, nbins, lo, hi)
         histograms.append(hist)
 
     for f in files:
@@ -644,11 +661,12 @@ def _apply_peak_removal_to_histogram(hist: ROOT.TH1F) -> None:
 
 
 def _create_histogram_single_array(im_array_filename, im_array, bin_width) -> ROOT.TH1F:
-    nbins = math.ceil((np.max(im_array) - np.min(im_array)) / bin_width)
-    bin_edges = np.linspace(np.min(im_array), np.max(im_array), nbins + 1)
+    nbins, lo, hi = _round_bins_to_width(
+        float(np.min(im_array)), float(np.max(im_array)), bin_width
+    )
 
     hist_name = f"ROI_{im_array_filename}_width_{bin_width}"
-    hist = ROOT.TH1F(hist_name, hist_name, len(bin_edges) - 1, bin_edges)
+    hist = ROOT.TH1F(hist_name, hist_name, nbins, lo, hi)
 
     for mass in im_array:
         hist.Fill(mass)
