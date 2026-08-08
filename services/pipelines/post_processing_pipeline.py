@@ -32,26 +32,23 @@ _DILEPTON_LETTERS = frozenset({'e', 'm'})
 
 def _dilepton_flavor(signature: str) -> bool:
     """
-    Return True when the IM part of ``signature`` is exactly two same-flavour
-    leptons (an ee or a mumu pair), else False.
+    Return True when the IM part of ``signature`` contains a same-flavor
+    lepton pair (an ee or a mumu pair), else False.
     """
     match = _IM_PART_PATTERN.search(signature)
     if not match:
         return False
 
     particles = _IM_PARTICLE_PATTERN.findall(match.group(1))
-    if len(particles) != 2:
-        return False
-
-    letters = {letter for letter, _rank in particles}
-    return len(letters) == 1 and letters.pop() in _DILEPTON_LETTERS
+    letters = [letter for letter, _rank in particles]
+    return any(letters.count(flavor) >= 2 for flavor in _DILEPTON_LETTERS)
 
 
 def _apply_z_peak_cut(
     arr: np.ndarray, signature: str, z_peak_cutoff: float, logger: logging.Logger
 ) -> np.ndarray:
     """
-    Drop masses below ``z_peak_cutoff`` GeV for same-flavour dilepton channels.
+    Drop masses below ``z_peak_cutoff`` GeV for channels containing same-flavour dileptons.
 
     The array is returned untouched for every other
     channel and when the cut is disabled (cutoff <= 0).
