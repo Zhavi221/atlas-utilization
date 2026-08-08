@@ -2,10 +2,11 @@
 Post-processing pipeline for invariant mass arrays.
 
 Processes IM arrays to:
-1. Bin data using specified bin widths
-2. Find the rightmost highest bin (peak)
-3. Remove data before the peak
-4. Split arrays by the first empty bin into main + outliers
+1. Remove the Z-peak for appropriate channels + apply 10TeV hard cutoff
+2. Bin data using specified bin widths
+3. Find the rightmost highest bin (peak)
+4. Remove data before the peak
+5. Split arrays by the first empty bin into main + outliers
 """
 import logging
 import sys
@@ -22,8 +23,6 @@ from services.storage.sqlite_shards import (
 )
 
 
-DEFAULT_Z_PEAK_CUTOFF_GEV = 115.0
-DEFAULT_MAX_MASS_CUTOFF_GEV = 10_000.0
 
 # Signature layout: <prefix>_FS_<final_state>_IM_<letter><rank>...
 _IM_PART_PATTERN = re.compile(r'_IM_([a-z0-9]+)(?:_main|_outliers)?$')
@@ -50,18 +49,18 @@ def _dilepton_flavor(signature: str) -> bool:
 
 def _apply_z_peak_cut(
     arr: np.ndarray, signature: str, z_peak_cutoff: float, logger: logging.Logger
-) -> Tuple[np.ndarray, int]:
+) -> np.ndarray:
     """
     Drop masses below ``z_peak_cutoff`` GeV for same-flavour dilepton channels.
 
-    Returns (array, n_removed); the array is returned untouched for every other
+    The array is returned untouched for every other
     channel and when the cut is disabled (cutoff <= 0).
     """
     if z_peak_cutoff <= 0:
-        return arr, 0
+        return arr
 
     if not _dilepton_flavor(signature):
-        return arr, 0
+        return arr
 
     kept = arr[arr >= z_peak_cutoff]
     removed = len(arr) - len(kept)
@@ -70,7 +69,7 @@ def _apply_z_peak_cut(
             f"{signature}: Z-peak cut removed {removed} dilepton values "
             f"below {z_peak_cutoff:.1f} GeV"
         )
-    return kept, removed
+    return kept
 
 
 def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> List[str]:
@@ -224,7 +223,7 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
                 continue
 
             # Remove the Z resonance before peak detection
-            arr, _removed = _apply_z_peak_cut(arr, fs_im_key, z_peak_cutoff, logger)
+            arr = _apply_z_peak_cut(arr, fs_im_key, z_peak_cutoff, logger)
             arr = arr[arr <= max_mass_cutoff] if max_mass_cutoff > 0 else arr
             if len(arr) == 0:
                 continue
@@ -245,7 +244,7 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
             processed += 1                          # ← new
             if processed % COMMIT_EVERY == 0:       # ← new
                 writer.commit()                     # ← new: periodic commit
-                logger.info(f"Post-processing progress: {processed}/{len(fs_im_key)} signatures committed")  # ← new
+                logger.info(f"Post-processing progress: {processed}/{len(fs_im_groups)} signatures committed")  # ← new
 
         writer.commit()  # ← final commit for remainder    
     finally:
@@ -258,8 +257,8 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
 def _process_single_array(
     filename: str, input_dir: str, output_dir: str,
     peak_detection_bin_width_gev: float, logger: logging.Logger,
-    z_peak_cutoff: float = DEFAULT_Z_PEAK_CUTOFF_GEV,
-    max_mass_cutoff: float = DEFAULT_MAX_MASS_CUTOFF_GEV
+    z_peak_cutoff: float,
+    max_mass_cutoff: float
 ) -> List[str]:
     file_path = os.path.join(input_dir, filename)
     im_array = np.load(file_path)
@@ -271,7 +270,7 @@ def _process_single_array(
     base_name = filename.replace(".npy", "")
 
     # Remove the Z resonance before peak detection
-    im_array, _removed = _apply_z_peak_cut(im_array, base_name, z_peak_cutoff, logger)
+    im_array = _apply_z_peak_cut(im_array, base_name, z_peak_cutoff, logger)
     im_array = im_array[im_array <= max_mass_cutoff] if max_mass_cutoff > 0 else im_array
     if len(im_array) == 0:
         logger.warning(f"Array {filename} is empty after the Z-peak cut, skipping")
