@@ -192,11 +192,27 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
 
     logger.info(f"Grouped {len(signatures)} signatures into {len(fs_im_groups)} unique FS_IM keys")
 
+    # Slice FS_IM keys by batch index for parallel post-processing
+    all_keys = sorted(fs_im_groups.keys())
+    batch_idx = config.get("batch_job_index")
+    total_batches = config.get("total_batch_jobs")
+    if batch_idx is not None and total_batches is not None and total_batches > 1:
+        chunk = max(1, len(all_keys) // total_batches)
+        start = (batch_idx - 1) * chunk
+        end = start + chunk if batch_idx < total_batches else len(all_keys)
+        keys_to_process = all_keys[start:end]
+        logger.info(
+            f"Batch {batch_idx}/{total_batches}: processing keys {start}-{end} "
+            f"({len(keys_to_process)}/{len(all_keys)} FS_IM keys)"
+        )
+    else:
+        keys_to_process = all_keys
+
     written = 0
     COMMIT_EVERY = 1000
     processed = 0
     try:
-        for fs_im_key in sorted(fs_im_groups.keys()):
+        for fs_im_key in keys_to_process:
             chunk_sigs = fs_im_groups[fs_im_key]
             chunks = []
             for sig in chunk_sigs:
