@@ -18,6 +18,48 @@ import math
 from services.storage.sqlite_shards import list_signatures, iter_arrays_for_signature
 
 
+def load_global_ranges(path: str) -> Dict[str, Tuple[float, float]]:
+    with open(path) as f:
+        data = json.load(f)
+    return {k: tuple(v) for k, v in data.items()}
+
+
+def compute_global_ranges(
+    sqlite_files: List[str],
+    input_dir: str,
+    exclude_outliers: bool = True,
+) -> Dict[str, Tuple[float, float]]:
+    """Scan ALL processed SQLite files and compute global min/max per bumpnet_name."""
+    logger = logging.getLogger(__name__)
+    db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
+    signatures = set()
+    for db_path in db_paths:
+        signatures.update(list_signatures(db_path))
+    signatures = sorted(signatures)
+    if exclude_outliers:
+        signatures = [s for s in signatures if not s.endswith("_outliers")]
+    grouped = _group_signatures_by_bumpnet(signatures)
+    logger.info(f"Computing global ranges for {len(grouped)} bumpnet signatures...")
+    ranges = {}
+    for bumpnet_name, group_sigs in grouped.items():
+        gmin, gmax = float("inf"), float("-inf")
+        for sig in group_sigs:
+            for db_path in db_paths:
+                for chunk in iter_arrays_for_signature(db_path, sig):
+                    if len(chunk) > 0:
+                        gmin = min(gmin, float(np.min(chunk)))
+                        gmax = max(gmax, float(np.max(chunk)))
+        if gmin < float("inf"):
+            ranges[bumpnet_name] = (gmin, gmax)
+    logger.info(f"Computed ranges for {len(ranges)} signatures")
+    return ranges
+
+
+def save_global_ranges(ranges: Dict[str, Tuple[float, float]], path: str) -> None:
+    with open(path, "w") as f:
+        json.dump(ranges, f)
+
+
 def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = None):
     logger = _init_logging()
 
