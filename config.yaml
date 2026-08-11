@@ -40,7 +40,7 @@ names:
 # ===RUN METADATA=============================================================
 run_metadata:
   run_name: *run_name
-  base_output_dir: "/data"
+  base_output_dir: "./output"
   batch_job_index: null                  # set by submit.sh (--batch-job-index)
   total_batch_jobs: null                 # set by submit.sh (--total-batch-jobs)
 
@@ -88,7 +88,7 @@ parsing_task_config:
   count_retries_failed_files: 3
   fetching_metadata_timeout: 60
   max_files_to_process: null             # null = all files; set e.g. 3 for a quick test
-  enable_jet_tagging: false              # when true, split Jets into BJets/LJets. Must give thresholds for btagging discriminants!
+  enable_jet_tagging: false              # when true, split Jets into BJets/Jets. Must give thresholds for btagging discriminants!
   jet_btagging_thresholds:
     btagDeepFlavB: 0.5
     DL1d: 2.51
@@ -123,7 +123,7 @@ parsing_task_config:
 # Computes invariant masses for every valid particle combination per final state.
 mass_calculation_task_config:
   # ===PATHS===
-  input_dir:  "/data/atlas_pp_root_files"
+  input_dir:  *parsed_data_path
   output_dir: *im_arrays_path
 
   # ===PROCESSING===

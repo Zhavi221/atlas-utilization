@@ -110,7 +110,6 @@ class ParsingHandler(StateHandler):
         stats_collector = ParsingStatisticsCollector()
         parsed_files = []
         
-        # ---- Apply batch splitting if configured ----
         metadata = dict(context.metadata)  # mutable copy
         # Filter to only requested release years (supports _mc suffix convention)
         if parsing_config.release_years:
@@ -120,15 +119,22 @@ class ParsingHandler(StateHandler):
                 f"Filtered metadata to release_years={parsing_config.release_years}: "
                 f"{list(metadata.keys())}"
             )
+        # ---- Drop MC keys if configured ----
+        if not parsing_config.parse_mc:
+            for year in [y for y in metadata if y.endswith("_mc")]:
+                self.logger.info(f"Skipping MC key '{year}' (parse_mc=False)")
+                del metadata[year]
+
+        # ---- Apply batch splitting if configured ----
         batch_idx = context.config.batch_job_index
         total_batches = context.config.total_batch_jobs
-        
+
         if batch_idx is not None and total_batches is not None:
             self.logger.info(
                 f"Batch mode: job {batch_idx}/{total_batches}"
             )
             metadata = get_batch_slice_by_year(metadata, batch_idx, total_batches)
-        
+
         # ---- Apply max_files_to_process limit (per year) ----
         max_files = getattr(parsing_config, 'max_files_to_process', None)
         if max_files and max_files > 0:
@@ -140,17 +146,9 @@ class ParsingHandler(StateHandler):
                         f"Limiting {year} to {max_files} files "
                         f"(was {original}, max_files_to_process={max_files})"
                     )
-        
+
         # Parse each release year
         for release_year, file_urls in metadata.items():
-            # ── Skip MC keys when parse_mc=False ─────────────────────────────────────
-            # The fetcher always separates data and MC into separate keys (e.g.
-            # '2024r-pp' and '2024r-pp_mc'). parse_mc controls whether MC is
-            # included in the parsing run, not whether it is separated.
-            if release_year.endswith("_mc") and not parsing_config.parse_mc:
-                self.logger.info(f"Skipping MC key '{release_year}' (parse_mc=False)")
-                continue
-
             self.logger.info(
                 f"Parsing {len(file_urls)} files for release year: {release_year}"
             )

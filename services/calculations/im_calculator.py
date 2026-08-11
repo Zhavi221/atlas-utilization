@@ -14,6 +14,8 @@ from services.calculations.combinatorics import get_count, get_start
 
 
 class IMCalculator:
+    _INVALID_FS_LABEL = "" # sentinal value for invalid final states
+
     def __init__(self, events: ak.Array, min_events_per_fs: int,
                  min_k: int, max_k: int, min_n: int, max_n: int):
         self.events = events
@@ -70,10 +72,11 @@ class IMCalculator:
             t = ak.to_numpy(getattr(particle_counts, "Taus", zero_array))
             b = ak.to_numpy(getattr(particle_counts, "BJets", zero_array))
 
+            # one label per event ("" for invalid final states) 
             all_events_fs = [
                 f"{e}e_{m}m_{j}j_{g}g_{t}t_{b}b"
+                if self._is_valid_fs([e, m, j, g, t, b]) else self._INVALID_FS_LABEL
                 for e, m, j, g, t, b in zip(e, m, j, g, t, b)
-                if self._is_valid_fs([e, m, j, g, t, b])
             ]
             self._all_events_fs = ak.Array(all_events_fs)
         return self._all_events_fs
@@ -92,6 +95,7 @@ class IMCalculator:
         all_events_fs_list = ak.to_list(all_events_fs)
 
         fs_by_count = Counter(all_events_fs_list)
+        fs_by_count.pop(self._INVALID_FS_LABEL, None) # remove invalid final states from the count
         fs_by_count_sorted = [
             (fs, count) for fs, count in fs_by_count.most_common()
             if count >= self.min_events_per_fs
