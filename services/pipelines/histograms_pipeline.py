@@ -56,8 +56,9 @@ def compute_global_ranges(
 
 
 def save_global_ranges(ranges: Dict[str, Tuple[float, float]], path: str) -> None:
+    import json as _json
     with open(path, "w") as f:
-        json.dump(ranges, f)
+        _json.dump(ranges, f)
 
 
 def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = None):
