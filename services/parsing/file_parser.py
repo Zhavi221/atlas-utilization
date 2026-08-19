@@ -200,6 +200,24 @@ class FileParser:
                 obj_branches[obj_name] = obj_branches_for_obj
         # Keep direct object names as-is, but store them under the "DirectObjects" key.
         obj_branches.update({"DirectObjects": {k: k for k in direct_objects}})
+
+        # MC per-event generator weight (flat scalar per event, not jagged).
+        # Stored under "_mcEventWeight" so downstream code can distinguish it
+        # from particle-type fields.
+        normalized_year = schemas.normalize_release_year(release_year)
+        mc_weight_branch = schemas.MC_EVENT_WEIGHT_BRANCHES.get(normalized_year)
+        print(f"[DEBUG MCW] release_year={release_year}, normalized={normalized_year}")
+        print(f"[DEBUG MCW] mc_weight_branch={mc_weight_branch}")
+        print(f"[DEBUG MCW] branch in tree? {mc_weight_branch in tree_branches if mc_weight_branch else 'N/A'}")
+        if mc_weight_branch:
+        # Check partial matches
+            matches = [b for b in tree_branches if "mcEvent" in b or "EventInfo" in b]
+            print(f"[DEBUG MCW] EventInfo-like branches in tree: {matches}")
+
+        if mc_weight_branch and mc_weight_branch in tree_branches:
+            obj_branches["_mcEventWeight"] = {mc_weight_branch: "mcEventWeight"}
+
+    
         return obj_branches
     
     @staticmethod
@@ -415,9 +433,13 @@ class FileParser:
                 bp: qty for bp, qty in branch_mapping.items()
                 if bp in accessible_set
             }
-            if accessible_branches and FileParser._can_calculate_inv_mass(
+            if obj_name in ("DirectObjects", "_mcEventWeight"):
+                # These are not particle types — skip the inv-mass field check.
+                if accessible_branches:
+                    accessible_obj_branches[obj_name] = accessible_branches
+            elif accessible_branches and FileParser._can_calculate_inv_mass(
                 list(accessible_branches.values())
-            ) or obj_name == "DirectObjects":
+            ):
                 accessible_obj_branches[obj_name] = accessible_branches
         
         return accessible_obj_branches
@@ -464,15 +486,32 @@ class FileParser:
                     if len(subset) > 0:
                         obj_events_by_quantities[obj_name].append(subset)
         
+        # result = {}
+        # for obj_name, chunks in obj_events_by_quantities.items():
+        #     if chunks:
+        #         concatenated = ak.concatenate(chunks)
+        #         result[obj_name] = ak.zip({
+        #             quantity: concatenated[full_branch]
+        #             for full_branch, quantity in obj_branches[obj_name].items()
+        #         })
         result = {}
         for obj_name, chunks in obj_events_by_quantities.items():
             if chunks:
                 concatenated = ak.concatenate(chunks)
-                result[obj_name] = ak.zip({
-                    quantity: concatenated[full_branch]
-                    for full_branch, quantity in obj_branches[obj_name].items()
-                })
-        
+                if obj_name == "_mcEventWeight":
+                    # PHYSLITE stores mcEventWeight as var * float (a vector
+                    # per event, typically length 1).  Take the nominal weight
+                    # at index 0 so the result is a flat scalar per event —
+                    # this round-trips correctly through ROOT/uproot.
+                    branch = list(obj_branches[obj_name].keys())[0]
+                    raw = concatenated[branch]
+                    flat = raw[:, 0]  # nominal weight
+                    result[obj_name] = ak.zip({"mcEventWeight": flat})
+                else:
+                    result[obj_name] = ak.zip({
+                        quantity: concatenated[full_branch]
+                        for full_branch, quantity in obj_branches[obj_name].items()
+                    })
         return result
     
     @staticmethod

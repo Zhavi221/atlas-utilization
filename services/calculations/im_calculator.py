@@ -37,9 +37,14 @@ class IMCalculator:
             return total_momentum.tau
         return total_momentum.mass
 
+    # Fields that are event-level metadata, not particle arrays.
+    _NON_PARTICLE_FIELDS = frozenset({"_mcEventWeight"})
+
     def _concat_particles_to_vectors(self, particle_events: ak.Array) -> List[ak.Array]:
         all_vectors = []
         for particle_type in particle_events.fields:
+            if particle_type in self._NON_PARTICLE_FIELDS:
+                continue
             particle_array = particle_events[particle_type]
             mass = self._get_particle_mass(particle_type, particle_array)
             momentum_vector = vector.zip({
@@ -59,7 +64,8 @@ class IMCalculator:
 
     def _get_all_events_fs(self) -> ak.Array:
         if self._all_events_fs is None:
-            particle_counts = ak.num(self.events)
+            _particle_fields = {f: self.events[f] for f in self.events.fields if f not in self._NON_PARTICLE_FIELDS}
+            particle_counts = ak.num(ak.zip(_particle_fields, depth_limit=1))
             num_events = len(self.events)
             zero_array = ak.Array([0] * num_events) if num_events > 0 else ak.Array([])
 

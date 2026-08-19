@@ -38,6 +38,19 @@ NANOAOD_BTAGGING_OBJECTS = [
     "Jet_btagDeepFlavB"
 ]
 
+# Per-event MC generator weight branches, keyed by normalized release year.
+# These are flat (one float per event), not jagged.  Data files won't have
+# these branches — the parser handles their absence gracefully.
+MC_EVENT_WEIGHT_BRANCHES = {
+    "2024r-pp": "EventInfoAuxDyn.mcEventWeights",
+    "2020e-13tev": "EventInfoAuxDyn.mcEventWeights",
+    "2025r-evgen-13tev": "EventInfoAuxDyn.mcEventWeights",
+    "2025r-evgen-13p6tev": "EventInfoAuxDyn.mcEventWeights",
+    "cms-nanoaod": "genWeight",
+    "2025e-13tev-beta": "weight_mc",
+    "2016e-8tev": "mcWeight",
+}
+
 # Mapping from specific record IDs to their release year/schema identifier
 # This will be populated when schemas are extracted from record IDs
 RECORD_ID_TO_SCHEMA = {

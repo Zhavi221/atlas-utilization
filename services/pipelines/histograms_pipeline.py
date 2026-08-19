@@ -299,9 +299,21 @@ def _weight_for(weights_registry, key: str) -> float:
     return weights_registry.weight_for(key)
 
 
-def _fill_hist(hist, values, weight: float) -> None:
-    """Fill a histogram with an array of values at a constant weight."""
-    if weight == 1.0:
+def _fill_hist(hist, values, weight: float, mc_event_weights=None) -> None:
+    """Fill a histogram with an array of values.
+
+    Args:
+        hist: ROOT TH1F histogram.
+        values: Array of invariant-mass values.
+        weight: Per-dataset normalization factor (from WeightsRegistry).
+        mc_event_weights: Optional per-event MC generator weights (same
+            length as *values*).  When present, each event is filled with
+            ``weight * mc_event_weights[i]`` instead of the flat *weight*.
+    """
+    if mc_event_weights is not None:
+        for i, val in enumerate(values):
+            hist.Fill(float(val), weight * float(mc_event_weights[i]))
+    elif weight == 1.0:
         for val in values:
             hist.Fill(float(val))
     else:
@@ -343,9 +355,20 @@ def _create_histograms_for_signature(
             hist.Sumw2()  # track weighted errors correctly
         histograms.append(hist)
 
-    for chunk in _iter_signature_chunks(signature, db_paths):
-        for hist in histograms:
-            _fill_hist(hist, chunk, weight)
+    # Load per-event MC weights if a parallel _mcw signature exists.
+    mcw_sig = signature + "_mcw"
+    mcw_chunks = list(_iter_signature_chunks(mcw_sig, db_paths))
+    im_chunks = list(_iter_signature_chunks(signature, db_paths))
+
+    if mcw_chunks and len(mcw_chunks) == len(im_chunks):
+        for im_chunk, mcw_chunk in zip(im_chunks, mcw_chunks):
+            for hist in histograms:
+                _fill_hist(hist, im_chunk, weight, mc_event_weights=mcw_chunk)
+    else:
+        for chunk in im_chunks:
+            for hist in histograms:
+                _fill_hist(hist, chunk, weight)
+
     if apply_peak_removal:
         for hist in histograms:
             _apply_peak_removal_to_histogram(hist)
@@ -391,9 +414,18 @@ def _create_merged_histograms_from_sqlite_signatures(
     # its own weight, even though they are merged into one histogram.
     for signature in signatures:
         weight = _weight_for(weights_registry, signature)
-        for chunk in _iter_signature_chunks(signature, db_paths):
-            for hist in histograms:
-                _fill_hist(hist, chunk, weight)
+        mcw_sig = signature + "_mcw"
+        mcw_chunks = list(_iter_signature_chunks(mcw_sig, db_paths))
+        im_chunks = list(_iter_signature_chunks(signature, db_paths))
+
+        if mcw_chunks and len(mcw_chunks) == len(im_chunks):
+            for im_chunk, mcw_chunk in zip(im_chunks, mcw_chunks):
+                for hist in histograms:
+                    _fill_hist(hist, im_chunk, weight, mc_event_weights=mcw_chunk)
+        else:
+            for chunk in im_chunks:
+                for hist in histograms:
+                    _fill_hist(hist, chunk, weight)
     if apply_peak_removal:
         for hist in histograms:
             _apply_peak_removal_to_histogram(hist)
