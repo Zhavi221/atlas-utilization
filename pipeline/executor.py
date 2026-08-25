@@ -813,9 +813,25 @@ class PipelineExecutor:
             services['file_parser'] = FileParser()
             mc_cfg = getattr(self.config, "mc_weighting_config", None)
             split_by_dataset = bool(mc_cfg and mc_cfg.enabled)
+            # When MC weighting is on, recover the physics DSID from the source
+            # URL container ID so parsed chunks are labelled per-dataset (and so
+            # split_by_dataset actually fires). Without this the container ID is
+            # not a canonical DSID and every chunk would go unlabelled.
+            dsid_resolver = None
+            if split_by_dataset:
+                from services.calculations.container_dsid_map import ContainerDsidResolver
+                cache_path = os.path.join(
+                    os.path.dirname(os.path.abspath(pc.output_path)) or ".",
+                    "container_dsid_map.json",
+                )
+                dsid_resolver = ContainerDsidResolver(
+                    releases=mc_cfg.release_years,
+                    cache_path=mc_cfg.container_map_cache_path or cache_path,
+                ).resolve
             services['event_accumulator'] = EventAccumulator(
                 chunk_threshold_bytes=pc.chunk_yield_threshold_bytes,
                 split_by_dataset=split_by_dataset,
+                dsid_resolver=dsid_resolver,
             )
             services['threaded_processor'] = ThreadedFileProcessor(
                 file_parser=services['file_parser'],

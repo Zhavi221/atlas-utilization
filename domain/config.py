@@ -51,7 +51,11 @@ class ParsingConfig:
     show_progress_bar: bool = True
     count_retries_failed_files: int = 3
     fetching_metadata_timeout: int = 60
-    
+    # When True, any file that fails to read (after retries) aborts parsing
+    # instead of being silently skipped. Silent skips are a source of
+    # non-deterministic downstream histogram counts; enable for reproducible runs.
+    fail_on_read_error: bool = False
+
     # Data selection
     possible_data_tree_names: tuple[str, ...] = ("CollectionTree",)
     max_files_to_process: Optional[int] = None  # Limit files (for testing)
@@ -229,6 +233,11 @@ class MCWeightingConfig:
     # kFactor / genFiltEff are NOT errors — they default to 1.0 (no correction),
     # which is physically valid (e.g. already-NLO or unfiltered samples).
     require_metadata: bool = False
+    # Where to cache the container-ID -> DSID reverse map (built once, reused).
+    container_map_cache_path: Optional[str] = None
+    # Open Data release tags to build the container map from (e.g. ["2024r-pp"]).
+    # None scans all releases (slower first build).
+    release_years: Optional[tuple[str, ...]] = None
 
     def __post_init__(self):
         """Validate MC weighting configuration."""
@@ -352,6 +361,7 @@ class PipelineConfig:
                 create_dirs=parsing_dict.get("create_dirs", False),
                 show_progress_bar=parsing_dict.get("show_progress_bar", True),
                 count_retries_failed_files=parsing_dict.get("count_retries_failed_files", 3),
+                fail_on_read_error=parsing_dict.get("fail_on_read_error", False),
                 fetching_metadata_timeout=parsing_dict.get("fetching_metadata_timeout", 60),
                 possible_data_tree_names=tuple(parsing_dict.get("possible_data_tree_names", ["CollectionTree"])),
                 max_files_to_process=parsing_dict.get("max_files_to_process"),
@@ -426,11 +436,14 @@ class PipelineConfig:
         mc_weighting_config = None
         mc_dict = config_dict.get("mc_weighting_config")
         if mc_dict:
+            release_years_raw = mc_dict.get("release_years")
             mc_weighting_config = MCWeightingConfig(
                 enabled=mc_dict.get("enabled", False),
                 target_luminosity_fb=mc_dict.get("target_luminosity_fb", 1.0),
                 luminosity_by_campaign=mc_dict.get("luminosity_by_campaign"),
                 require_metadata=mc_dict.get("require_metadata", False),
+                container_map_cache_path=mc_dict.get("container_map_cache_path"),
+                release_years=tuple(release_years_raw) if release_years_raw else None,
             )
 
         # Parse run metadata

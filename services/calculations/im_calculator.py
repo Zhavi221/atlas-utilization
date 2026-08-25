@@ -6,7 +6,7 @@ Supports grouping by final state, filtering, and batch processing.
 """
 import awkward as ak
 import vector
-from typing import Dict, Iterator, List
+from typing import Dict, Iterator, List, Optional, Set
 from collections import Counter
 
 from services.calculations import consts, physics_calcs
@@ -93,17 +93,36 @@ class IMCalculator:
                 return False
         return True
 
-    def group_by_final_state(self) -> Iterator[str]:
+    def final_state_counts(self) -> Counter:
+        """
+        Raw final-state label counts for this calculator's events (no threshold,
+        no particle-limiting). Used to decide the min_events_per_fs cut across
+        the WHOLE dataset instead of per file/chunk.
+        """
+        return Counter(ak.to_list(self._get_all_events_fs()))
+
+    def group_by_final_state(self, keep_fs: Optional[Set[str]] = None) -> Iterator[str]:
+        """
+        Yield the (particle-limited) final states to process for this file.
+
+        keep_fs is a set of RAW final-state labels chosen globally (across all
+        files) that clear the min_events_per_fs cut. When provided, the per-file
+        count threshold is NOT re-applied — a final state is kept iff it is in
+        the global set — so the result no longer depends on how events happened
+        to be split across chunks. When None, the legacy per-file threshold is
+        used (unchanged behaviour for existing callers/tests).
+        """
         all_events_fs = self._get_all_events_fs()
-        all_events_fs_list = ak.to_list(all_events_fs)
+        fs_by_count = Counter(ak.to_list(all_events_fs))
 
-        fs_by_count = Counter(all_events_fs_list)
-        fs_by_count_sorted = [
-            (fs, count) for fs, count in fs_by_count.most_common()
-            if count >= self.min_events_per_fs
-        ]
+        if keep_fs is None:
+            selected = [fs for fs, count in fs_by_count.most_common()
+                        if count >= self.min_events_per_fs]
+        else:
+            # Deterministic order; presence in the global keep-set decides.
+            selected = sorted(fs for fs in fs_by_count if fs in keep_fs)
 
-        for fs, _count in fs_by_count_sorted:
+        for fs in selected:
             yield self._limit_particles_in_fs(fs, threshold=4)
 
     def get_events_for_final_state(self, final_state: str) -> ak.Array:

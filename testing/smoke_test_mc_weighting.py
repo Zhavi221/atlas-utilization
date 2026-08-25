@@ -72,6 +72,43 @@ def check_pure_logic():
 
 
 # --------------------------------------------------------------------------- #
+# 1b. Container-ID -> DSID resolution (no heavy deps) — must PASS everywhere
+# --------------------------------------------------------------------------- #
+def check_container_resolution():
+    section = "1b. Container-ID -> DSID resolution"
+    try:
+        import json
+        from services.calculations.container_dsid_map import (
+            extract_container_ids, ContainerDsidResolver,
+        )
+
+        url = ("root://eospublic.cern.ch:1094//eos/opendata/atlas/rucio/mc20_13TeV/"
+               "DAOD_PHYSLITE.37620644._000001.pool.root.1")
+        # 8-digit container ID is found; 6-digit DSID / file index are not.
+        assert extract_container_ids(url) == ["37620644"], extract_container_ids(url)
+        assert extract_container_ids("mc20_13TeV.410470.ttbar.root") == []
+
+        # Offline: canonical DSID resolves; a bare container ID does not (no
+        # false positive) until the reverse map is present.
+        r = ContainerDsidResolver(releases=[], cache_path=None)
+        assert r.resolve("mc20_13TeV.410470.ttbar.DAOD_PHYSLITE.root") == 410470
+        assert r.resolve(url) is None
+
+        # With a cached reverse map, the container ID resolves to its DSID.
+        cache = os.path.join(tempfile.mkdtemp(), "container_map.json")
+        json.dump({"map": {"37620644": 410470}, "_releases_built": ["2024r-pp"]},
+                  open(cache, "w"))
+        r2 = ContainerDsidResolver(releases=["2024r-pp"], cache_path=cache)
+        assert r2.resolve(url) == 410470, r2.resolve(url)
+
+        _record(section, "PASS", "container extraction + cached reverse-map resolve")
+    except ModuleNotFoundError as e:
+        _record(section, "SKIP", f"dependency missing ({e.name}); run in the analysis env")
+    except Exception as e:
+        _record(section, "FAIL", f"{type(e).__name__}: {e}")
+
+
+# --------------------------------------------------------------------------- #
 # 2. Live metadata fetch (needs atlasopenmagic) + LO-vs-NLO check
 # --------------------------------------------------------------------------- #
 def check_live_metadata(dsid, luminosity):
@@ -229,6 +266,7 @@ def main(argv=None):
     print("=" * 74)
 
     check_pure_logic()
+    check_container_resolution()
     if not args.skip_network:
         check_live_metadata(args.dsid, args.luminosity)
     else:

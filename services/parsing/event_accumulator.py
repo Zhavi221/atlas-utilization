@@ -19,7 +19,12 @@ class EventAccumulator:
     Stateful service that maintains current accumulation state.
     """
     
-    def __init__(self, chunk_threshold_bytes: int, split_by_dataset: bool = False):
+    def __init__(
+        self,
+        chunk_threshold_bytes: int,
+        split_by_dataset: bool = False,
+        dsid_resolver=None,
+    ):
         """
         Initialize accumulator.
 
@@ -29,12 +34,18 @@ class EventAccumulator:
                 incoming batch belongs to a different MC dataset (DSID) than the
                 current accumulation, guaranteeing one DSID per chunk. Required
                 for correct per-file MC weighting on freshly-parsed data.
+            dsid_resolver: Callable ``url -> Optional[int]`` used to recover the
+                DSID from a batch's source URL. Defaults to the pure canonical
+                regex (:func:`extract_dsid_from_url`). Pass a
+                :class:`ContainerDsidResolver` to also resolve ATLAS Open Data
+                8-digit container IDs, which the regex alone cannot.
         """
         if chunk_threshold_bytes <= 0:
             raise ValueError(f"chunk_threshold_bytes must be positive, got {chunk_threshold_bytes}")
 
         self._threshold_bytes = chunk_threshold_bytes
         self._split_by_dataset = split_by_dataset
+        self._resolve_dsid = dsid_resolver or extract_dsid_from_url
         self._current_batches: list[EventBatch] = []
         self._current_size_bytes = 0
         self._chunk_index = 0
@@ -95,11 +106,10 @@ class EventAccumulator:
 
         return chunk_to_return
 
-    @staticmethod
-    def _batch_dsid(batch: EventBatch) -> Optional[int]:
+    def _batch_dsid(self, batch: EventBatch) -> Optional[int]:
         """Extract the MC dataset number (DSID) from a batch's source URL."""
         source = getattr(batch, "source_url", None)
-        return extract_dsid_from_url(source) if source else None
+        return self._resolve_dsid(source) if source else None
     
     def flush(self) -> Optional[EventChunk]:
         """
@@ -155,7 +165,7 @@ class EventAccumulator:
         dsids = set()
         for batch in self._current_batches:
             source = getattr(batch, "source_url", None)
-            dsid = extract_dsid_from_url(source) if source else None
+            dsid = self._resolve_dsid(source) if source else None
             if dsid is not None:
                 dsids.add(dsid)
 

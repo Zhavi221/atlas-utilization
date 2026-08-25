@@ -77,7 +77,12 @@ class MassCalculationHandler(StateHandler):
         # ── Discover parsed ROOT files ──
         parsed_dir = Path(mc.input_dir)
         if context.parsed_files:
-            root_files = [Path(f) for f in context.parsed_files if Path(f).exists()]
+            # Sort for deterministic processing order regardless of the order
+            # parsing happened to append files in.
+            root_files = sorted(
+                (Path(f) for f in context.parsed_files if Path(f).exists()),
+                key=lambda p: p.name,
+            )
             self.logger.info(
                 f"Using {len(root_files)} file(s) from parsing stage context"
             )
@@ -105,9 +110,33 @@ class MassCalculationHandler(StateHandler):
             self.logger.warning(f"No parsed ROOT files found in {parsed_dir}")
             return context, self._determine_next_state(context)
 
+        # ── Pass 1: decide the min_events_per_fs cut across the WHOLE dataset ──
+        # A final state's total events are constant, but chunking splits them
+        # across files; applying the cut per file would drop borderline states
+        # depending on that split. Summing counts across all files first makes
+        # the kept set independent of chunking (deterministic and correct).
+        from collections import Counter
+        global_fs_counts: Counter = Counter()
+        for root_file_path in root_files:
+            try:
+                calc = self._build_calculator(root_file_path, mc, IMCalculator)
+                if calc is not None:
+                    global_fs_counts.update(calc.final_state_counts())
+            except Exception as exc:
+                self.logger.error(
+                    f"Error counting final states in {root_file_path.name}: {exc}",
+                    exc_info=True,
+                )
+        keep_fs = {fs for fs, c in global_fs_counts.items() if c >= mc.min_events_per_fs}
+        self.logger.info(
+            f"Global final-state cut: {len(keep_fs)}/{len(global_fs_counts)} final "
+            f"states have >= {mc.min_events_per_fs} events across all files"
+        )
+
         total_created_chunks = 0
 
         try:
+            # ── Pass 2: process only the globally-selected final states ──
             for root_file_path in root_files:
                 try:
                     created = self._process_single_parsed_file(
@@ -118,6 +147,7 @@ class MassCalculationHandler(StateHandler):
                         mc,
                         IMCalculator,
                         process_final_state,
+                        keep_fs=keep_fs,
                     )
                     if created:
                         total_created_chunks += len(created)
@@ -222,6 +252,36 @@ class MassCalculationHandler(StateHandler):
 
         return ak.Array(particle_dict)
 
+    def _build_calculator(self, root_file_path: Path, mc, IMCalculator):
+        """
+        Read one parsed ROOT file and build its IMCalculator, or None when the
+        file has no recognised tree or no events. Shared by the counting pass
+        and the processing pass so both read the file identically.
+        """
+        with uproot.open(str(root_file_path)) as f:
+            if "events" in f:
+                particle_arrays = self._reconstruct_particle_arrays(f["events"])
+            elif "CollectionTree" in f:
+                particle_arrays = self._reconstruct_from_atlas_tree(f["CollectionTree"])
+            else:
+                self.logger.warning(
+                    f"{root_file_path.name} has no recognised tree – skipping"
+                )
+                return None
+
+        if len(particle_arrays) == 0:
+            self.logger.info(f"{root_file_path.name}: empty – skipping")
+            return None
+
+        return IMCalculator(
+            particle_arrays,
+            min_events_per_fs=mc.min_events_per_fs,
+            min_k=mc.min_count_particle_in_combination,
+            max_k=mc.max_count_particle_in_combination,
+            min_n=mc.min_particles_in_combination,
+            max_n=mc.max_particles_in_combination,
+        )
+
     def _process_single_parsed_file(
         self,
         root_file_path: Path,
@@ -231,46 +291,23 @@ class MassCalculationHandler(StateHandler):
         mc,
         IMCalculator,
         process_final_state,
+        keep_fs=None,
     ) -> List[str]:
         """Read one parsed ROOT file and compute invariant masses."""
         self.logger.info(f"Reading parsed file: {root_file_path.name}")
 
-        with uproot.open(str(root_file_path)) as f:
-            if "events" in f:
-                tree = f["events"]
-                particle_arrays = self._reconstruct_particle_arrays(tree)
-            elif "CollectionTree" in f:
-                tree = f["CollectionTree"]
-                particle_arrays = self._reconstruct_from_atlas_tree(tree)
-            else:
-                self.logger.warning(
-                    f"{root_file_path.name} has no recognised tree – skipping"
-                )
-                return []
-
-        num_events = len(particle_arrays)
-        if num_events == 0:
-            self.logger.info(f"{root_file_path.name}: empty – skipping")
+        calculator = self._build_calculator(root_file_path, mc, IMCalculator)
+        if calculator is None:
             return []
 
         self.logger.info(
-            f"{root_file_path.name}: {num_events:,} events loaded "
-            f"(particle types: {particle_arrays.fields})"
-        )
-
-        # Initialise calculator
-        calculator = IMCalculator(
-            particle_arrays,
-            min_events_per_fs=mc.min_events_per_fs,
-            min_k=mc.min_count_particle_in_combination,
-            max_k=mc.max_count_particle_in_combination,
-            min_n=mc.min_particles_in_combination,
-            max_n=mc.max_particles_in_combination,
+            f"{root_file_path.name}: {len(calculator.events):,} events loaded "
+            f"(particle types: {calculator.events.fields})"
         )
 
         created_files: List[str] = []
 
-        for cur_fs in calculator.group_by_final_state():
+        for cur_fs in calculator.group_by_final_state(keep_fs=keep_fs):
             fs_events = calculator.get_events_for_final_state(cur_fs)
             result = process_final_state(
                 cur_fs,
