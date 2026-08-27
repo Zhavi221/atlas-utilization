@@ -109,7 +109,7 @@ class ParsingHandler(StateHandler):
         start_time = datetime.now()
         stats_collector = ParsingStatisticsCollector()
         parsed_files = []
-
+        
         # ---- Apply batch splitting if configured ----
         metadata = dict(context.metadata)  # mutable copy
         # Filter to only requested release years (supports _mc suffix convention)
@@ -209,7 +209,7 @@ class ParsingHandler(StateHandler):
                     # Save the awkward array to ROOT file
                     self._save_chunk_to_root(chunk, str(file_path))
                     parsed_files.append(str(file_path))
-
+                    
                     self.logger.info(
                         f"Saved chunk {chunk.chunk_index}: "
                         f"{chunk.event_count} events, {chunk.size_mb:.1f} MB → {file_path}"
@@ -232,7 +232,7 @@ class ParsingHandler(StateHandler):
             # Save the awkward array to ROOT file
             self._save_chunk_to_root(final_chunk, str(file_path))
             parsed_files.append(str(file_path))
-
+            
             self.logger.info(
                 f"Saved final chunk: {final_chunk.event_count} events, {final_chunk.size_mb:.1f} MB → {file_path}"
             )
@@ -262,16 +262,7 @@ class ParsingHandler(StateHandler):
             f"Parsing complete: {parsing_stats.successful_files}/{parsing_stats.total_files} files, "
             f"{parsing_stats.total_events} events, {parsing_stats.success_rate:.1f}% success rate"
         )
-
-        # Silently-dropped files make downstream histogram counts
-        # non-deterministic; abort when the run demands reproducibility.
-        if parsing_config.fail_on_read_error and parsing_stats.failed_files > 0:
-            raise RuntimeError(
-                f"{parsing_stats.failed_files} file(s) failed to parse and "
-                "fail_on_read_error is set; aborting to keep results reproducible. "
-                "Retry the failed files or disable fail_on_read_error to allow skips."
-            )
-
+        
         # Update context
         updated_context = context.with_parsed_files(parsed_files).with_parsing_stats(parsing_stats)
         

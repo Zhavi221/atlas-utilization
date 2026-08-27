@@ -5,7 +5,7 @@ Single responsibility: Manage thread pool for parsing multiple files concurrentl
 """
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterator, Optional, Callable
 from tqdm import tqdm
 
@@ -84,16 +84,13 @@ class ThreadedFileProcessor:
                 for file_url in file_urls
             }
             
-            # Consume results in submission (file_urls) order — NOT completion
-            # order. Completion order varies run-to-run (thread scheduling +
-            # network timing), which makes downstream chunk composition, and
-            # thus the final histogram set, non-deterministic. Parsing still
-            # runs fully in parallel; only the consumption order is fixed.
+            # Process results as they complete
             progress_bar = self._create_progress_bar(total_files)
-
+            
             with progress_bar as pbar:
-                for future, file_url in futures.items():
-
+                for future in as_completed(futures):
+                    file_url = futures[future]
+                    
                     try:
                         result = future.result(timeout=300)  # 5 minute timeout per file
                         

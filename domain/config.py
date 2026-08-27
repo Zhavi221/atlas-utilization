@@ -51,10 +51,6 @@ class ParsingConfig:
     show_progress_bar: bool = True
     count_retries_failed_files: int = 3
     fetching_metadata_timeout: int = 60
-    # When True, any file that fails to read (after retries) aborts parsing
-    # instead of being silently skipped. Silent skips are a source of
-    # non-deterministic downstream histogram counts; enable for reproducible runs.
-    fail_on_read_error: bool = False
 
     # Data selection
     possible_data_tree_names: tuple[str, ...] = ("CollectionTree",)
@@ -361,7 +357,6 @@ class PipelineConfig:
                 create_dirs=parsing_dict.get("create_dirs", False),
                 show_progress_bar=parsing_dict.get("show_progress_bar", True),
                 count_retries_failed_files=parsing_dict.get("count_retries_failed_files", 3),
-                fail_on_read_error=parsing_dict.get("fail_on_read_error", False),
                 fetching_metadata_timeout=parsing_dict.get("fetching_metadata_timeout", 60),
                 possible_data_tree_names=tuple(parsing_dict.get("possible_data_tree_names", ["CollectionTree"])),
                 max_files_to_process=parsing_dict.get("max_files_to_process"),
