@@ -114,8 +114,14 @@ def process_final_state(
 
         # Store per-event MC weights as a parallel signature (_mcw suffix).
         # Same length and event order as the IM array, enabling per-event
-        # weighting at histogram-fill time.
+        # weighting at histogram-fill time. The per-dataset normalization
+        # (w_norm) is folded in here — where the source DSID is still known —
+        # so the weight rides with each event and no longer depends on the
+        # source prefix surviving post-processing.
         if mc_event_weights is not None and sqlite_writer is not None:
+            norm = config.get("mc_norm_weight", 1.0)
+            if norm != 1.0:
+                mc_event_weights = mc_event_weights * norm
             mcw_sig = combination_name + "_mcw"
             sqlite_writer.append_array(mcw_sig, mc_event_weights)
             sqlite_writer.commit()

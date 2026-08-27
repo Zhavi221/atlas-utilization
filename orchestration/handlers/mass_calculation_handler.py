@@ -105,10 +105,20 @@ class MassCalculationHandler(StateHandler):
             self.logger.warning(f"No parsed ROOT files found in {parsed_dir}")
             return context, self._determine_next_state(context)
 
+        # Per-dataset normalization (w_norm), folded into the per-event weights
+        # at write time so the weight rides with each event through the rest of
+        # the pipeline (no dependence on the source prefix surviving).
+        wnorm_by_dsid = self._compute_wnorm_by_dsid(root_files, context)
+
         total_created_chunks = 0
 
         try:
             for root_file_path in root_files:
+                # Tell the IM pipeline which normalization to fold into this
+                # file's per-event weights (1.0 = unweighted / unknown DSID).
+                from services.calculations.weights_registry import extract_dsid_from_url
+                dsid = extract_dsid_from_url(root_file_path.stem)
+                config_dict["mc_norm_weight"] = wnorm_by_dsid.get(dsid, 1.0)
                 try:
                     created = self._process_single_parsed_file(
                         root_file_path,
@@ -143,6 +153,46 @@ class MassCalculationHandler(StateHandler):
     # ------------------------------------------------------------------ #
     # helpers
     # ------------------------------------------------------------------ #
+
+    def _compute_wnorm_by_dsid(self, root_files, context) -> dict:
+        """
+        Build {dsid: normalization weight} for the datasets present, when MC
+        weighting is enabled. The DSID is read from each parsed filename (which
+        parsing stamped via the container->DSID resolver); metadata is fetched
+        once per DSID. Returns {} when weighting is disabled or nothing resolves.
+        """
+        mc_cfg = getattr(context.config, "mc_weighting_config", None)
+        if mc_cfg is None or not mc_cfg.enabled:
+            return {}
+
+        from services.calculations.weights_registry import extract_dsid_from_url
+        dsids = sorted({d for d in (extract_dsid_from_url(p.stem) for p in root_files) if d})
+        if not dsids:
+            self.logger.warning(
+                "MC weighting enabled but no DSID found in parsed filenames; "
+                "per-event weights will carry no normalization (w_norm=1)."
+            )
+            return {}
+
+        from services.metadata.fetcher import MetadataFetcher
+        from services.calculations.mc_weights import compute_normalization
+
+        metadata_by_dsid = MetadataFetcher().fetch_mc_metadata_for_datasets(
+            dsids, require_metadata=mc_cfg.require_metadata
+        )
+        luminosity = mc_cfg.get_luminosity()
+        wnorm = {}
+        for dsid in dsids:
+            md = metadata_by_dsid.get(dsid)
+            if md is not None:
+                wnorm[dsid] = compute_normalization(md, luminosity)
+            else:
+                self.logger.warning(f"No metadata for DSID {dsid}; w_norm defaults to 1.")
+        self.logger.info(
+            f"Computed w_norm for {len(wnorm)}/{len(dsids)} DSID(s): "
+            + ", ".join(f"{d}={wnorm[d]:.4g}" for d in sorted(wnorm))
+        )
+        return wnorm
 
     @staticmethod
     def _reconstruct_particle_arrays(tree) -> ak.Array:
