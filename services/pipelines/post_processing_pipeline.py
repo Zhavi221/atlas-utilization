@@ -213,21 +213,28 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
     processed = 0
     try:
         for fs_im_key in keys_to_process:
+            # _mcw keys are per-event weight arrays; they are processed as
+            # siblings of their physics signature below, never on their own.
+            if fs_im_key.endswith("_mcw"):
+                continue
+
             chunk_sigs = fs_im_groups[fs_im_key]
             chunks = []
+            weight_chunks = []
+            have_weights = True
             for sig in chunk_sigs:
                 for filename in sqlite_files:
                     db_path = os.path.join(input_dir, filename)
-                    chunks.extend(iter_arrays_for_signature(db_path, sig))
-    # written = 0
-    # COMMIT_EVERY = 1000  # commit every 1000 signatures to keep WAL small
-    # processed = 0
-    # try:
-    #     for signature in sorted(signatures):
-    #         chunks = []
-    #         for filename in sqlite_files:
-    #             db_path = os.path.join(input_dir, filename)
-    #             chunks.extend(iter_arrays_for_signature(db_path, signature))
+                    sig_arrays = list(iter_arrays_for_signature(db_path, sig))
+                    chunks.extend(sig_arrays)
+                    # Gather the parallel per-event weights in the SAME order so
+                    # mass[i] and weight[i] stay aligned through every transform.
+                    w_arrays = list(iter_arrays_for_signature(db_path, sig + "_mcw"))
+                    if len(w_arrays) == len(sig_arrays):
+                        weight_chunks.extend(w_arrays)
+                    else:
+                        have_weights = False
+
             if not chunks:
                 continue
 
@@ -235,24 +242,51 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
             if len(arr) == 0:
                 continue
 
-            # Remove the Z resonance before peak detection
-            arr = _apply_z_peak_cut(arr, fs_im_key, z_peak_cutoff, logger)
-            arr = arr[arr <= max_mass_cutoff] if max_mass_cutoff > 0 else arr
+            warr = None
+            if have_weights and weight_chunks:
+                warr = np.concatenate(weight_chunks) if len(weight_chunks) > 1 else weight_chunks[0]
+                if len(warr) != len(arr):
+                    warr = None  # alignment lost -> fall back to unweighted
+
+            # Every post-processing step below is a boolean mask on the mass
+            # array. The SAME mask is applied to the weights so they stay aligned
+            # (the previous code processed _mcw as an independent signature,
+            # which misaligned it from its physics array).
+            keep = np.ones(len(arr), dtype=bool)
+            if z_peak_cutoff > 0 and _dilepton_flavor(fs_im_key):
+                keep &= (arr >= z_peak_cutoff)
+            if max_mass_cutoff > 0:
+                keep &= (arr <= max_mass_cutoff)
+            arr = arr[keep]
+            if warr is not None:
+                warr = warr[keep]
             if len(arr) == 0:
                 continue
 
             peak_mass = _find_rightmost_highest_peak(arr, bin_width, logger)
-            filtered = arr if peak_mass is None else arr[arr >= peak_mass]
-            if len(filtered) == 0:
+            if peak_mass is not None:
+                pm = arr >= peak_mass
+                arr = arr[pm]
+                if warr is not None:
+                    warr = warr[pm]
+            if len(arr) == 0:
                 continue
 
-            main_array, outliers_array = _split_by_first_empty_bin(filtered, bin_width, logger)
+            split_mass = _first_empty_bin_split_mass(arr, bin_width, logger)
+            main_mask = np.ones(len(arr), dtype=bool) if split_mass is None else (arr < split_mass)
+            main_array = arr[main_mask]
+            outliers_array = arr[~main_mask]
+
             if len(main_array) > 0:
                 writer.append_array(f"{fs_im_key}_main", main_array)
                 written += 1
+                if warr is not None:
+                    writer.append_array(f"{fs_im_key}_main_mcw", warr[main_mask])
             if len(outliers_array) > 0:
                 writer.append_array(f"{fs_im_key}_outliers", outliers_array)
                 written += 1
+                if warr is not None:
+                    writer.append_array(f"{fs_im_key}_outliers_mcw", warr[~main_mask])
 
             processed += 1                          # ← new
             if processed % COMMIT_EVERY == 0:       # ← new
@@ -391,6 +425,32 @@ def _split_by_first_empty_bin(
         f"main={len(main_array)}, outliers={len(outliers_array)}"
     )
     return main_array, outliers_array
+
+
+def _first_empty_bin_split_mass(im_array: np.ndarray, bin_width: float, logger: logging.Logger):
+    """
+    Return the split mass (bin edge separating main from outliers), or None to
+    keep everything in main. Mirrors :func:`_split_by_first_empty_bin` exactly,
+    but returns the boundary so the SAME split can be applied to a parallel
+    (per-event ``_mcw`` weight) array — keeping mass and weight aligned.
+    """
+    if len(im_array) == 0:
+        return None
+    min_mass = float(np.min(im_array))
+    max_mass = float(np.max(im_array))
+    nbins = math.ceil((max_mass - min_mass) / bin_width)
+    if nbins == 0:
+        return None
+    bin_edges = np.linspace(min_mass, max_mass, nbins + 1)
+    counts, _ = np.histogram(im_array, bins=bin_edges)
+    first_empty_bin_idx = None
+    for i in range(len(counts)):
+        if counts[i] == 0:
+            first_empty_bin_idx = i
+            break
+    if first_empty_bin_idx is None or first_empty_bin_idx <= 1:
+        return None
+    return float(bin_edges[first_empty_bin_idx])
 
 
 def _get_batch_files(files: List[str], batch_index: int, total_batches: int) -> List[str]:

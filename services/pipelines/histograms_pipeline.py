@@ -36,6 +36,9 @@ def compute_global_ranges(
     for db_path in db_paths:
         signatures.update(list_signatures(db_path))
     signatures = sorted(signatures)
+    # _mcw signatures are per-event weight arrays; they are consumed only as
+    # siblings during fill, never histogrammed as data.
+    signatures = [s for s in signatures if "_mcw" not in s]
     if exclude_outliers:
         signatures = [s for s in signatures if not s.endswith("_outliers")]
     grouped = _group_signatures_by_bumpnet(signatures)
@@ -204,6 +207,10 @@ def _create_histograms_from_sqlite(
     for db_path in db_paths:
         signatures.update(list_signatures(db_path))
     signatures = sorted(signatures)
+
+    # _mcw signatures are per-event weight arrays consumed only as siblings
+    # during fill; never histogram them as data.
+    signatures = [s for s in signatures if "_mcw" not in s]
 
     if exclude_outliers:
         before = len(signatures)
