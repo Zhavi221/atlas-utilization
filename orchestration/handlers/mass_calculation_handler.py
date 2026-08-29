@@ -263,6 +263,9 @@ class MassCalculationHandler(StateHandler):
 
         for cur_fs in calculator.group_by_final_state():
             fs_events = calculator.get_events_for_final_state(cur_fs)
+            config_dict["sqlite_writer"].record_final_state_count(
+                cur_fs, len(fs_events)
+            )
             result = process_final_state(
                 cur_fs,
                 fs_events,

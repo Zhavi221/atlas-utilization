@@ -41,6 +41,14 @@ class SqliteArrayShardWriter:
         self.conn.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{table_name}_signature ON {table_name}(signature)"
         )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS final_state_counts (
+                final_state TEXT NOT NULL,
+                n_events INTEGER NOT NULL
+            )
+            """
+        )
 
     def append_array(self, signature: str, arr: np.ndarray) -> None:
         """Append one numpy array chunk under a signature."""
@@ -69,6 +77,13 @@ class SqliteArrayShardWriter:
 
     def commit(self) -> None:
         self.conn.commit()
+
+    def record_final_state_count(self, final_state: str, n_events: int) -> None:
+        """Record population before combination-specific physics cuts."""
+        self.conn.execute(
+            "INSERT INTO final_state_counts(final_state, n_events) VALUES (?, ?)",
+            (final_state, int(n_events)),
+        )
 
     def close(self) -> None:
         self.conn.commit()
@@ -145,6 +160,7 @@ def prune_final_states_below_min_events(
 
     pattern = re.compile(r"(_FS_[0-9a-z_]+)_IM_([0-9a-z]+)$")
     totals_by_channel: dict[tuple[str, str], int] = {}
+    explicit_populations: dict[str, int] = {}
     signatures_by_db_and_fs: dict[tuple[str, str], list[str]] = {}
     for path in db_paths:
         with sqlite3.connect(path) as conn:
@@ -155,6 +171,25 @@ def prune_final_states_below_min_events(
                 GROUP BY signature
                 """
             ).fetchall()
+            has_count_table = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='final_state_counts'"
+            ).fetchone()
+            if has_count_table:
+                count_rows = conn.execute(
+                    """
+                    SELECT final_state, COALESCE(SUM(n_events), 0)
+                    FROM final_state_counts
+                    GROUP BY final_state
+                    """
+                ).fetchall()
+                for final_state, count in count_rows:
+                    normalized = (
+                        final_state if final_state.startswith("_FS_")
+                        else f"_FS_{final_state}"
+                    )
+                    explicit_populations[normalized] = (
+                        explicit_populations.get(normalized, 0) + int(count)
+                    )
         for signature, entries in rows:
             match = pattern.search(signature)
             if not match:
@@ -167,6 +202,7 @@ def prune_final_states_below_min_events(
     populations: dict[str, int] = {}
     for (final_state, _combination), entries in totals_by_channel.items():
         populations[final_state] = max(populations.get(final_state, 0), entries)
+    populations.update(explicit_populations)
 
     removed = [fs for fs, count in populations.items() if count < min_events]
     for path in db_paths:
