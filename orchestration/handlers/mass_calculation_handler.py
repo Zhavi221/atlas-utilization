@@ -20,7 +20,6 @@ from orchestration.states import PipelineState
 from .base import StateHandler
 from services.storage.sqlite_shards import (
     SqliteArrayShardWriter,
-    prune_final_states_below_min_events,
 )
 
 
@@ -131,16 +130,6 @@ class MassCalculationHandler(StateHandler):
                     )
         finally:
             sqlite_writer.close()
-
-        removed_final_states = prune_final_states_below_min_events(
-            shard_path, mc.min_events_per_fs
-        )
-        if removed_final_states:
-            self.logger.info(
-                "Removed %d globally under-populated final states (< %d events)",
-                len(removed_final_states),
-                mc.min_events_per_fs,
-            )
 
         elapsed = (datetime.now() - start).total_seconds()
         self.logger.info(

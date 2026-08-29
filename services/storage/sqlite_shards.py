@@ -127,7 +127,7 @@ def get_total_entries(db_path: str, table_name: str = "array_chunks") -> int:
 
 
 def prune_final_states_below_min_events(
-    db_path: str,
+    db_path: str | list[str],
     min_events: int,
     table_name: str = "array_chunks",
 ) -> list[str]:
@@ -138,21 +138,23 @@ def prune_final_states_below_min_events(
     every eligible event contributes once to at least one contained combination.
     This uses the uncompressed SQLite metadata and does not reread ROOT payloads.
     """
-    if min_events <= 1 or not os.path.exists(db_path):
+    db_paths = [db_path] if isinstance(db_path, str) else list(db_path)
+    db_paths = [path for path in db_paths if os.path.exists(path)]
+    if min_events <= 1 or not db_paths:
         return []
 
     pattern = re.compile(r"(_FS_[0-9a-z_]+)_IM_([0-9a-z]+)$")
-    with sqlite3.connect(db_path) as conn:
-        rows = conn.execute(
-            f"""
-            SELECT signature, COALESCE(SUM(n_entries), 0)
-            FROM {table_name}
-            GROUP BY signature
-            """
-        ).fetchall()
-
-        totals_by_channel: dict[tuple[str, str], int] = {}
-        signatures_by_fs: dict[str, list[str]] = {}
+    totals_by_channel: dict[tuple[str, str], int] = {}
+    signatures_by_db_and_fs: dict[tuple[str, str], list[str]] = {}
+    for path in db_paths:
+        with sqlite3.connect(path) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT signature, COALESCE(SUM(n_entries), 0)
+                FROM {table_name}
+                GROUP BY signature
+                """
+            ).fetchall()
         for signature, entries in rows:
             match = pattern.search(signature)
             if not match:
@@ -160,19 +162,23 @@ def prune_final_states_below_min_events(
             final_state, combination = match.groups()
             key = (final_state, combination)
             totals_by_channel[key] = totals_by_channel.get(key, 0) + int(entries)
-            signatures_by_fs.setdefault(final_state, []).append(signature)
+            signatures_by_db_and_fs.setdefault((path, final_state), []).append(signature)
 
-        populations: dict[str, int] = {}
-        for (final_state, _combination), entries in totals_by_channel.items():
-            populations[final_state] = max(populations.get(final_state, 0), entries)
+    populations: dict[str, int] = {}
+    for (final_state, _combination), entries in totals_by_channel.items():
+        populations[final_state] = max(populations.get(final_state, 0), entries)
 
-        removed = [fs for fs, count in populations.items() if count < min_events]
-        for final_state in removed:
+    removed = [fs for fs, count in populations.items() if count < min_events]
+    for path in db_paths:
+        with sqlite3.connect(path) as conn:
+            signatures = []
+            for final_state in removed:
+                signatures.extend(signatures_by_db_and_fs.get((path, final_state), []))
             conn.executemany(
                 f"DELETE FROM {table_name} WHERE signature = ?",
-                [(signature,) for signature in signatures_by_fs[final_state]],
+                [(signature,) for signature in signatures],
             )
-        conn.commit()
+            conn.commit()
     return sorted(removed)
 
 
