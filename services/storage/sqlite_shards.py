@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import sqlite3
 import zlib
 from typing import Dict, Iterator, List, Optional
@@ -123,6 +124,56 @@ def get_total_entries(db_path: str, table_name: str = "array_chunks") -> int:
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(f"SELECT COALESCE(SUM(n_entries), 0) FROM {table_name}").fetchone()
     return int(row[0] if row else 0)
+
+
+def prune_final_states_below_min_events(
+    db_path: str,
+    min_events: int,
+    table_name: str = "array_chunks",
+) -> list[str]:
+    """Remove final states whose global event population is below a threshold.
+
+    Chunk/file prefixes are ignored.  For each final state, the largest global
+    entry count among its invariant-mass combinations is its event population:
+    every eligible event contributes once to at least one contained combination.
+    This uses the uncompressed SQLite metadata and does not reread ROOT payloads.
+    """
+    if min_events <= 1 or not os.path.exists(db_path):
+        return []
+
+    pattern = re.compile(r"(_FS_[0-9a-z_]+)_IM_([0-9a-z]+)$")
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT signature, COALESCE(SUM(n_entries), 0)
+            FROM {table_name}
+            GROUP BY signature
+            """
+        ).fetchall()
+
+        totals_by_channel: dict[tuple[str, str], int] = {}
+        signatures_by_fs: dict[str, list[str]] = {}
+        for signature, entries in rows:
+            match = pattern.search(signature)
+            if not match:
+                continue
+            final_state, combination = match.groups()
+            key = (final_state, combination)
+            totals_by_channel[key] = totals_by_channel.get(key, 0) + int(entries)
+            signatures_by_fs.setdefault(final_state, []).append(signature)
+
+        populations: dict[str, int] = {}
+        for (final_state, _combination), entries in totals_by_channel.items():
+            populations[final_state] = max(populations.get(final_state, 0), entries)
+
+        removed = [fs for fs, count in populations.items() if count < min_events]
+        for final_state in removed:
+            conn.executemany(
+                f"DELETE FROM {table_name} WHERE signature = ?",
+                [(signature,) for signature in signatures_by_fs[final_state]],
+            )
+        conn.commit()
+    return sorted(removed)
 
 
 def _serialize_array(arr: np.ndarray) -> bytes:

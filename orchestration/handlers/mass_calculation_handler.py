@@ -18,7 +18,10 @@ import numpy as np
 from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
-from services.storage.sqlite_shards import SqliteArrayShardWriter
+from services.storage.sqlite_shards import (
+    SqliteArrayShardWriter,
+    prune_final_states_below_min_events,
+)
 
 
 class MassCalculationHandler(StateHandler):
@@ -128,6 +131,16 @@ class MassCalculationHandler(StateHandler):
                     )
         finally:
             sqlite_writer.close()
+
+        removed_final_states = prune_final_states_below_min_events(
+            shard_path, mc.min_events_per_fs
+        )
+        if removed_final_states:
+            self.logger.info(
+                "Removed %d globally under-populated final states (< %d events)",
+                len(removed_final_states),
+                mc.min_events_per_fs,
+            )
 
         elapsed = (datetime.now() - start).total_seconds()
         self.logger.info(
@@ -248,7 +261,9 @@ class MassCalculationHandler(StateHandler):
         # Initialise calculator
         calculator = IMCalculator(
             particle_arrays,
-            min_events_per_fs=mc.min_events_per_fs,
+            # The threshold is applied once across every parsed chunk after all
+            # arrays have been written to the shard.
+            min_events_per_fs=1,
             min_k=mc.min_count_particle_in_combination,
             max_k=mc.max_count_particle_in_combination,
             min_n=mc.min_particles_in_combination,
