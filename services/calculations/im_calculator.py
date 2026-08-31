@@ -72,8 +72,9 @@ class IMCalculator:
 
             all_events_fs = [
                 f"{e}e_{m}m_{j}j_{g}g_{t}t_{b}b"
+                # This is used to create a mask later on, so we must keep this the same length as the event list.
+                if self._is_valid_fs([e, m, j, g, t, b]) else ""
                 for e, m, j, g, t, b in zip(e, m, j, g, t, b)
-                if self._is_valid_fs([e, m, j, g, t, b])
             ]
             self._all_events_fs = ak.Array(all_events_fs)
         return self._all_events_fs
@@ -92,6 +93,7 @@ class IMCalculator:
         all_events_fs_list = ak.to_list(all_events_fs)
 
         fs_by_count = Counter(all_events_fs_list)
+        fs_by_count.pop("", None)
         fs_by_count_sorted = [
             (fs, count) for fs, count in fs_by_count.most_common()
             if count >= self.min_events_per_fs
