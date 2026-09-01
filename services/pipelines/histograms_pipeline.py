@@ -18,42 +18,31 @@ import math
 from services.storage.sqlite_shards import list_signatures, iter_arrays_for_signature
 
 
-def save_global_ranges(ranges: Dict, output_path: str):
-    import json
-    with open(output_path, "w") as f:
-        json.dump(ranges, f, indent=2)
-    logging.getLogger(__name__).info(f"Saved global ranges to {output_path}")
-
 def load_global_ranges(path: str) -> Dict[str, Tuple[float, float]]:
-    import json
     with open(path) as f:
         data = json.load(f)
     return {k: tuple(v) for k, v in data.items()}
+
 
 def compute_global_ranges(
     sqlite_files: List[str],
     input_dir: str,
     exclude_outliers: bool = True,
 ) -> Dict[str, Tuple[float, float]]:
-    """
-    Scan ALL processed SQLite files and compute global min/max per bumpnet_name.
-    Returns dict: {bumpnet_name: (global_min, global_max)}
-    Save result to JSON before running histogram creation batches.
-    """
+    """Scan ALL processed SQLite files and compute global min/max per bumpnet_name."""
     logger = logging.getLogger(__name__)
     db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
-
     signatures = set()
     for db_path in db_paths:
         signatures.update(list_signatures(db_path))
     signatures = sorted(signatures)
-
+    # _mcw signatures are per-event weight arrays; they are consumed only as
+    # siblings during fill, never histogrammed as data.
+    signatures = [s for s in signatures if "_mcw" not in s]
     if exclude_outliers:
         signatures = [s for s in signatures if not s.endswith("_outliers")]
-
     grouped = _group_signatures_by_bumpnet(signatures)
     logger.info(f"Computing global ranges for {len(grouped)} bumpnet signatures...")
-
     ranges = {}
     for bumpnet_name, group_sigs in grouped.items():
         gmin, gmax = float("inf"), float("-inf")
@@ -65,9 +54,15 @@ def compute_global_ranges(
                         gmax = max(gmax, float(np.max(chunk)))
         if gmin < float("inf"):
             ranges[bumpnet_name] = (gmin, gmax)
-
     logger.info(f"Computed ranges for {len(ranges)} signatures")
     return ranges
+
+
+def save_global_ranges(ranges: Dict[str, Tuple[float, float]], path: str) -> None:
+    import json as _json
+    with open(path, "w") as f:
+        _json.dump(ranges, f)
+
 
 def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = None):
     logger = _init_logging()
@@ -75,6 +70,14 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
     input_dir = histograms_config["input_dir"]
     output_dir = histograms_config["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
+
+    # Optional MC weighting: when a registry is present, histograms are filled
+    # with per-source normalization weights instead of unit weights.
+    weights_registry = histograms_config.get("weights_registry")
+    if weights_registry is not None:
+        logger.info(
+            f"MC weighting enabled: {len(weights_registry)} weighted source(s)"
+        )
 
     bin_width_gev = histograms_config["bin_width_gev"]
     if isinstance(bin_width_gev, (int, float)):
@@ -168,6 +171,7 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
             single_output_file=single_output_file,
             output_filename=output_filename,
             apply_peak_removal=apply_peak_removal,
+            weights_registry=weights_registry,
         )
     else:
         logger.info("Using standard naming mode")
@@ -176,6 +180,7 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
             single_output_file=single_output_file,
             output_filename=output_filename,
             apply_peak_removal=apply_peak_removal,
+            weights_registry=weights_registry,
         )
 
 
@@ -189,36 +194,23 @@ def _create_histograms_from_sqlite(
     output_dir = histograms_config["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
 
-    # Load global ranges if available
-    global_ranges_path = histograms_config.get("global_ranges_path")
-    global_ranges = load_global_ranges(global_ranges_path) if global_ranges_path else None
-
     bin_width_gev = histograms_config["bin_width_gev"]
     bin_widths_gev = [bin_width_gev] if isinstance(bin_width_gev, (int, float)) else bin_width_gev
     use_bumpnet_naming = histograms_config.get("use_bumpnet_naming", False)
     exclude_outliers = histograms_config.get("exclude_outliers", False)
     single_output_file = histograms_config.get("single_output_file", False)
     output_filename = histograms_config.get("output_filename", "all_histograms.root")
+    weights_registry = histograms_config.get("weights_registry")
 
     db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
-
-    # Split SQLite files across histogram batch jobs
-    batch_job_index = histograms_config.get("batch_job_index")
-    total_batch_jobs = histograms_config.get("total_batch_jobs")
-    if batch_job_index is not None and total_batch_jobs is not None:
-        sqlite_files = _get_batch_files(
-            sorted(sqlite_files), batch_job_index, total_batch_jobs
-        )
-        db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
-        logger.info(
-            f"Batch {batch_job_index}/{total_batch_jobs}: "
-            f"processing SQLite files: {sqlite_files}"
-        )
-    
     signatures = set()
     for db_path in db_paths:
         signatures.update(list_signatures(db_path))
     signatures = sorted(signatures)
+
+    # _mcw signatures are per-event weight arrays consumed only as siblings
+    # during fill; never histogram them as data.
+    signatures = [s for s in signatures if "_mcw" not in s]
 
     if exclude_outliers:
         before = len(signatures)
@@ -240,8 +232,8 @@ def _create_histograms_from_sqlite(
             hist_count = 0
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
-                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
-                    global_ranges=global_ranges,
+                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger, apply_peak_removal,
+                    weights_registry=weights_registry,
                 )
                 if hists:
                     _write_hists_to_shared_file(hists, root_filepath, logger)
@@ -250,8 +242,8 @@ def _create_histograms_from_sqlite(
         else:
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
-                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
-                    global_ranges=global_ranges,
+                    group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger, apply_peak_removal,
+                    weights_registry=weights_registry,
                 )
                 if hists:
                     root_filename = f"{bumpnet_name}_hists.root"
@@ -266,7 +258,8 @@ def _create_histograms_from_sqlite(
             hist_count = 0
             for signature in signatures:
                 hists = _create_histograms_for_signature(
-                    signature, db_paths, bin_widths_gev, logger, apply_peak_removal
+                    signature, db_paths, bin_widths_gev, logger, apply_peak_removal,
+                    weights_registry=weights_registry,
                 )
                 if hists:
                     _write_hists_to_shared_file(hists, root_filepath, logger)
@@ -275,7 +268,8 @@ def _create_histograms_from_sqlite(
         else:
             for signature in signatures:
                 hists = _create_histograms_for_signature(
-                    signature, db_paths, bin_widths_gev, logger, apply_peak_removal
+                    signature, db_paths, bin_widths_gev, logger, apply_peak_removal,
+                    weights_registry=weights_registry,
                 )
                 if hists:
                     root_filename = f"{signature}_hists.root"
@@ -296,14 +290,42 @@ def _group_signatures_by_bumpnet(signatures: List[str]) -> Dict[str, List[str]]:
         elif cleaned.endswith("_outliers"):
             cleaned = cleaned[:-9]
 
-        # match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g)_IM_([emjg\d]+)$", cleaned)
-        match = re.search(r"_FS_(\d+e_\d+m_\d+j_\d+g(?:_\d+t)?(?:_\d+b)?)_IM_([emjgtb\d]+)$", cleaned)
+        match = re.search(r"_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)$", cleaned)
         if not match:
             continue
         fs_str, im_str = match.groups()
         bumpnet_name = _convert_to_bumpnet_name(fs_str, im_str)
         groups[bumpnet_name].append(signature)
     return dict(groups)
+
+
+def _weight_for(weights_registry, key: str) -> float:
+    """Resolve the fill weight for a signature/filename (1.0 when unweighted)."""
+    if weights_registry is None:
+        return 1.0
+    return weights_registry.weight_for(key)
+
+
+def _fill_hist(hist, values, weight: float, mc_event_weights=None) -> None:
+    """Fill a histogram with an array of values.
+
+    Args:
+        hist: ROOT TH1F histogram.
+        values: Array of invariant-mass values.
+        weight: Per-dataset normalization factor (from WeightsRegistry).
+        mc_event_weights: Optional per-event MC generator weights (same
+            length as *values*).  When present, each event is filled with
+            ``weight * mc_event_weights[i]`` instead of the flat *weight*.
+    """
+    if mc_event_weights is not None:
+        for i, val in enumerate(values):
+            hist.Fill(float(val), weight * float(mc_event_weights[i]))
+    elif weight == 1.0:
+        for val in values:
+            hist.Fill(float(val))
+    else:
+        for val in values:
+            hist.Fill(float(val), weight)
 
 
 def _iter_signature_chunks(signature: str, db_paths: List[str]):
@@ -319,6 +341,7 @@ def _create_histograms_for_signature(
     bin_widths_gev: List[float],
     logger: logging.Logger,
     apply_peak_removal: bool = False,
+    weights_registry=None,
 ) -> List[ROOT.TH1F]:
     global_min, global_max = float("inf"), float("-inf")
     has_data = False
@@ -329,17 +352,30 @@ def _create_histograms_for_signature(
     if not has_data:
         return []
 
+    weight = _weight_for(weights_registry, signature)
     histograms = []
     for bin_width in bin_widths_gev:
         nbins = max(1, math.ceil((global_max - global_min) / bin_width))
         hist_name = f"ROI_{signature}_width_{bin_width}"
         hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+        if weights_registry is not None:
+            hist.Sumw2()  # track weighted errors correctly
         histograms.append(hist)
 
-    for chunk in _iter_signature_chunks(signature, db_paths):
-        for hist in histograms:
-            for val in chunk:
-                hist.Fill(float(val))
+    # Load per-event MC weights if a parallel _mcw signature exists.
+    mcw_sig = signature + "_mcw"
+    mcw_chunks = list(_iter_signature_chunks(mcw_sig, db_paths))
+    im_chunks = list(_iter_signature_chunks(signature, db_paths))
+
+    if mcw_chunks and len(mcw_chunks) == len(im_chunks):
+        for im_chunk, mcw_chunk in zip(im_chunks, mcw_chunks):
+            for hist in histograms:
+                _fill_hist(hist, im_chunk, weight, mc_event_weights=mcw_chunk)
+    else:
+        for chunk in im_chunks:
+            for hist in histograms:
+                _fill_hist(hist, chunk, weight)
+
     if apply_peak_removal:
         for hist in histograms:
             _apply_peak_removal_to_histogram(hist)
@@ -352,63 +388,62 @@ def _create_merged_histograms_from_sqlite_signatures(
     hist_name_base: str,
     bin_widths_gev: List[float],
     logger: logging.Logger,
-    global_ranges: Optional[Dict] = None,
     apply_peak_removal: bool = False,
+    weights_registry=None,
 ) -> List[ROOT.TH1F]:
+    global_min, global_max = float("inf"), float("-inf")
+    has_data = False
 
-    if global_ranges is not None:
-        if hist_name_base not in global_ranges:
-            logger.warning(
-                f"{hist_name_base} not found in global_ranges — skipping. "
-                "Re-run scan-only job to regenerate global_ranges.json."
-            )
-            return []
-        global_min, global_max = global_ranges[hist_name_base]
-        logger.debug(f"{hist_name_base}: using global range [{global_min:.1f}, {global_max:.1f}]")
-    else:
-        # No global ranges provided — compute from available data
-        # WARNING: this will produce batch-local edges, hadd will fail
-        logger.warning(
-            f"{hist_name_base}: no global_ranges provided — "
-            "computing from batch data only. hadd merging will likely fail!"
-        )
-        global_min, global_max = float("inf"), float("-inf")
-        for signature in signatures:
-            for chunk in _iter_signature_chunks(signature, db_paths):
-                global_min = min(global_min, float(np.min(chunk)))
-                global_max = max(global_max, float(np.max(chunk)))
+    for signature in signatures:
+        for chunk in _iter_signature_chunks(signature, db_paths):
+            has_data = True
+            global_min = min(global_min, float(np.min(chunk)))
+            global_max = max(global_max, float(np.max(chunk)))
 
-    if global_min == float("inf"):
+    if not has_data:
+        logger.warning(f"No valid data found for {hist_name_base}")
         return []
-
-    if 'cat' not in hist_name_base and 'hCat' not in hist_name_base:
-        raise ValueError(
-            f"Invalid histogram name base '{hist_name_base}': must contain 'cat'"
-        )
 
     histograms = []
     for bin_width in bin_widths_gev:
         nbins = max(1, math.ceil((global_max - global_min) / bin_width))
         hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
-        histograms.append(
-            ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
-        )
+        if "cat" not in hist_name_base and "hCat" not in hist_name_base:
+            raise ValueError(
+                f"Invalid histogram name base '{hist_name_base}': must contain 'cat' for BumpNet compatibility"
+            )
+        hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+        if weights_registry is not None:
+            hist.Sumw2()  # track weighted errors correctly
+        histograms.append(hist)
 
+    # Each signature may come from a different source file (DSID) and so carries
+    # its own weight, even though they are merged into one histogram.
     for signature in signatures:
-        for chunk in _iter_signature_chunks(signature, db_paths):
-            for hist in histograms:
-                for val in chunk:
-                    hist.Fill(float(val))
+        weight = _weight_for(weights_registry, signature)
+        mcw_sig = signature + "_mcw"
+        mcw_chunks = list(_iter_signature_chunks(mcw_sig, db_paths))
+        im_chunks = list(_iter_signature_chunks(signature, db_paths))
+
+        if mcw_chunks and len(mcw_chunks) == len(im_chunks):
+            for im_chunk, mcw_chunk in zip(im_chunks, mcw_chunks):
+                for hist in histograms:
+                    _fill_hist(hist, im_chunk, weight, mc_event_weights=mcw_chunk)
+        else:
+            for chunk in im_chunks:
+                for hist in histograms:
+                    _fill_hist(hist, chunk, weight)
     if apply_peak_removal:
         for hist in histograms:
             _apply_peak_removal_to_histogram(hist)
     return histograms
 
+
 def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
     groups = defaultdict(list)
     unmatched_files = []
     for filename in im_files:
-        match = re.search(r'_FS_(\d+e_\d+m_\d+j_\d+g(?:_\d+t)?(?:_\d+b)?)_IM_([emjgtb\d]+)', filename)
+        match = re.search(r'_FS_([0-9a-z_]+)_IM_([0-9a-z_]+)', filename)
         if match:
             fs_str, im_str = match.groups()
             bumpnet_name = _convert_to_bumpnet_name(fs_str, im_str)
@@ -422,40 +457,22 @@ def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
 
 
 def _convert_to_bumpnet_name(fs_str: str, im_str: str) -> str:
-    """
-    Convert FS and IM strings to a BumpNet histogram name.
+    particles = re.findall(r'(\d+)([emjgtbl])', im_str)
+    combo_parts = [f"{p}{c}" for c, p in particles if c != '0']
+    combo = "".join(combo_parts) if combo_parts else "none"
 
-    IM string is now index-based (e.g. "e0e1j0") so it passes through
-    directly as the combo part — no conversion needed.
-
-    FS string remains count-based (e.g. "2e_0m_3j_0g") and is formatted
-    as before (e.g. "2ex_0mx_3jx_0gx").
-
-    Examples:
-      fs="2e_0m_3j_0g"  im="e0j0"   → mass_e0j0_cat_2ex_0mx_3jx_0gx
-      fs="2e_0m_3j_0g"  im="e0e1j0" → mass_e0e1j0_cat_2ex_0mx_3jx_0gx
-      fs="2e_0m_3j_0g"  im="e1j0"   → mass_e1j0_cat_2ex_0mx_3jx_0gx  (sub-leading)
-      fs="1e_0m_0j_0g_1bx"  im="b0e0"   → mass_b0e0_cat_1ex_0mx_0jx_0gx_1bx for btag case
-
-    The regex in _group_signatures_by_bumpnet that feeds this function
-    also needs to be updated.
-    """
-    # IM part is already index-based — use directly as combo
-    combo = im_str if im_str else "none"
-
-    # FS part: count-based "2e_0m_3j_0g" → "2ex_0mx_3jx_0gx"
-    #fs_particles = re.findall(r'(\d+)([emjg])', fs_str)
-    fs_particles = re.findall(r'(\d+)([emjgtb])', fs_str)
-    fs_formatted  = "_".join(f"{c}{p}x" for c, p in fs_particles)
+    fs_particles = re.findall(r'(\d+)([emjgtbl])', fs_str)
+    fs_formatted = "_".join(f"{c}{p}x" for c, p in fs_particles)
 
     result = f"mass_{combo}_cat_{fs_formatted}"
 
     if 'cat' not in result and 'hCat' not in result:
         raise ValueError(
-            f"Generated histogram name '{result}' doesn't contain 'cat' — "
-            "BumpNet incompatible"
+            f"Generated histogram name '{result}' doesn't contain 'cat' or 'hCat' "
+            "- this will cause UnboundLocalError in BumpNet"
         )
     return result
+
 
 def _process_im_arrays_bumpnet(
     im_arrays_dir: str, output_dir: str, bin_widths_gev: list,
@@ -463,6 +480,7 @@ def _process_im_arrays_bumpnet(
     single_output_file: bool = False,
     output_filename: str = "all_histograms.root",
     apply_peak_removal: bool = False,
+    weights_registry=None,
 ):
     os.makedirs(output_dir, exist_ok=True)
     grouped_files = _group_im_files_by_signature(im_array_files)
@@ -481,6 +499,7 @@ def _process_im_arrays_bumpnet(
                 bin_widths_gev,
                 logger,
                 apply_peak_removal=apply_peak_removal,
+                weights_registry=weights_registry,
             )
             if hists:
                 _write_hists_to_shared_file(hists, root_filepath, logger)
@@ -497,6 +516,7 @@ def _process_im_arrays_bumpnet(
                 bin_widths_gev,
                 logger,
                 apply_peak_removal=apply_peak_removal,
+                weights_registry=weights_registry,
             )
             if hists:
                 root_filename = f"{bumpnet_name}_hists.root"
@@ -510,7 +530,8 @@ def _process_im_arrays_bumpnet(
 
 def _create_merged_histograms_streaming(
     files: List[str], directory: str, hist_name_base: str,
-    bin_widths_gev: list, logger: logging.Logger, apply_peak_removal: bool = False
+    bin_widths_gev: list, logger: logging.Logger, apply_peak_removal: bool = False,
+    weights_registry=None,
 ) -> List[ROOT.TH1F]:
     global_min, global_max = float('inf'), float('-inf')
     total_entries = 0
@@ -546,14 +567,17 @@ def _create_merged_histograms_streaming(
                 f"Invalid histogram name base '{hist_name_base}': must contain 'cat' for BumpNet compatibility"
             )
         hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+        if weights_registry is not None:
+            hist.Sumw2()  # track weighted errors correctly
         histograms.append(hist)
 
+    # Each source file (DSID) merged into this histogram carries its own weight.
     for f in files:
         try:
             arr = np.load(os.path.join(directory, f))
+            weight = _weight_for(weights_registry, f)
             for hist in histograms:
-                for val in arr:
-                    hist.Fill(val)
+                _fill_hist(hist, arr, weight)
             del arr
         except Exception as e:
             logger.warning(f"Error filling from {f}: {e}")
@@ -571,6 +595,7 @@ def _process_im_arrays_standard(
     single_output_file: bool = False,
     output_filename: str = "all_histograms.root",
     apply_peak_removal: bool = False,
+    weights_registry=None,
 ):
     if im_array_files is None:
         im_array_files = [f for f in os.listdir(im_arrays_dir) if f.endswith(".npy")]
@@ -588,6 +613,7 @@ def _process_im_arrays_standard(
                 bin_widths_gev,
                 logger,
                 apply_peak_removal=apply_peak_removal,
+                weights_registry=weights_registry,
             )
             if hists:
                 _write_hists_to_shared_file(hists, root_filepath, logger)
@@ -602,18 +628,24 @@ def _process_im_arrays_standard(
                 bin_widths_gev,
                 logger,
                 apply_peak_removal=apply_peak_removal,
+                weights_registry=weights_registry,
             )
             _save_hists(hists, output_dir, im_array_filename, logger)
 
 
 def _make_histograms_single_file(
     im_array_filename: str, im_arrays_dir: str,
-    bin_widths_gev: list, logger: logging.Logger, apply_peak_removal: bool = False
+    bin_widths_gev: list, logger: logging.Logger, apply_peak_removal: bool = False,
+    weights_registry=None,
 ):
     im_array = np.load(os.path.join(im_arrays_dir, im_array_filename))
+    weight = _weight_for(weights_registry, im_array_filename)
     hists = []
     for bin_width in bin_widths_gev:
-        hist = _create_histogram_single_array(im_array_filename, im_array, bin_width)
+        hist = _create_histogram_single_array(
+            im_array_filename, im_array, bin_width,
+            weight=weight, use_sumw2=weights_registry is not None,
+        )
         if apply_peak_removal:
             _apply_peak_removal_to_histogram(hist)
         hists.append(hist)
@@ -643,15 +675,18 @@ def _apply_peak_removal_to_histogram(hist: ROOT.TH1F) -> None:
         hist.SetBinError(bin_idx, 0.0)
 
 
-def _create_histogram_single_array(im_array_filename, im_array, bin_width) -> ROOT.TH1F:
+def _create_histogram_single_array(
+    im_array_filename, im_array, bin_width, weight: float = 1.0, use_sumw2: bool = False
+) -> ROOT.TH1F:
     nbins = math.ceil((np.max(im_array) - np.min(im_array)) / bin_width)
     bin_edges = np.linspace(np.min(im_array), np.max(im_array), nbins + 1)
 
     hist_name = f"ROI_{im_array_filename}_width_{bin_width}"
     hist = ROOT.TH1F(hist_name, hist_name, len(bin_edges) - 1, bin_edges)
+    if use_sumw2:
+        hist.Sumw2()  # track weighted errors correctly
 
-    for mass in im_array:
-        hist.Fill(mass)
+    _fill_hist(hist, im_array, weight)
     return hist
 
 

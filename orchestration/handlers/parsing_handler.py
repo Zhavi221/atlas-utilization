@@ -190,6 +190,7 @@ class ParsingHandler(StateHandler):
                         ),
                         event_count=len(filtered),
                         processing_time_sec=batch.processing_time_sec,
+                        source_url=batch.source_url,
                     )
 
                 # Accumulate batch into chunks
@@ -201,7 +202,8 @@ class ParsingHandler(StateHandler):
                     output_dir.mkdir(parents=True, exist_ok=True)
                     
                     batch_suffix = f"_batch{batch_idx}" if batch_idx is not None else ""
-                    file_name = f"parsed_{release_year}{batch_suffix}_chunk{chunk.chunk_index}.root"
+                    dsid_suffix = f"_dsid{chunk.dsid}" if getattr(chunk, "dsid", None) is not None else ""
+                    file_name = f"parsed_{release_year}{batch_suffix}{dsid_suffix}_chunk{chunk.chunk_index}.root"
                     file_path = output_dir / file_name
                     
                     # Save the awkward array to ROOT file
@@ -223,7 +225,8 @@ class ParsingHandler(StateHandler):
             output_dir.mkdir(parents=True, exist_ok=True)
             
             batch_suffix = f"_batch{batch_idx}" if batch_idx is not None else ""
-            file_name = f"parsed_{final_chunk.release_year}{batch_suffix}_final.root"
+            dsid_suffix = f"_dsid{final_chunk.dsid}" if getattr(final_chunk, "dsid", None) is not None else ""
+            file_name = f"parsed_{final_chunk.release_year}{batch_suffix}{dsid_suffix}_final.root"
             file_path = output_dir / file_name
             
             # Save the awkward array to ROOT file

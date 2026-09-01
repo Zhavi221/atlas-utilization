@@ -90,7 +90,7 @@ def process_final_state(
                 f"{stats['calculated']} calculated, {stats['skipped']} skipped"
             )
 
-        inv_mass, skip_reason = _calculate_combination_invariant_mass(
+        inv_mass, mc_event_weights, skip_reason = _calculate_combination_invariant_mass(
             fs_events, combination, config, calculator, logger, final_state, worker_num
         )
 
@@ -111,6 +111,20 @@ def process_final_state(
         )
         if saved_files:
             created_im_files.extend(saved_files)
+
+        # Store per-event MC weights as a parallel signature (_mcw suffix).
+        # Same length and event order as the IM array, enabling per-event
+        # weighting at histogram-fill time. The per-dataset normalization
+        # (w_norm) is folded in here — where the source DSID is still known —
+        # so the weight rides with each event and no longer depends on the
+        # source prefix surviving post-processing.
+        if mc_event_weights is not None and sqlite_writer is not None:
+            norm = config.get("mc_norm_weight", 1.0)
+            if norm != 1.0:
+                mc_event_weights = mc_event_weights * norm
+            mcw_sig = combination_name + "_mcw"
+            sqlite_writer.append_array(mcw_sig, mc_event_weights)
+            sqlite_writer.commit()
 
     remaining_files = _save_remaining_accumulated_data(
         fs_im_mapping,
@@ -142,14 +156,20 @@ def _calculate_combination_invariant_mass(
     logger: logging.Logger,
     final_state: str,
     worker_num: Optional[int] = None
-) -> Tuple[Optional[ak.Array], Optional[str]]:
+) -> Tuple[Optional[ak.Array], Optional[np.ndarray], Optional[str]]:
+    """
+    Returns:
+        (inv_mass, mc_event_weights, skip_reason)
+        mc_event_weights is a numpy array of per-event generator weights,
+        or None when the input events don't carry _mcEventWeight.
+    """
     logger.debug(f"Processing combination: {combination} for final state: {final_state}")
 
     filtered_events = calculator.filter_by_particle_counts(
         events=fs_events, particle_counts=combination, is_exact_count=True
     )
     if len(filtered_events) == 0:
-        return None, 'no_events_after_filter'
+        return None, None, 'no_events_after_filter'
 
     field_to_slice_by = config["field_to_slice_by"]
     sliced_events = calculator.slice_by_field(
@@ -157,13 +177,25 @@ def _calculate_combination_invariant_mass(
         field_to_slice_by=field_to_slice_by
     )
     if len(sliced_events) == 0:
-        return None, 'no_events_after_slice'
+        return None, None, 'no_events_after_slice'
 
     inv_mass = calculator.calculate_invariant_mass(sliced_events)
     if not ak.any(inv_mass):
-        return None, 'empty_inv_mass'
+        return None, None, 'empty_inv_mass'
 
-    return inv_mass, None
+    # Extract per-event MC generator weight if present.
+    # The _mcEventWeight field survives the same filtering/slicing as
+    # the particle arrays because ak.Array[mask] preserves all fields.
+    mc_event_weights = None
+    if "_mcEventWeight" in sliced_events.fields:
+        try:
+            mc_event_weights = ak.to_numpy(
+                sliced_events["_mcEventWeight"]["mcEventWeight"]
+            )
+        except Exception:
+            pass  # data files — no weight branch
+
+    return inv_mass, mc_event_weights, None
 
 
 def _accumulate_invariant_mass(
