@@ -118,6 +118,10 @@ class FileParser:
         # TODO Find a cleaner way to determine if dealing with nanoAOD, PHYSLITE, etc.
         # TODO Maybe add an explicit check if the algorithm-specific threshold exists in the configuration dict before
         # accessing it. However, I'd rather fail parsing then give false physics data.
+        if "Jets" not in obj_events or "DirectObjects" not in obj_events:
+            # No jets to tag. Move on.
+            return obj_events
+
         if "Jet_btagDeepFlavB" in obj_events["DirectObjects"].fields:
             # CMS: Discriminant is pre-calculated as the Jet_btagDeepFlavB field. Can change to a different algorithm if needed.
             # See https://cms-opendata-workshop.github.io/workshop2024-lesson-physics-objects/instructor/05-btagging.html
