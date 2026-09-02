@@ -157,15 +157,6 @@ def filter_events_by_particle_counts(
         if is_particle_counts_range:
             range_dict = value
             particle_mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
-        elif is_exact_count:
-            count = get_count(value)
-            start = get_start(value)
-            if start == 0:
-                # leading only: exact count as before
-                particle_mask = (obj_count == count)
-            else:
-                # sub-leading: need at least start + count particles
-                particle_mask = (obj_count >= start + count)
         else:
             count = get_count(value)
             start = get_start(value)
@@ -209,10 +200,8 @@ def slice_events_by_field(
     """
     for obj, value in particle_counts.items():
         if obj not in events.fields:
-            
-            continue
-        else:
             logging.warning(f"Could not find {obj} in event data, skipping!")
+            continue
 
         count = get_count(value)
         start = get_start(value)
