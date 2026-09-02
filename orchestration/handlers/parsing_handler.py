@@ -22,6 +22,7 @@ from services.parsing.threaded_processor import ThreadedFileProcessor, ParsingSt
 from domain.statistics import ParsingStatistics
 from domain.events import EventBatch
 from services.parsing.event_selection import apply_parsing_event_selection
+from services.parsing.schemas import normalize_release_year
 from utils.batching import get_batch_slice_by_year
 
 
@@ -114,12 +115,28 @@ class ParsingHandler(StateHandler):
         metadata = dict(context.metadata)  # mutable copy
         # Filter to only requested release years (supports _mc suffix convention)
         if parsing_config.release_years:
+            # Match on the base year so the fetcher's '<year>_mc' keys survive;
+            # whether MC is actually parsed is decided by parse_mc below.
+            requested = {normalize_release_year(y)
+                         for y in parsing_config.release_years}
             metadata = {k: v for k, v in metadata.items()
-                        if k in parsing_config.release_years}
+                        if normalize_release_year(k) in requested}
             self.logger.info(
                 f"Filtered metadata to release_years={parsing_config.release_years}: "
                 f"{list(metadata.keys())}"
             )
+        # Select MC or data, never both. The fetcher always separates the two into
+        # distinct keys (e.g. '2024r-pp' and '2024r-pp_mc'); parse_mc=True parses
+        # only the MC keys, parse_mc=False only the data keys.
+        selected = {k: v for k, v in metadata.items()
+                    if k.endswith("_mc") == parsing_config.parse_mc}
+        if metadata and not selected:
+            self.logger.warning(
+                f"No {'MC' if parsing_config.parse_mc else 'data'} keys in metadata "
+                f"(parse_mc={parsing_config.parse_mc}); available: {list(metadata)}"
+            )
+        metadata = selected
+
         batch_idx = context.config.batch_job_index
         total_batches = context.config.total_batch_jobs
         
@@ -143,14 +160,6 @@ class ParsingHandler(StateHandler):
         
         # Parse each release year
         for release_year, file_urls in metadata.items():
-            # ── Skip MC keys when parse_mc=False ─────────────────────────────────────
-            # The fetcher always separates data and MC into separate keys (e.g.
-            # '2024r-pp' and '2024r-pp_mc'). parse_mc controls whether MC is
-            # included in the parsing run, not whether it is separated.
-            if release_year.endswith("_mc") and not parsing_config.parse_mc:
-                self.logger.info(f"Skipping MC key '{release_year}' (parse_mc=False)")
-                continue
-
             self.logger.info(
                 f"Parsing {len(file_urls)} files for release year: {release_year}"
             )
