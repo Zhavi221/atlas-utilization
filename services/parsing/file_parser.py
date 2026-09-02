@@ -130,8 +130,19 @@ class FileParser:
             pu = obj_events["DirectObjects"]["BTagging_AntiKt4EMPFlowAuxDyn.DL1dv01_pu"][indices]
             # DL1d score: log(pb / (fc*pc + (1-fc)*pu)), fc=0.018 is standard ATLAS.
             fc = 0.018
-            dl1d = np.log(pb / (fc * pc + (1 - fc) * pu))
-            is_bjet = dl1d > jet_btagging_thresholds["DL1d"]
+
+            # Handle edge cases where pb=0, or pc=pu=0.
+            denominator = fc * pc + (1 - fc) * pu
+            is_scoreable = (pb > 0) & (denominator > 0)
+            dl1d = np.log(
+                ak.where(is_scoreable, pb, 1.0) / ak.where(is_scoreable, denominator, 1.0)
+            )
+            # For now, if not scoreable -- assume jet.
+            is_bjet = ak.where(
+                is_scoreable,
+                dl1d > jet_btagging_thresholds["DL1d"],
+                False,
+            )
         else:
             return obj_events
         obj_events["BJets"] = obj_events["Jets"][is_bjet]
