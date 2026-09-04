@@ -38,6 +38,90 @@ NANOAOD_BTAGGING_OBJECTS = [
     "Jet_btagDeepFlavB"
 ]
 
+# ---------------------------------------------------------------------------
+# Single-lepton trigger chains per data-taking year (Run 2).
+#
+# For each year the list gives the ``AnalysisTrigMatch_HLT_*`` branch stems
+# present in the ATLAS Open Data PHYSLITE files.  An event passes the
+# trigger requirement when *any* offline electron (muon) has a non-empty
+# match to *any* electron (muon) chain — the chains within a year are OR'd.
+#
+# MC samples produced for the full Run-2 period ("mc20") should use the
+# union of all years.
+# ---------------------------------------------------------------------------
+SINGLE_LEPTON_TRIGGER_CHAINS = {
+    "2015": {
+        "Electrons": [
+            "AnalysisTrigMatch_HLT_e24_lhmedium_L1EM20VH",
+            "AnalysisTrigMatch_HLT_e60_lhmedium",
+            "AnalysisTrigMatch_HLT_e120_lhloose",
+        ],
+        "Muons": [
+            "AnalysisTrigMatch_HLT_mu20_iloose_L1MU15",
+            "AnalysisTrigMatch_HLT_mu40",
+        ],
+    },
+    "2016": {
+        "Electrons": [
+            "AnalysisTrigMatch_HLT_e26_lhtight_nod0_ivarloose",
+            "AnalysisTrigMatch_HLT_e60_lhmedium_nod0",
+            "AnalysisTrigMatch_HLT_e140_lhloose_nod0",
+        ],
+        "Muons": [
+            "AnalysisTrigMatch_HLT_mu26_ivarmedium",
+            "AnalysisTrigMatch_HLT_mu50",
+        ],
+    },
+    "2017": {
+        "Electrons": [
+            "AnalysisTrigMatch_HLT_e26_lhtight_nod0_ivarloose",
+            "AnalysisTrigMatch_HLT_e60_lhmedium_nod0",
+            "AnalysisTrigMatch_HLT_e140_lhloose_nod0",
+        ],
+        "Muons": [
+            "AnalysisTrigMatch_HLT_mu26_ivarmedium",
+            "AnalysisTrigMatch_HLT_mu50",
+        ],
+    },
+    "2018": {
+        "Electrons": [
+            "AnalysisTrigMatch_HLT_e26_lhtight_nod0_ivarloose",
+            "AnalysisTrigMatch_HLT_e60_lhmedium_nod0",
+            "AnalysisTrigMatch_HLT_e140_lhloose_nod0",
+        ],
+        "Muons": [
+            "AnalysisTrigMatch_HLT_mu26_ivarmedium",
+            "AnalysisTrigMatch_HLT_mu50",
+        ],
+    },
+}
+
+
+TRIGGER_BRANCH_SUFFIX = "AuxDyn.TrigMatchedObjects"
+
+
+def get_trigger_branches_for_release(release_year: str) -> list[str]:
+    """Return flat list of all trigger branch names for a release year.
+
+    For MC (``release_year`` ending in ``_mc``), returns the union of all
+    years since the MC sample covers the full Run-2 period.
+    """
+    normalized = normalize_release_year(release_year)
+    # MC covers all years — take the union of all chains
+    if release_year.endswith("_mc") or normalized in ("2024r-pp",):
+        all_branches = set()
+        for year_chains in SINGLE_LEPTON_TRIGGER_CHAINS.values():
+            for chains in year_chains.values():
+                all_branches.update(chains)
+        return sorted(c + TRIGGER_BRANCH_SUFFIX for c in all_branches)
+    # Data: could filter by year if encoded in the file URL — for now, union
+    return sorted(
+        b + TRIGGER_BRANCH_SUFFIX
+        for year_chains in SINGLE_LEPTON_TRIGGER_CHAINS.values()
+        for chains in year_chains.values()
+        for b in chains
+    )
+
 # Mapping from specific record IDs to their release year/schema identifier
 # This will be populated when schemas are extracted from record IDs
 RECORD_ID_TO_SCHEMA = {

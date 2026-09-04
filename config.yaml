@@ -103,6 +103,10 @@ parsing_task_config:
   show_progress_bar: true
 
   # ===EVENT FILTERING===
+  # ===single Lepton trigger=======================================================
+  trigger_config:
+    enabled: false
+
   particle_counts:
     electrons: { min: 0, max: 4 }
     muons:     { min: 0, max: 4 }

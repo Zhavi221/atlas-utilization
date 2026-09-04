@@ -223,6 +223,8 @@ class PipelineConfig:
     mass_calculation_config: Optional[MassCalculationConfig] = None
     post_processing_config: Optional[PostProcessingConfig] = None
     histogram_creation_config: Optional[HistogramCreationConfig] = None
+        # Trigger matching configuration
+    trigger_config: Optional[dict] = None
     
     # Run metadata
     run_name: str = "pipeline_run"
@@ -380,6 +382,7 @@ class PipelineConfig:
             mass_calculation_config=mass_calculation_config,
             post_processing_config=post_processing_config,
             histogram_creation_config=histogram_creation_config,
+            trigger_config=config_dict.get("trigger_config"),
             run_name=run_metadata.get("run_name", "pipeline_run"),
             batch_job_index=run_metadata.get("batch_job_index"),
             total_batch_jobs=run_metadata.get("total_batch_jobs"),
