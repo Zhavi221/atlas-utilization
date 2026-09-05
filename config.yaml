@@ -34,7 +34,7 @@ paths:
 
 # ===NAMES====================================================================
 names:
-  run_name:           &run_name           "fix_final_state_thresholds_mc"
+  run_name:           &run_name           "bug_hunt"
   histogram_filename: &histogram_filename "atlas_opendata_full_bumpnet.root"
 
 # ===RUN METADATA=============================================================
