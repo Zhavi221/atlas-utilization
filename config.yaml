@@ -34,7 +34,7 @@ paths:
 
 # ===NAMES====================================================================
 names:
-  run_name:           &run_name           "atlas_full_fixComb_fixCut"
+  run_name:           &run_name           "fix_final_state_thresholds_mc"
   histogram_filename: &histogram_filename "atlas_opendata_full_bumpnet.root"
 
 # ===RUN METADATA=============================================================
@@ -87,8 +87,8 @@ parsing_task_config:
   chunk_yield_threshold_bytes:  2147483648  # 2 GB
   count_retries_failed_files: 3
   fetching_metadata_timeout: 60
-  max_files_to_process: null             # null = all files; set e.g. 3 for a quick test
-  enable_jet_tagging: false              # when true, split Jets into BJets/LJets. Must give thresholds for btagging discriminants!
+  max_files_to_process: 100              # data files only because parse_mc is false
+  enable_jet_tagging: true              # when true, split Jets into BJets/LJets. Must give thresholds for btagging discriminants!
   jet_btagging_thresholds:
     btagDeepFlavB: 0.5
     DL1d: 2.51
@@ -108,8 +108,8 @@ parsing_task_config:
     muons:     { min: 0, max: 4 }
     jets:      { min: 0, max: 4 }
     bjets:     { min: 0, max: 4 }
-    photons:   { min: 0, max: 4 }
-    taus:      { min: 0, max: 4 }
+    photons:   { min: 0, max: 0 }
+    taus:      { min: 0, max: 0 }
 
   kinematic_cuts:
     electrons: { pt_min: 25000.0, eta_max: 2.47, rel_isolation_max: 0.06 }
@@ -133,14 +133,14 @@ mass_calculation_task_config:
   fs_chunk_threshold_bytes: 2000000000  # 2 GB
 
   # ===COMBINATORICS===
-  objects_to_calculate: [Electrons, Muons, Jets, BJets, Photons, Taus]
+  objects_to_calculate: [Electrons, Muons, Jets, BJets] # , Photons, Taus
   min_particles_in_combination: 2        # min particle types in a combination
   max_particles_in_combination: 4        # max particle types was 4 reduces 12,567 → ~28 combinations
   min_count_particle_in_combination: 1   # min count per type
   max_count_particle_in_combination: 4   # max count per type was 4
   max_total_particles_in_combination: 4
   min_events_per_fs: 100                 # drop final states with fewer events
-  include_subleading: false        # set true to include e1, j1, etc.
+  include_subleading: true        # set true to include e1, j1, etc.
   max_subleading_index: 1          # highest rank index to consider
 
 # --- 3. Post-Processing ------------------------------------------------------
@@ -168,6 +168,6 @@ histogram_creation_task_config:
   # ===OUTPUT===
   single_output_file: true
   output_filename: *histogram_filename
-  exclude_outliers: false # was designed to remove high-mass outliers from very broad distributions, but it doesn't work properly during merging
+  exclude_outliers: true # was designed to remove high-mass outliers from very broad distributions, but it doesn't work properly during merging
   use_bumpnet_naming: true               # mass_<combo>_cat_<final_state> format
   apply_peak_removal_at_histogram_level: false
