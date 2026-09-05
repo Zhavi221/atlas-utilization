@@ -25,6 +25,49 @@ from services.parsing.event_selection import apply_parsing_event_selection
 from utils.batching import get_batch_slice_by_year
 
 
+def select_metadata_for_parsing(
+    metadata: dict[str, list[str]],
+    release_years,
+    parse_mc: bool,
+) -> dict[str, list[str]]:
+    """Select exactly the requested ATLAS dataset mode from cached metadata.
+
+    ATLAS metadata is stored under paired keys such as ``2024r-pp`` for data
+    and ``2024r-pp_mc`` for Monte Carlo. ``parse_mc`` selects one member of
+    each pair; it does not mean that data and MC should be parsed together.
+    """
+    requested_releases = list(release_years or [])
+    if requested_releases:
+        selected_keys = set()
+        for release in requested_releases:
+            if release.startswith("record_"):
+                selected_keys.add(release)
+                continue
+            base_release = release[:-3] if release.endswith("_mc") else release
+            selected_keys.add(f"{base_release}_mc" if parse_mc else base_release)
+
+        missing_keys = sorted(
+            key for key in selected_keys if not metadata.get(key)
+        )
+        if missing_keys:
+            mode = "MC" if parse_mc else "data"
+            raise RuntimeError(
+                f"No {mode} metadata found for requested release key(s): "
+                f"{missing_keys}. Available keys: {sorted(metadata)}"
+            )
+        return {
+            key: urls for key, urls in metadata.items() if key in selected_keys
+        }
+
+    # Explicit record IDs are not paired ATLAS release keys, so parse_mc does
+    # not alter their selection. For ATLAS releases, retain exactly one mode.
+    return {
+        key: urls
+        for key, urls in metadata.items()
+        if key.startswith("record_") or key.endswith("_mc") == parse_mc
+    }
+
+
 class ParsingHandler(StateHandler):
     """
     Handler for PARSING state.
@@ -112,14 +155,17 @@ class ParsingHandler(StateHandler):
         
         # ---- Apply batch splitting if configured ----
         metadata = dict(context.metadata)  # mutable copy
-        # Filter to only requested release years (supports _mc suffix convention)
-        if parsing_config.release_years:
-            metadata = {k: v for k, v in metadata.items()
-                        if k in parsing_config.release_years}
-            self.logger.info(
-                f"Filtered metadata to release_years={parsing_config.release_years}: "
-                f"{list(metadata.keys())}"
-            )
+        metadata = select_metadata_for_parsing(
+            metadata,
+            parsing_config.release_years,
+            parsing_config.parse_mc,
+        )
+        self.logger.info(
+            "Selected %s metadata for release_years=%s: %s",
+            "MC" if parsing_config.parse_mc else "data",
+            parsing_config.release_years,
+            list(metadata.keys()),
+        )
         batch_idx = context.config.batch_job_index
         total_batches = context.config.total_batch_jobs
         
@@ -143,14 +189,6 @@ class ParsingHandler(StateHandler):
         
         # Parse each release year
         for release_year, file_urls in metadata.items():
-            # ── Skip MC keys when parse_mc=False ─────────────────────────────────────
-            # The fetcher always separates data and MC into separate keys (e.g.
-            # '2024r-pp' and '2024r-pp_mc'). parse_mc controls whether MC is
-            # included in the parsing run, not whether it is separated.
-            if release_year.endswith("_mc") and not parsing_config.parse_mc:
-                self.logger.info(f"Skipping MC key '{release_year}' (parse_mc=False)")
-                continue
-
             self.logger.info(
                 f"Parsing {len(file_urls)} files for release year: {release_year}"
             )
