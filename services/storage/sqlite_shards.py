@@ -148,10 +148,10 @@ def prune_final_states_below_min_events(
 ) -> list[str]:
     """Remove final states whose global event population is below a threshold.
 
-    Chunk/file prefixes are ignored.  For each final state, the largest global
-    entry count among its invariant-mass combinations is its event population:
-    every eligible event contributes once to at least one contained combination.
-    This uses the uncompressed SQLite metadata and does not reread ROOT payloads.
+    Chunk/file prefixes are ignored. New shards provide pre-combination-cut event
+    counts directly. For legacy shards, the largest global entry count among a
+    final state's invariant-mass combinations is used as its contribution. This
+    uses the uncompressed SQLite metadata and does not reread ROOT payloads.
     """
     db_paths = [db_path] if isinstance(db_path, str) else list(db_path)
     db_paths = [path for path in db_paths if os.path.exists(path)]
@@ -159,10 +159,11 @@ def prune_final_states_below_min_events(
         return []
 
     pattern = re.compile(r"(_FS_[0-9a-z_]+)_IM_([0-9a-z]+)$")
-    totals_by_channel: dict[tuple[str, str], int] = {}
+    legacy_totals_by_channel: dict[tuple[str, str], int] = {}
     explicit_populations: dict[str, int] = {}
     signatures_by_db_and_fs: dict[tuple[str, str], list[str]] = {}
     for path in db_paths:
+        counted_final_states: set[str] = set()
         with sqlite3.connect(path) as conn:
             rows = conn.execute(
                 f"""
@@ -187,6 +188,7 @@ def prune_final_states_below_min_events(
                         final_state if final_state.startswith("_FS_")
                         else f"_FS_{final_state}"
                     )
+                    counted_final_states.add(normalized)
                     explicit_populations[normalized] = (
                         explicit_populations.get(normalized, 0) + int(count)
                     )
@@ -195,14 +197,21 @@ def prune_final_states_below_min_events(
             if not match:
                 continue
             final_state, combination = match.groups()
-            key = (final_state, combination)
-            totals_by_channel[key] = totals_by_channel.get(key, 0) + int(entries)
+            if final_state not in counted_final_states:
+                key = (final_state, combination)
+                legacy_totals_by_channel[key] = (
+                    legacy_totals_by_channel.get(key, 0) + int(entries)
+                )
             signatures_by_db_and_fs.setdefault((path, final_state), []).append(signature)
 
-    populations: dict[str, int] = {}
-    for (final_state, _combination), entries in totals_by_channel.items():
-        populations[final_state] = max(populations.get(final_state, 0), entries)
-    populations.update(explicit_populations)
+    legacy_populations: dict[str, int] = {}
+    for (final_state, _combination), entries in legacy_totals_by_channel.items():
+        legacy_populations[final_state] = max(
+            legacy_populations.get(final_state, 0), entries
+        )
+    populations = dict(explicit_populations)
+    for final_state, count in legacy_populations.items():
+        populations[final_state] = populations.get(final_state, 0) + count
 
     removed = [fs for fs, count in populations.items() if count < min_events]
     for path in db_paths:
