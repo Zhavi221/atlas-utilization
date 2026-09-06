@@ -10,7 +10,7 @@ from typing import Iterator, Optional, Callable
 from tqdm import tqdm
 
 from domain.events import EventBatch
-from .file_parser import FileParser
+from .file_parser import FileParser, PartialFileReadError
 
 
 class ThreadedFileProcessor:
@@ -95,7 +95,7 @@ class ThreadedFileProcessor:
                         result = future.result(timeout=300)  # 5 minute timeout per file
                         
                         if result is not None:
-                            events, processing_time = result
+                            events, processing_time, partial_error = result
                             
                             # Create EventBatch
                             batch = self._create_event_batch(
@@ -105,11 +105,15 @@ class ThreadedFileProcessor:
                                 processing_time=processing_time
                             )
                             
-                            # Callback
-                            if on_success:
+                            if partial_error is not None:
+                                logging.warning("Partial parse retained: %s", partial_error)
+                                if on_error:
+                                    on_error(file_url, partial_error)
+                            elif on_success:
                                 on_success(file_url, batch.event_count, processing_time)
-                            
-                            yield batch
+
+                            if batch.event_count > 0:
+                                yield batch
                     
                     except Exception as e:
                         logging.warning(f"Error processing file {file_url}: {e}")
@@ -128,7 +132,7 @@ class ThreadedFileProcessor:
         batch_size: int,
         enable_jet_tagging: bool,
         jet_btagging_thresholds: Optional[dict[str, float]],
-    ) -> Optional[tuple]:
+    ) -> tuple:
         """
         Parse a single file (runs in thread).
         
@@ -139,26 +143,31 @@ class ThreadedFileProcessor:
             batch_size: Batch size for reading
             
         Returns:
-            Tuple of (events, processing_time) or None if parsing failed
+            Tuple of (events, processing_time, partial_error)
         """
         import time
         start_time = time.time()
         
-        events = self.file_parser.parse_file(
-            file_path=file_url,
-            tree_names=tree_names,
-            release_year=release_year,
-            batch_size=batch_size,
-            enable_jet_tagging=enable_jet_tagging,
-            jet_btagging_thresholds=jet_btagging_thresholds,
-        )
-        
+        partial_error = None
+        try:
+            events = self.file_parser.parse_file(
+                file_path=file_url,
+                tree_names=tree_names,
+                release_year=release_year,
+                batch_size=batch_size,
+                enable_jet_tagging=enable_jet_tagging,
+                jet_btagging_thresholds=jet_btagging_thresholds,
+            )
+        except PartialFileReadError as error:
+            events = error.events
+            partial_error = error
+
         processing_time = time.time() - start_time
-        
+
         if events is None:
-            return None
-        
-        return (events, processing_time)
+            raise RuntimeError("Parser returned no event data")
+
+        return (events, processing_time, partial_error)
     
     def _create_event_batch(
         self,
@@ -250,6 +259,11 @@ class ParsingStatisticsCollector:
         with self.lock:
             self.failed_count += 1
             self.failed_files.append((file_url, str(error)))
+            partial_events = getattr(error, "events", None)
+            if partial_events is not None:
+                self.total_events += len(partial_events)
+                if hasattr(partial_events, "layout"):
+                    self.total_size_bytes += partial_events.layout.nbytes
     
     def get_summary(self) -> dict:
         """Get statistics summary."""
