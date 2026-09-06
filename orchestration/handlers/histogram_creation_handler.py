@@ -11,6 +11,8 @@ from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
 
+from services.calculations.weights_registry import WeightsRegistry
+
 
 class HistogramCreationHandler(StateHandler):
     """
@@ -82,9 +84,6 @@ class HistogramCreationHandler(StateHandler):
         mc_cfg = getattr(context.config, "mc_weighting_config", None)
         if mc_cfg is None or not mc_cfg.enabled:
             return None
-
-        from pathlib import Path
-        from services.calculations.weights_registry import WeightsRegistry
 
         hc = context.config.histogram_creation_config
         registry_path = str(Path(hc.input_dir) / "weights_registry.json")
