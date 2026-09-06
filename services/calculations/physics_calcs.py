@@ -1,3 +1,5 @@
+
+_NON_PARTICLE_FIELDS = frozenset({"_mcEventWeight"})
 """
 Physics calculations for particle event processing.
 
@@ -30,6 +32,8 @@ def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
 def concat_events(particle_events: ak.Array) -> list:
     all_vectors = []
     for particle_type in particle_events.fields:
+        if particle_type in _NON_PARTICLE_FIELDS:
+            continue
         particle_array = particle_events[particle_type]
         mass = get_particle_known_mass(particle_type, particle_array)
         momentum_vector = vector.zip({
@@ -60,7 +64,8 @@ def extract_object_types(fields: list) -> set:
 def group_by_final_state(events: ak.Array) -> Iterator[Tuple[str, ak.Array]]:
     num_events = len(events)
     zero_array = ak.Array([0] * num_events) if num_events > 0 else ak.Array([])
-    particle_counts = ak.num(events)
+    _particle_fields = {f: events[f] for f in events.fields if f not in _NON_PARTICLE_FIELDS}
+    particle_counts = ak.num(ak.zip(_particle_fields, depth_limit=1))
 
     e = getattr(particle_counts, "Electrons", zero_array)
     m = getattr(particle_counts, "Muons", zero_array)
@@ -140,7 +145,8 @@ def filter_events_by_particle_counts(
     if len(events) == 0:
         return events
 
-    combined_mask = ak.ones_like(ak.num(events[events.fields[0]]), dtype=bool)
+    _first = next(f for f in events.fields if f not in _NON_PARTICLE_FIELDS)
+    combined_mask = ak.ones_like(ak.num(events[_first]), dtype=bool)
 
     for obj, value in particle_counts.items():
         actual_field = find_actual_field_name(events.fields, obj)
@@ -185,6 +191,8 @@ def filter_events_by_particle_counts(
 
         if len(fields_to_keep) == 0:
             return ak.Array([])
+        if "_mcEventWeight" in filtered_events.fields:
+            fields_to_keep["_mcEventWeight"] = filtered_events["_mcEventWeight"]
         filtered_events = ak.zip(fields_to_keep, depth_limit=1)
 
     return ak.to_packed(filtered_events)
@@ -254,10 +262,12 @@ def filter_events_by_kinematics(
     if _kinematic_cuts_is_per_object(kinematic_cuts):
         cuts_by_obj = kinematic_cuts
     else:
-        cuts_by_obj = {obj: kinematic_cuts for obj in events.fields}
+        cuts_by_obj = {obj: kinematic_cuts for obj in events.fields if obj not in _NON_PARTICLE_FIELDS}
 
     filtered_events = {}
     for obj in events.fields:
+        if obj in _NON_PARTICLE_FIELDS:
+            continue
         particles = events[obj]
         cuts = cuts_by_obj.get(obj)
         if cuts is None:
@@ -313,6 +323,9 @@ def filter_events_by_kinematics(
         # Boolean mask (not ak.mask) so dropped particles do not appear in lists
         filtered_events[obj] = particles[mask]
 
+    # Preserve _mcEventWeight through kinematic filtering
+    if "_mcEventWeight" in events.fields:
+        filtered_events["_mcEventWeight"] = events["_mcEventWeight"]
     return ak.zip(filtered_events, depth_limit=1)
 
 

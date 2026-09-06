@@ -19,6 +19,7 @@ from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
 from services.storage.sqlite_shards import SqliteArrayShardWriter
+from services.parsing import schemas
 
 
 class MassCalculationHandler(StateHandler):
@@ -179,6 +180,12 @@ class MassCalculationHandler(StateHandler):
             if sub_branches:
                 particle_dict[ptype] = ak.zip(sub_branches)
 
+        # Carry per-event MC generator weight if the parsed file has it.
+        if "_mcEventWeight_mcEventWeight" in branch_names:
+            particle_dict["_mcEventWeight"] = ak.zip({
+                "mcEventWeight": tree["_mcEventWeight_mcEventWeight"].array(library="ak")
+            })
+
         return ak.Array(particle_dict)
 
     # Branch mapping for raw ATLAS Open Data files (2024r release)
@@ -206,6 +213,13 @@ class MassCalculationHandler(StateHandler):
                     sub_branches[field] = tree[branch_name].array(library="ak")
             if sub_branches:
                 particle_dict[ptype] = ak.zip(sub_branches)
+
+        # Carry per-event MC generator weight when reading raw ATLAS files
+        mc_weight_branch = schemas.MC_EVENT_WEIGHT_BRANCHES.get(schemas.normalize_release_year("2024r-pp"), "EventInfoAuxDyn.mcEventWeights")
+        if mc_weight_branch in tree:
+            particle_dict["_mcEventWeight"] = ak.zip({
+                "mcEventWeight": tree[mc_weight_branch].array(library="ak")
+            })
 
         return ak.Array(particle_dict)
 
