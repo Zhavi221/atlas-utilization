@@ -98,12 +98,35 @@ class FileParser:
             n_entries,
             batch_size
         )
+        obj_events = FileParser._split_combined_leptons(obj_events, release_year)
         if enable_jet_tagging:
             obj_events = FileParser._calculate_btagging_and_split(obj_events, jet_btagging_thresholds)
         # Strip out DirectObjects -- they are not physics objects!
         if "DirectObjects" in obj_events.keys():
             obj_events.pop("DirectObjects")
         return ak.zip(obj_events, depth_limit=1)
+
+    @staticmethod
+    def _split_combined_leptons(
+        obj_events: dict[str, ak.Array], release_year: str
+    ) -> dict[str, ak.Array]:
+        """Split legacy ``lep_*`` branches using their absolute PDG identifier."""
+        normalized_release = schemas.normalize_release_year(release_year)
+        if normalized_release not in {"2016e-8tev", "2025e-13tev-beta"}:
+            return obj_events
+
+        source = obj_events.get("Electrons")
+        if source is None:
+            source = obj_events.get("Muons")
+        if source is None or "type" not in source.fields:
+            raise ValueError(
+                f"{normalized_release} combined lepton branches require lep_type"
+            )
+
+        abs_type = abs(source["type"])
+        obj_events["Electrons"] = source[abs_type == 11]
+        obj_events["Muons"] = source[abs_type == 13]
+        return obj_events
 
     @staticmethod
     def _calculate_btagging_and_split(
