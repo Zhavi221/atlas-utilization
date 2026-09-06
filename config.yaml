@@ -76,7 +76,7 @@ mc_weighting_config:
   #   mc16d: 44.3
   #   mc16e: 58.5
   luminosity_by_campaign: null
-  require_metadata: false                # hard-error if a dataset lacks cross_section_pb / sumOfWeights
+  require_metadata: true                # hard-error if a dataset lacks cross_section_pb / sumOfWeights
                                          # (missing kFactor / genFiltEff always default to 1.0, never an error)
 
 # ============================================================================

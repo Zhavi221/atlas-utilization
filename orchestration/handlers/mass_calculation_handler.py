@@ -19,6 +19,7 @@ from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
 from services.storage.sqlite_shards import SqliteArrayShardWriter
+from services.parsing import schemas
 
 
 class MassCalculationHandler(StateHandler):
@@ -214,7 +215,7 @@ class MassCalculationHandler(StateHandler):
                 particle_dict[ptype] = ak.zip(sub_branches)
 
         # Carry per-event MC generator weight when reading raw ATLAS files
-        mc_weight_branch = "EventInfoAuxDyn.mcEventWeight"
+        mc_weight_branch = schemas.MC_EVENT_WEIGHT_BRANCHES.get(schemas.normalize_release_year("2024r-pp"), "EventInfoAuxDyn.mcEventWeights")
         if mc_weight_branch in tree:
             particle_dict["_mcEventWeight"] = ak.zip({
                 "mcEventWeight": tree[mc_weight_branch].array(library="ak")
