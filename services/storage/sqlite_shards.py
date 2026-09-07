@@ -40,6 +40,14 @@ class SqliteArrayShardWriter:
         self.conn.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{table_name}_signature ON {table_name}(signature)"
         )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS shard_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
 
     def append_array(self, signature: str, arr: np.ndarray) -> None:
         """Append one numpy array chunk under a signature."""
@@ -68,6 +76,13 @@ class SqliteArrayShardWriter:
 
     def commit(self) -> None:
         self.conn.commit()
+
+    def set_metadata(self, key: str, value: object) -> None:
+        """Persist structured metadata alongside the shard's arrays."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO shard_metadata(key, value) VALUES (?, ?)",
+            (key, str(value)),
+        )
 
     def close(self) -> None:
         self.conn.commit()

@@ -7,7 +7,7 @@ mass calculations using the combinatorics and IM calculator modules.
 
 import os
 import logging
-from datetime import datetime
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -38,7 +38,7 @@ class MassCalculationHandler(StateHandler):
             self.logger.warning("No mass_calculation_config – skipping")
             return context, self._determine_next_state(context)
 
-        start = datetime.now()
+        start = time.perf_counter()
 
         from services.calculations import combinatorics
         from services.calculations.im_calculator import IMCalculator
@@ -103,6 +103,7 @@ class MassCalculationHandler(StateHandler):
 
         if not root_files:
             self.logger.warning(f"No parsed ROOT files found in {parsed_dir}")
+            sqlite_writer.close()
             return context, self._determine_next_state(context)
 
         total_created_chunks = 0
@@ -127,15 +128,26 @@ class MassCalculationHandler(StateHandler):
                         exc_info=True,
                     )
         finally:
-            sqlite_writer.close()
+            elapsed = time.perf_counter() - start
+            try:
+                sqlite_writer.set_metadata("mass_calculation_time_sec", elapsed)
+                sqlite_writer.set_metadata("created_chunks", total_created_chunks)
+            finally:
+                sqlite_writer.close()
 
-        elapsed = (datetime.now() - start).total_seconds()
         self.logger.info(
             f"Mass calculation complete: {total_created_chunks} IM chunks/signatures "
             f"in {elapsed:.1f}s; shard={shard_path}"
         )
 
-        updated = context.with_im_files([shard_name])
+        updated = context.with_im_files([shard_name]).with_custom_data(
+            "mass_calc",
+            {
+                "total_time_sec": elapsed,
+                "created_chunks": total_created_chunks,
+                "shard": shard_name,
+            },
+        )
         next_state = self._determine_next_state(updated)
         self._log_state_exit(context, next_state)
         return updated, next_state

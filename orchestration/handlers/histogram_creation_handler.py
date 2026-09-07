@@ -60,6 +60,10 @@ class HistogramCreationHandler(StateHandler):
         elapsed = (datetime.now() - start).total_seconds()
         self.logger.info(f"Histogram creation complete in {elapsed:.1f}s")
 
-        next_state = self._determine_next_state(context)
+        updated = context.with_custom_data(
+            "histograms",
+            {"total_time_sec": elapsed},
+        )
+        next_state = self._determine_next_state(updated)
         self._log_state_exit(context, next_state)
-        return context, next_state
+        return updated, next_state

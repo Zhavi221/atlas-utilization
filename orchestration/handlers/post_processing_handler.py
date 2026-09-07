@@ -58,7 +58,13 @@ class PostProcessingHandler(StateHandler):
             f"in {elapsed:.1f}s"
         )
 
-        updated = context.with_processed_files(processed_files)
+        updated = context.with_processed_files(processed_files).with_custom_data(
+            "post_processing",
+            {
+                "total_time_sec": elapsed,
+                "processed_arrays": len(processed_files),
+            },
+        )
         next_state = self._determine_next_state(updated)
         self._log_state_exit(context, next_state)
         return updated, next_state

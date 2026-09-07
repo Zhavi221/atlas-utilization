@@ -132,6 +132,38 @@ class PipelineExecutor:
 
         self.logger.info(f"Saved batch stats to: {stats_path}")
 
+    def save_stage_stats(self, run_dir: str, context: PipelineContext) -> None:
+        """Persist machine-readable timing data for every stage in this run.
+
+        Each stage and batch gets its own file so independently scheduled jobs
+        never overwrite one another.  A rerun of the same stage/batch replaces
+        its previous measurement atomically.
+        """
+        stage_stats = {}
+        if context.parsing_stats:
+            stage_stats["parsing"] = context.parsing_stats.to_dict()
+        for stage in ("mass_calc", "post_processing", "histograms"):
+            if stage in context.custom_data:
+                stage_stats[stage] = context.custom_data[stage]
+
+        if not stage_stats:
+            return
+
+        logs_dir = Path(run_dir) / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        batch_suffix = (
+            f"_batch_{context.config.batch_job_index}"
+            if context.config.batch_job_index is not None
+            else ""
+        )
+        for stage, stats in stage_stats.items():
+            stats_path = logs_dir / f"{stage}_stats{batch_suffix}.json"
+            temp_path = stats_path.with_suffix(".json.tmp")
+            with open(temp_path, "w") as stats_file:
+                json.dump(stats, stats_file, indent=2, default=str)
+            temp_path.replace(stats_path)
+            self.logger.info(f"Saved {stage} statistics to: {stats_path}")
+
 
     def scan_global_ranges(self, run_dir: str):
         """
@@ -306,17 +338,13 @@ class PipelineExecutor:
         for the plotter.
         """
         pipeline_stats = {}
-
-        # Batch logs can recover stage timings even when per-stage stat files
-        # are not persisted by handlers.
-        batch_exec_stats = self._read_batch_execution_stats(run_dir)
+        stage_timings = self._read_stage_timings(run_dir)
 
         # ----- Parsed data -----
         parsed_dir = os.path.join(run_dir, "parsed_data")
         parsing_stats, particle_stats = self._read_parsed_data_stats(parsed_dir)
         if parsing_stats:
-            if batch_exec_stats.get("parsing_time_sec", 0) > 0:
-                parsing_stats["total_time_sec"] = batch_exec_stats["parsing_time_sec"]
+            parsing_stats["total_time_sec"] = stage_timings.get("parsing", 0.0)
             pipeline_stats['parsing'] = parsing_stats
         if particle_stats:
             pipeline_stats['particles'] = particle_stats
@@ -325,74 +353,49 @@ class PipelineExecutor:
         im_dir = os.path.join(run_dir, "im_arrays")
         mass_stats = self._read_im_array_stats(im_dir)
         if mass_stats:
-            if batch_exec_stats.get("mass_calc_time_sec", 0) > 0:
-                mass_stats["total_time_sec"] = batch_exec_stats["mass_calc_time_sec"]
+            # SQLite metadata is authoritative.  The structured stage file is
+            # a fallback for legacy non-SQLite output modes.
+            if mass_stats.get("total_time_sec", 0) <= 0:
+                mass_stats["total_time_sec"] = stage_timings.get("mass_calc", 0.0)
             pipeline_stats['mass_calc'] = mass_stats
 
         # ----- Post-processed arrays -----
         im_proc_dir = os.path.join(run_dir, "im_arrays_processed")
         post_stats = self._read_post_processing_stats(im_proc_dir)
         if post_stats:
-            if batch_exec_stats.get("post_processing_time_sec", 0) > 0:
-                post_stats["total_time_sec"] = batch_exec_stats["post_processing_time_sec"]
+            post_stats["total_time_sec"] = stage_timings.get("post_processing", 0.0)
             pipeline_stats['post_processing'] = post_stats
 
         # ----- Histograms -----
         hist_dir = os.path.join(run_dir, "histograms")
         hist_stats = self._read_histogram_stats(hist_dir, post_stats=post_stats)
         if hist_stats:
-            if batch_exec_stats.get("histogram_time_sec", 0) > 0:
-                hist_stats["total_time_sec"] = batch_exec_stats["histogram_time_sec"]
+            hist_stats["total_time_sec"] = stage_timings.get("histograms", 0.0)
             pipeline_stats['histograms'] = hist_stats
 
         return pipeline_stats
 
-    def _read_batch_execution_stats(self, run_dir: str) -> dict:
-        """
-        Recover stage timings from per-batch stdout logs and aggregated stats.
-
-        This is used for plot reconstruction in merge/plots-only mode when
-        handlers did not persist stage timing objects in JSON stats.
-        """
+    def _read_stage_timings(self, run_dir: str) -> dict[str, float]:
+        """Sum persisted stage timings without depending on log formatting."""
         logs_dir = Path(run_dir) / "logs"
-        if not logs_dir.is_dir():
-            return {}
-
-        stats = {
-            "parsing_time_sec": 0.0,
-            "mass_calc_time_sec": 0.0,
-            "post_processing_time_sec": 0.0,
-            "histogram_time_sec": 0.0,
-            "total_batch_time_sec": 0.0,
+        timings = {
+            "parsing": 0.0,
+            "mass_calc": 0.0,
+            "post_processing": 0.0,
+            "histograms": 0.0,
         }
+        if not logs_dir.is_dir():
+            return timings
 
-        mass_re = re.compile(r"Mass calculation complete: .* in ([0-9.]+)s")
-        post_re = re.compile(r"Post-processing complete: .* in ([0-9.]+)s")
-        hist_re = re.compile(r"Histogram creation complete in ([0-9.]+)s")
-
-        for out_file in sorted(logs_dir.glob("batch_*.out")):
-            try:
-                text = out_file.read_text(errors="ignore")
-            except Exception:
-                continue
-
-            for m in mass_re.findall(text):
-                stats["mass_calc_time_sec"] += float(m)
-            for m in post_re.findall(text):
-                stats["post_processing_time_sec"] += float(m)
-            for m in hist_re.findall(text):
-                stats["histogram_time_sec"] += float(m)
-
-        aggregated_path = logs_dir / "aggregated_stats.json"
-        if aggregated_path.exists():
-            try:
-                with open(aggregated_path) as f:
-                    agg = json.load(f)
-                stats["total_batch_time_sec"] = float(agg.get("total_batch_time_sec", 0) or 0)
-            except Exception:
-                pass
-
-        return stats
+        for stage in timings:
+            for stats_path in logs_dir.glob(f"{stage}_stats*.json"):
+                try:
+                    with open(stats_path) as stats_file:
+                        stats = json.load(stats_file)
+                    timings[stage] += float(stats.get("total_time_sec", 0) or 0)
+                except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                    self.logger.warning(f"Could not read stage statistics {stats_path}: {exc}")
+        return timings
 
     def _read_parsed_data_stats(self, parsed_dir: str):
         import uproot
@@ -480,6 +483,7 @@ class PipelineExecutor:
 
         if sqlite_files and not npy_files:
             total_mass_values = 0
+            total_time_sec = 0.0
             combos_per_object = {}
             combo_sizes = {}
             fs_events = {}
@@ -506,6 +510,26 @@ class PipelineExecutor:
                         GROUP BY signature
                         """
                     ).fetchall()
+                    has_metadata = conn.execute(
+                        """
+                        SELECT 1 FROM sqlite_master
+                        WHERE type = 'table' AND name = 'shard_metadata'
+                        """
+                    ).fetchone()
+                    if has_metadata:
+                        timing_row = conn.execute(
+                            """
+                            SELECT value FROM shard_metadata
+                            WHERE key = 'mass_calculation_time_sec'
+                            """
+                        ).fetchone()
+                        if timing_row:
+                            try:
+                                total_time_sec += float(timing_row[0])
+                            except (TypeError, ValueError):
+                                self.logger.warning(
+                                    f"Invalid mass calculation timing in {sf}: {timing_row[0]!r}"
+                                )
 
                 total_signatures += len(rows)
                 for signature, entries in rows:
@@ -547,7 +571,7 @@ class PipelineExecutor:
                 'combinations_per_object': combos_per_object,
                 'combination_size_distribution': combo_sizes,
                 'events_per_final_state': fs_events,
-                'total_time_sec': 0,
+                'total_time_sec': total_time_sec,
                 'total_signatures': total_signatures,
                 'num_shards': len(sqlite_files),
                 'total_mass_values': total_mass_values,
