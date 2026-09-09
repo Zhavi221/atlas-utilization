@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import sqlite3
 import zlib
 from typing import Dict, Iterator, List, Optional
@@ -40,6 +41,22 @@ class SqliteArrayShardWriter:
         self.conn.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{table_name}_signature ON {table_name}(signature)"
         )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS shard_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS final_state_counts (
+                final_state TEXT NOT NULL,
+                n_events INTEGER NOT NULL
+            )
+            """
+        )
 
     def append_array(self, signature: str, arr: np.ndarray) -> None:
         """Append one numpy array chunk under a signature."""
@@ -68,6 +85,20 @@ class SqliteArrayShardWriter:
 
     def commit(self) -> None:
         self.conn.commit()
+
+    def set_metadata(self, key: str, value: object) -> None:
+        """Persist structured metadata alongside the shard's arrays."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO shard_metadata(key, value) VALUES (?, ?)",
+            (key, str(value)),
+        )
+
+    def record_final_state_count(self, final_state: str, n_events: int) -> None:
+        """Record population before combination-specific physics cuts."""
+        self.conn.execute(
+            "INSERT INTO final_state_counts(final_state, n_events) VALUES (?, ?)",
+            (final_state, int(n_events)),
+        )
 
     def close(self) -> None:
         self.conn.commit()
@@ -123,6 +154,92 @@ def get_total_entries(db_path: str, table_name: str = "array_chunks") -> int:
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(f"SELECT COALESCE(SUM(n_entries), 0) FROM {table_name}").fetchone()
     return int(row[0] if row else 0)
+
+
+def prune_final_states_below_min_events(
+    db_path: str | list[str],
+    min_events: int,
+    table_name: str = "array_chunks",
+) -> list[str]:
+    """Remove final states whose global event population is below a threshold.
+
+    Chunk/file prefixes are ignored. New shards provide pre-combination-cut event
+    counts directly. For legacy shards, the largest global entry count among a
+    final state's invariant-mass combinations is used as its contribution. This
+    uses the uncompressed SQLite metadata and does not reread ROOT payloads.
+    """
+    db_paths = [db_path] if isinstance(db_path, str) else list(db_path)
+    db_paths = [path for path in db_paths if os.path.exists(path)]
+    if min_events <= 1 or not db_paths:
+        return []
+
+    pattern = re.compile(r"(_FS_[0-9a-z_]+)_IM_([0-9a-z]+)$")
+    legacy_totals_by_channel: dict[tuple[str, str], int] = {}
+    explicit_populations: dict[str, int] = {}
+    signatures_by_db_and_fs: dict[tuple[str, str], list[str]] = {}
+    for path in db_paths:
+        counted_final_states: set[str] = set()
+        with sqlite3.connect(path) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT signature, COALESCE(SUM(n_entries), 0)
+                FROM {table_name}
+                GROUP BY signature
+                """
+            ).fetchall()
+            has_count_table = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='final_state_counts'"
+            ).fetchone()
+            if has_count_table:
+                count_rows = conn.execute(
+                    """
+                    SELECT final_state, COALESCE(SUM(n_events), 0)
+                    FROM final_state_counts
+                    GROUP BY final_state
+                    """
+                ).fetchall()
+                for final_state, count in count_rows:
+                    normalized = (
+                        final_state if final_state.startswith("_FS_")
+                        else f"_FS_{final_state}"
+                    )
+                    counted_final_states.add(normalized)
+                    explicit_populations[normalized] = (
+                        explicit_populations.get(normalized, 0) + int(count)
+                    )
+        for signature, entries in rows:
+            match = pattern.search(signature)
+            if not match:
+                continue
+            final_state, combination = match.groups()
+            if final_state not in counted_final_states:
+                key = (final_state, combination)
+                legacy_totals_by_channel[key] = (
+                    legacy_totals_by_channel.get(key, 0) + int(entries)
+                )
+            signatures_by_db_and_fs.setdefault((path, final_state), []).append(signature)
+
+    legacy_populations: dict[str, int] = {}
+    for (final_state, _combination), entries in legacy_totals_by_channel.items():
+        legacy_populations[final_state] = max(
+            legacy_populations.get(final_state, 0), entries
+        )
+    populations = dict(explicit_populations)
+    for final_state, count in legacy_populations.items():
+        populations[final_state] = populations.get(final_state, 0) + count
+
+    removed = [fs for fs, count in populations.items() if count < min_events]
+    for path in db_paths:
+        with sqlite3.connect(path) as conn:
+            signatures = []
+            for final_state in removed:
+                signatures.extend(signatures_by_db_and_fs.get((path, final_state), []))
+            conn.executemany(
+                f"DELETE FROM {table_name} WHERE signature = ?",
+                [(signature,) for signature in signatures],
+            )
+            conn.commit()
+    return sorted(removed)
 
 
 def _serialize_array(arr: np.ndarray) -> bytes:

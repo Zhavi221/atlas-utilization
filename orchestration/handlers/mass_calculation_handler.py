@@ -7,9 +7,10 @@ mass calculations using the combinatorics and IM calculator modules.
 
 import os
 import logging
-from datetime import datetime
+import time
+from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import uproot
 import awkward as ak
@@ -18,7 +19,9 @@ import numpy as np
 from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
-from services.storage.sqlite_shards import SqliteArrayShardWriter
+from services.storage.sqlite_shards import (
+    SqliteArrayShardWriter,
+)
 
 
 class MassCalculationHandler(StateHandler):
@@ -38,7 +41,7 @@ class MassCalculationHandler(StateHandler):
             self.logger.warning("No mass_calculation_config – skipping")
             return context, self._determine_next_state(context)
 
-        start = datetime.now()
+        start = time.perf_counter()
 
         from services.calculations import combinatorics
         from services.calculations.im_calculator import IMCalculator
@@ -103,11 +106,15 @@ class MassCalculationHandler(StateHandler):
 
         if not root_files:
             self.logger.warning(f"No parsed ROOT files found in {parsed_dir}")
+            sqlite_writer.close()
             return context, self._determine_next_state(context)
 
         total_created_chunks = 0
 
         try:
+            eligible_final_states = self._find_eligible_final_states(
+                root_files, mc, IMCalculator, context
+            )
             for root_file_path in root_files:
                 try:
                     created = self._process_single_parsed_file(
@@ -118,6 +125,7 @@ class MassCalculationHandler(StateHandler):
                         mc,
                         IMCalculator,
                         process_final_state,
+                        eligible_final_states,
                     )
                     if created:
                         total_created_chunks += len(created)
@@ -127,15 +135,26 @@ class MassCalculationHandler(StateHandler):
                         exc_info=True,
                     )
         finally:
-            sqlite_writer.close()
+            elapsed = time.perf_counter() - start
+            try:
+                sqlite_writer.set_metadata("mass_calculation_time_sec", elapsed)
+                sqlite_writer.set_metadata("created_chunks", total_created_chunks)
+            finally:
+                sqlite_writer.close()
 
-        elapsed = (datetime.now() - start).total_seconds()
         self.logger.info(
             f"Mass calculation complete: {total_created_chunks} IM chunks/signatures "
             f"in {elapsed:.1f}s; shard={shard_path}"
         )
 
-        updated = context.with_im_files([shard_name])
+        updated = context.with_im_files([shard_name]).with_custom_data(
+            "mass_calc",
+            {
+                "total_time_sec": elapsed,
+                "created_chunks": total_created_chunks,
+                "shard": shard_name,
+            },
+        )
         next_state = self._determine_next_state(updated)
         self._log_state_exit(context, next_state)
         return updated, next_state
@@ -143,6 +162,82 @@ class MassCalculationHandler(StateHandler):
     # ------------------------------------------------------------------ #
     # helpers
     # ------------------------------------------------------------------ #
+
+    def _find_eligible_final_states(
+        self,
+        root_files: List[Path],
+        mc,
+        IMCalculator,
+        context: PipelineContext,
+    ) -> Optional[Set[str]]:
+        """Count final states globally before doing invariant-mass calculations.
+
+        ``None`` means prefiltering is intentionally disabled. In distributed
+        batch mode an individual job cannot know the population in the other
+        shards, so the existing post-processing global threshold remains the
+        correctness-preserving fallback.
+        """
+        threshold = int(mc.min_events_per_fs)
+        if threshold <= 1:
+            return None
+
+        if (
+            context.config.batch_job_index is not None
+            and context.config.total_batch_jobs is not None
+            and context.config.total_batch_jobs > 1
+        ):
+            self.logger.info(
+                "Skipping pre-calculation final-state threshold in distributed "
+                "batch mode; the global threshold will be applied after shards "
+                "are combined"
+            )
+            return None
+
+        self.logger.info(
+            "Counting final states across %d parsed file(s) before invariant-mass "
+            "calculation (minimum events: %d)",
+            len(root_files),
+            threshold,
+        )
+        global_counts: Counter = Counter()
+        try:
+            for root_file_path in root_files:
+                particle_arrays = self._load_particle_arrays(root_file_path)
+                if particle_arrays is None:
+                    raise RuntimeError(
+                        f"could not load final-state counts from {root_file_path.name}"
+                    )
+                calculator = IMCalculator(
+                    particle_arrays,
+                    min_events_per_fs=1,
+                    min_k=mc.min_count_particle_in_combination,
+                    max_k=mc.max_count_particle_in_combination,
+                    min_n=mc.min_particles_in_combination,
+                    max_n=mc.max_particles_in_combination,
+                )
+                global_counts.update(calculator.final_state_counts())
+        except Exception as exc:
+            self.logger.warning(
+                "Could not safely complete the final-state count pre-pass (%s); "
+                "calculating all states and retaining the post-processing threshold",
+                exc,
+            )
+            return None
+
+        eligible = {
+            final_state
+            for final_state, count in global_counts.items()
+            if count >= threshold
+        }
+        self.logger.info(
+            "Final-state prefilter: %d/%d states have at least %d events; "
+            "%d states will be skipped before invariant-mass calculation",
+            len(eligible),
+            len(global_counts),
+            threshold,
+            len(global_counts) - len(eligible),
+        )
+        return eligible
 
     @staticmethod
     def _reconstruct_particle_arrays(tree) -> ak.Array:
@@ -209,6 +304,19 @@ class MassCalculationHandler(StateHandler):
 
         return ak.Array(particle_dict)
 
+    def _load_particle_arrays(self, root_file_path: Path) -> Optional[ak.Array]:
+        """Load either a parsed events tree or a supported raw ATLAS tree."""
+        with uproot.open(str(root_file_path)) as f:
+            if "events" in f:
+                return self._reconstruct_particle_arrays(f["events"])
+            if "CollectionTree" in f:
+                return self._reconstruct_from_atlas_tree(f["CollectionTree"])
+
+        self.logger.warning(
+            f"{root_file_path.name} has no recognised tree – skipping"
+        )
+        return None
+
     def _process_single_parsed_file(
         self,
         root_file_path: Path,
@@ -218,22 +326,14 @@ class MassCalculationHandler(StateHandler):
         mc,
         IMCalculator,
         process_final_state,
+        eligible_final_states: Optional[Set[str]] = None,
     ) -> List[str]:
         """Read one parsed ROOT file and compute invariant masses."""
         self.logger.info(f"Reading parsed file: {root_file_path.name}")
 
-        with uproot.open(str(root_file_path)) as f:
-            if "events" in f:
-                tree = f["events"]
-                particle_arrays = self._reconstruct_particle_arrays(tree)
-            elif "CollectionTree" in f:
-                tree = f["CollectionTree"]
-                particle_arrays = self._reconstruct_from_atlas_tree(tree)
-            else:
-                self.logger.warning(
-                    f"{root_file_path.name} has no recognised tree – skipping"
-                )
-                return []
+        particle_arrays = self._load_particle_arrays(root_file_path)
+        if particle_arrays is None:
+            return []
 
         num_events = len(particle_arrays)
         if num_events == 0:
@@ -248,7 +348,10 @@ class MassCalculationHandler(StateHandler):
         # Initialise calculator
         calculator = IMCalculator(
             particle_arrays,
-            min_events_per_fs=mc.min_events_per_fs,
+            # The global single-job threshold was applied by the count pre-pass.
+            # Keep this at one so each file exposes all locally present states;
+            # eligibility is checked against the global count below.
+            min_events_per_fs=1,
             min_k=mc.min_count_particle_in_combination,
             max_k=mc.max_count_particle_in_combination,
             min_n=mc.min_particles_in_combination,
@@ -258,7 +361,15 @@ class MassCalculationHandler(StateHandler):
         created_files: List[str] = []
 
         for cur_fs in calculator.group_by_final_state():
+            if (
+                eligible_final_states is not None
+                and cur_fs not in eligible_final_states
+            ):
+                continue
             fs_events = calculator.get_events_for_final_state(cur_fs)
+            config_dict["sqlite_writer"].record_final_state_count(
+                cur_fs, len(fs_events)
+            )
             result = process_final_state(
                 cur_fs,
                 fs_events,
