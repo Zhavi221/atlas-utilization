@@ -43,6 +43,14 @@ class SqliteArrayShardWriter:
         )
         self.conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS shard_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        self.conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS final_state_counts (
                 final_state TEXT NOT NULL,
                 n_events INTEGER NOT NULL
@@ -77,6 +85,13 @@ class SqliteArrayShardWriter:
 
     def commit(self) -> None:
         self.conn.commit()
+
+    def set_metadata(self, key: str, value: object) -> None:
+        """Persist structured metadata alongside the shard's arrays."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO shard_metadata(key, value) VALUES (?, ?)",
+            (key, str(value)),
+        )
 
     def record_final_state_count(self, final_state: str, n_events: int) -> None:
         """Record population before combination-specific physics cuts."""

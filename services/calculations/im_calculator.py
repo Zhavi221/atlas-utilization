@@ -87,11 +87,7 @@ class IMCalculator:
         return True
 
     def group_by_final_state(self) -> Iterator[str]:
-        all_events_fs = self._get_all_events_fs()
-        all_events_fs_list = ak.to_list(all_events_fs)
-
-        fs_by_count = Counter(all_events_fs_list)
-        fs_by_count.pop("", None)
+        fs_by_count = self.final_state_counts()
         fs_by_count_sorted = [
             (fs, count) for fs, count in fs_by_count.most_common()
             if count >= self.min_events_per_fs
@@ -99,6 +95,12 @@ class IMCalculator:
 
         for fs, _count in fs_by_count_sorted:
             yield self._limit_particles_in_fs(fs, threshold=4)
+
+    def final_state_counts(self) -> Counter:
+        """Return valid final-state populations before invariant-mass work."""
+        counts = Counter(ak.to_list(self._get_all_events_fs()))
+        counts.pop("", None)
+        return counts
 
     def get_events_for_final_state(self, final_state: str) -> ak.Array:
         all_events_fs = self._get_all_events_fs()

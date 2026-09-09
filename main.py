@@ -267,6 +267,10 @@ def main():
         executor = PipelineExecutor(config)
         final_context = executor.run()
 
+        # Persist stage timings as structured data before any later phase or
+        # plot-generation process needs to reconstruct the run statistics.
+        executor.save_stage_stats(run_dir, final_context)
+
         # Save per-batch stats JSON for later aggregation
         if config.batch_job_index is not None:
             executor.save_batch_stats(run_dir, config.batch_job_index, final_context)

@@ -134,8 +134,8 @@ mass_calculation_task_config:
 
   # ===COMBINATORICS===
   objects_to_calculate: [Electrons, Muons, Jets, BJets] # , Photons, Taus
-  min_particles_in_combination: 2        # min particle types in a combination
-  max_particles_in_combination: 4        # max particle types was 4 reduces 12,567 → ~28 combinations
+  min_particles_in_combination: 1        # one type is enough; total objects must still be >= 2
+  max_particles_in_combination: 4        # maximum distinct particle types in a combination
   min_count_particle_in_combination: 1   # min count per type
   max_count_particle_in_combination: 4   # max count per type was 4
   max_total_particles_in_combination: 4
