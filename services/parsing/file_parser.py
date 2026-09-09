@@ -8,11 +8,11 @@ No orchestration logic, no state management.
 import logging
 import awkward as ak
 import numpy as np
-import uproot
 import itertools
 from typing import Optional
 
 from services.parsing import schemas
+from services.parsing.root_io import open_root_file
 from services import consts
 
 
@@ -58,7 +58,7 @@ class FileParser:
             Awkward array of events with particle objects, or None if parsing failed
         """
         try:
-            with uproot.open(file_path) as root_file:
+            with open_root_file(file_path) as root_file:
                 return FileParser._parse_opened_file(
                     root_file,
                     tree_names,
