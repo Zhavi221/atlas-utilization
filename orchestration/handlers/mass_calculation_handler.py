@@ -18,7 +18,9 @@ import numpy as np
 from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
-from services.storage.sqlite_shards import SqliteArrayShardWriter
+from services.storage.sqlite_shards import (
+    SqliteArrayShardWriter,
+)
 
 
 class MassCalculationHandler(StateHandler):
@@ -260,7 +262,9 @@ class MassCalculationHandler(StateHandler):
         # Initialise calculator
         calculator = IMCalculator(
             particle_arrays,
-            min_events_per_fs=mc.min_events_per_fs,
+            # The threshold is applied once across every parsed chunk after all
+            # arrays have been written to the shard.
+            min_events_per_fs=1,
             min_k=mc.min_count_particle_in_combination,
             max_k=mc.max_count_particle_in_combination,
             min_n=mc.min_particles_in_combination,
@@ -271,6 +275,9 @@ class MassCalculationHandler(StateHandler):
 
         for cur_fs in calculator.group_by_final_state():
             fs_events = calculator.get_events_for_final_state(cur_fs)
+            config_dict["sqlite_writer"].record_final_state_count(
+                cur_fs, len(fs_events)
+            )
             result = process_final_state(
                 cur_fs,
                 fs_events,

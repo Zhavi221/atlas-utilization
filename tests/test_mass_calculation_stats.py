@@ -22,6 +22,7 @@ class MassCalculationStatsTests(unittest.TestCase):
             "sample_FS_2e_0m_0j_0g_0t_0b_IM_e0e1",
             np.array([10.0, 20.0]),
         )
+        writer.record_final_state_count("2e_0m_0j_0g_0t_0b", 2)
         writer.set_metadata("mass_calculation_time_sec", elapsed)
         writer.close()
 
@@ -52,6 +53,18 @@ class MassCalculationStatsTests(unittest.TestCase):
 
             self.assertEqual(stats["total_time_sec"], 0.0)
             self.assertEqual(stats["total_mass_values"], 2)
+
+    def test_plot_stats_use_sqlite_timing_without_log_files(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            run_dir = Path(tmp_dir)
+            im_dir = run_dir / "im_arrays"
+            im_dir.mkdir()
+            self._write_shard(im_dir / "im_batch_1.sqlite", 6.5)
+
+            stats = self.executor._collect_stats_from_output(str(run_dir))
+
+            self.assertEqual(stats["mass_calc"]["total_time_sec"], 6.5)
+            self.assertEqual(stats["mass_calc"]["total_mass_values"], 2)
 
     def test_reads_structured_stage_timings_without_logs(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

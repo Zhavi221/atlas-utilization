@@ -312,7 +312,7 @@ class PipelineConfig:
         
         # Parse mass calculation config if enabled
         mass_calculation_config = None
-        if tasks.do_mass_calculating:
+        if tasks.do_mass_calculating or tasks.do_post_processing:
             mass_dict = config_dict.get("mass_calculation_task_config", {})
             
             # Handle objects_to_calculate (can be None or list)

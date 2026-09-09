@@ -4,10 +4,10 @@ Schema definitions for different ATLAS Open Data release years.
 Each release year may have different branch naming conventions.
 Schemas use a template-based approach: prefix + object_name + suffix
 """
-import uproot
 import requests
 import json
 from services import consts
+from services.parsing.root_io import open_root_file
 
 # Base object definitions (fields needed for invariant mass calculation)
 BASE_OBJECTS = {
@@ -132,8 +132,8 @@ RELEASE_SCHEMAS = {
             # Note: Photons not detected in this release
         },
         "objects": {
-            "Electrons": ["pt", "eta", "phi"],  # No mass field detected
-            "Muons": ["pt", "eta", "phi"],      # No mass field detected
+            "Electrons": ["pt", "eta", "phi", "type", "charge"],
+            "Muons": ["pt", "eta", "phi", "type", "charge"],
             "Jets": ["pt", "eta", "phi", "mass"]
         }
     },
@@ -152,8 +152,8 @@ RELEASE_SCHEMAS = {
             # Note: tau_pt exists but represents tau jets, not regular jets
         },
         "objects": {
-            "Electrons": ["pt", "eta", "phi"],  # No mass field detected
-            "Muons": ["pt", "eta", "phi"],      # No mass field detected
+            "Electrons": ["pt", "eta", "phi", "type", "charge"],
+            "Muons": ["pt", "eta", "phi", "type", "charge"],
             "Jets": ["pt", "eta", "phi"],       # No mass field detected
             "Photons": ["pt", "eta", "phi"],
             "Taus": ["pt", "eta", "phi"]
@@ -252,7 +252,7 @@ def extract_schema_from_record_id(record_id: int, sample_file_uri: str = None) -
     
     # Open the ROOT file and inspect branches
     try:
-        with uproot.open(sample_file_uri) as file:
+        with open_root_file(sample_file_uri) as file:
             # Try common tree names
             tree_names = ["CollectionTree", "mini", "analysis"]
             tree = None

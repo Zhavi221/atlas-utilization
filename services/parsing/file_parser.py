@@ -8,12 +8,25 @@ No orchestration logic, no state management.
 import logging
 import awkward as ak
 import numpy as np
-import uproot
 import itertools
 from typing import Optional
 
 from services.parsing import schemas
+from services.parsing.root_io import open_root_file
 from services import consts
+
+
+class PartialFileReadError(RuntimeError):
+    """A ROOT file failed after a usable prefix of its events was parsed."""
+
+    def __init__(self, file_path: str, events: ak.Array, read_error: Exception):
+        self.file_path = file_path
+        self.events = events
+        self.read_error = read_error
+        super().__init__(
+            f"ROOT read failed for {file_path}: {read_error}; "
+            f"retaining {len(events)} events parsed before the failure"
+        )
 
 
 class FileParser:
@@ -45,7 +58,7 @@ class FileParser:
             Awkward array of events with particle objects, or None if parsing failed
         """
         try:
-            with uproot.open(file_path) as root_file:
+            with open_root_file(file_path) as root_file:
                 return FileParser._parse_opened_file(
                     root_file,
                     tree_names,
@@ -55,8 +68,10 @@ class FileParser:
                     enable_jet_tagging,
                     jet_btagging_thresholds,
                 )
+        except PartialFileReadError:
+            raise
         except Exception as e:
-            logging.warning(f"Failed to open file {file_path}: {e}")
+            logging.warning(f"Failed to parse file {file_path}: {e}")
             return None
     
     @staticmethod
@@ -91,19 +106,45 @@ class FileParser:
             return None
         
         all_branches = set(itertools.chain.from_iterable(obj_branches.values()))
-        obj_events = FileParser._read_file_in_batches(
+        obj_events, read_error = FileParser._read_file_in_batches(
             tree,
             all_branches,
             obj_branches,
             n_entries,
             batch_size
         )
+        obj_events = FileParser._split_combined_leptons(obj_events, release_year)
         if enable_jet_tagging:
             obj_events = FileParser._calculate_btagging_and_split(obj_events, jet_btagging_thresholds)
         # Strip out DirectObjects -- they are not physics objects!
         if "DirectObjects" in obj_events.keys():
             obj_events.pop("DirectObjects")
-        return ak.zip(obj_events, depth_limit=1)
+        events = ak.zip(obj_events, depth_limit=1)
+        if read_error is not None:
+            raise PartialFileReadError(file_path, events, read_error) from read_error
+        return events
+
+    @staticmethod
+    def _split_combined_leptons(
+        obj_events: dict[str, ak.Array], release_year: str
+    ) -> dict[str, ak.Array]:
+        """Split legacy ``lep_*`` branches using their absolute PDG identifier."""
+        normalized_release = schemas.normalize_release_year(release_year)
+        if normalized_release not in {"2016e-8tev", "2025e-13tev-beta"}:
+            return obj_events
+
+        source = obj_events.get("Electrons")
+        if source is None:
+            source = obj_events.get("Muons")
+        if source is None or "type" not in source.fields:
+            raise ValueError(
+                f"{normalized_release} combined lepton branches require lep_type"
+            )
+
+        abs_type = abs(source["type"])
+        obj_events["Electrons"] = source[abs_type == 11]
+        obj_events["Muons"] = source[abs_type == 13]
+        return obj_events
 
     @staticmethod
     def _calculate_btagging_and_split(
@@ -445,10 +486,11 @@ class FileParser:
         obj_branches: dict[str, dict[str, str]],
         n_entries: int,
         batch_size: int
-    ) -> dict[str, ak.Array]:
+    ) -> tuple[dict[str, ak.Array], Optional[Exception]]:
         obj_events_by_quantities = {
             obj_name: [] for obj_name in obj_branches.keys()
         }
+        read_error = None
         
         is_file_big = n_entries > batch_size
         if is_file_big:
@@ -468,8 +510,12 @@ class FileParser:
                     library="ak"
                 )
             except Exception as e:
-                logging.warning(f"Error reading batch {entry_start}-{entry_stop}: {e}")
-                continue
+                read_error = RuntimeError(
+                    f"batch {entry_start}-{entry_stop} failed with "
+                    f"{type(e).__name__}: {e}"
+                )
+                logging.warning("Stopping partial ROOT read: %s", read_error)
+                break
             
             for obj_name, branch_mapping in obj_branches.items():
                 available_branches = [
@@ -489,7 +535,7 @@ class FileParser:
                     for full_branch, quantity in obj_branches[obj_name].items()
                 })
         
-        return result
+        return result, read_error
     
     @staticmethod
     def _auto_detect_branches(tree_branches: set[str]) -> dict[str, dict[str, str]]:

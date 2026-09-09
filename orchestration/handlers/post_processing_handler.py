@@ -37,6 +37,11 @@ class PostProcessingHandler(StateHandler):
             "z_peak_cutoff": pp.z_peak_cutoff,
             "max_mass_cutoff": pp.max_mass_cutoff,
             "batch_job_index": context.config.batch_job_index,
+            "min_events_per_fs": (
+                context.config.mass_calculation_config.min_events_per_fs
+                if context.config.mass_calculation_config is not None
+                else 0
+            ),
         }
 
         # If the previous stage produced files, pass them explicitly
