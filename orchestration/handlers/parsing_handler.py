@@ -22,6 +22,7 @@ from services.parsing.threaded_processor import ThreadedFileProcessor, ParsingSt
 from domain.statistics import ParsingStatistics
 from domain.events import EventBatch
 from services.parsing.event_selection import apply_parsing_event_selection
+from services.parsing.schemas import normalize_release_year
 from utils.batching import get_batch_slice_by_year
 
 
