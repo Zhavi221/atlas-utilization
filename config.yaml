@@ -53,6 +53,14 @@ tasks:
   do_post_processing: true
   do_histogram_creation: true
 
+# ===SINGLE-LEPTON TRIGGER SELECTION==========================================
+# When enabled, events must have at least one offline-quality lepton
+# (surviving kinematic and isolation cuts) that is trigger-matched.
+trigger_config:
+  enabled: false
+
+# ===STAGE CONFIGURATIONS=====================================================
+
 # ===TESTING==================================================================
 testing_config:
   is_on: false
@@ -101,11 +109,6 @@ parsing_task_config:
     - "Events"
   create_dirs: true
   show_progress_bar: true
-
-  # ===EVENT FILTERING===
-  # ===single Lepton trigger=======================================================
-  trigger_config:
-    enabled: false
 
   particle_counts:
     electrons: { min: 0, max: 4 }
