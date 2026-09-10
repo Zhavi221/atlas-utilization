@@ -5,6 +5,7 @@ Provides functions for invariant mass calculations, event filtering
 by kinematics and particle counts, final state grouping, and event slicing.
 """
 import awkward as ak
+import logging
 import numpy as np
 import vector
 import gc
@@ -43,8 +44,8 @@ def concat_events(particle_events: ak.Array) -> list:
 
 
 def get_particle_known_mass(particle_type: str, particle_array: ak.Array) -> ak.Array:
-    if 'm' in particle_array.fields:
-        return particle_array.m
+    if 'mass' in particle_array.fields:
+        return particle_array['mass']
     return consts.KNOWN_MASSES.get(particle_type, 0.0)
 
 
@@ -143,11 +144,11 @@ def filter_events_by_particle_counts(
     combined_mask = ak.ones_like(ak.num(events[events.fields[0]]), dtype=bool)
 
     for obj, value in particle_counts.items():
-        actual_field = find_actual_field_name(events.fields, obj)
-        if not actual_field:
+        if obj not in events.fields:
+            logging.warning(f"Could not find {obj} in event data, skipping!")
             continue
 
-        obj_array = events[actual_field]
+        obj_array = events[obj]
         if ak.all(ak.is_none(obj_array)):
             continue
 
@@ -156,15 +157,6 @@ def filter_events_by_particle_counts(
         if is_particle_counts_range:
             range_dict = value
             particle_mask = (obj_count >= range_dict['min']) & (obj_count <= range_dict['max'])
-        elif is_exact_count:
-            count = get_count(value)
-            start = get_start(value)
-            if start == 0:
-                # leading only: exact count as before
-                particle_mask = (obj_count == count)
-            else:
-                # sub-leading: need at least start + count particles
-                particle_mask = (obj_count >= start + count)
         else:
             count = get_count(value)
             start = get_start(value)
@@ -179,9 +171,10 @@ def filter_events_by_particle_counts(
     if is_exact_count:
         fields_to_keep = {}
         for particle_type in particle_counts.keys():
-            actual_field = find_actual_field_name(filtered_events.fields, particle_type)
-            if actual_field:
-                fields_to_keep[actual_field] = filtered_events[actual_field]
+            if particle_type in filtered_events.fields:
+                fields_to_keep[particle_type] = filtered_events[particle_type]
+            else:
+                logging.warning(f"Could not find {particle_type} in event data, skipping!")
 
         if len(fields_to_keep) == 0:
             return ak.Array([])
@@ -206,18 +199,18 @@ def slice_events_by_field(
         → takes e₁ (second-highest pT electron) and j₀ (leading jet)
     """
     for obj, value in particle_counts.items():
-        actual_field = find_actual_field_name(events.fields, obj)
-        if not actual_field:
+        if obj not in events.fields:
+            logging.warning(f"Could not find {obj} in event data, skipping!")
             continue
 
         count = get_count(value)
         start = get_start(value)
 
-        obj_array = events[actual_field]
+        obj_array = events[obj]
         sorted_obj_array = obj_array[ak.argsort(obj_array[field_to_slice_by], ascending=False)]
         # Slice window: [start : start + count]
         sliced_obj_array = sorted_obj_array[:, start : start + count]
-        events[actual_field] = sliced_obj_array
+        events[obj] = sliced_obj_array
 
     return events
 
@@ -314,10 +307,3 @@ def filter_events_by_kinematics(
         filtered_events[obj] = particles[mask]
 
     return ak.zip(filtered_events, depth_limit=1)
-
-
-def find_actual_field_name(fields: list, obj_name: str) -> Optional[str]:
-    for field in fields:
-        if obj_name in field:
-            return field
-    return None

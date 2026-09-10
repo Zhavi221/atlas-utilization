@@ -21,7 +21,7 @@ from services.parsing.event_accumulator import EventAccumulator
 from services.parsing.threaded_processor import ThreadedFileProcessor, ParsingStatisticsCollector
 from domain.statistics import ParsingStatistics
 from domain.events import EventBatch
-from services.parsing.event_selection import apply_parsing_event_selection
+from services.parsing.event_selection import apply_parsing_event_selection, apply_trigger_selection
 from utils.batching import get_batch_slice_by_year
 
 
@@ -173,6 +173,40 @@ class ParsingHandler(StateHandler):
                 on_success=on_success,
                 on_error=on_error
             ):
+
+               # Apply single-lepton trigger matching if enabled,
+                # and always strip _triggerMatch before kinematic cuts
+                trigger_cfg = getattr(context.config, "trigger_config", None) or {}
+                if trigger_cfg.get("enabled", False):
+                    filtered = apply_trigger_selection(
+                        batch.events,
+                        release_year=release_year,
+                    )
+                    batch = EventBatch(
+                        events=filtered,
+                        file_id=batch.file_id,
+                        release_year=batch.release_year,
+                        size_bytes=(
+                            filtered.layout.nbytes
+                            if hasattr(filtered, "layout")
+                            else batch.size_bytes
+                        ),
+                        event_count=len(filtered),
+                        processing_time_sec=batch.processing_time_sec,
+                    )
+                elif "_triggerMatch" in batch.events.fields:
+                    # Strip trigger fields even when not filtering
+                    clean = {f: batch.events[f] for f in batch.events.fields if f != "_triggerMatch"}
+                    cleaned_events = ak.zip(clean, depth_limit=1)
+                    batch = EventBatch(
+                        events=cleaned_events,
+                        file_id=batch.file_id,
+                        release_year=batch.release_year,
+                        size_bytes=batch.size_bytes,
+                        event_count=len(cleaned_events),
+                        processing_time_sec=batch.processing_time_sec,
+                    )
+
                 if parsing_config.kinematic_cuts or parsing_config.particle_counts:
                     filtered = apply_parsing_event_selection(
                         batch.events,
@@ -191,7 +225,6 @@ class ParsingHandler(StateHandler):
                         event_count=len(filtered),
                         processing_time_sec=batch.processing_time_sec,
                     )
-
                 # Accumulate batch into chunks
                 chunk = self.accumulator.add_batch(batch)
                 

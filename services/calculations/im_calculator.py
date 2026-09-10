@@ -53,9 +53,7 @@ class IMCalculator:
 
     @staticmethod
     def _get_particle_mass(particle_type: str, particle_array: ak.Array) -> ak.Array:
-        if 'm' in particle_array.fields:
-            return particle_array.m
-        return consts.KNOWN_MASSES.get(particle_type, 0.0)
+        return physics_calcs.get_particle_known_mass(particle_type, particle_array)
 
     def _get_all_events_fs(self) -> ak.Array:
         if self._all_events_fs is None:
