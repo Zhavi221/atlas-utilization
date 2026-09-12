@@ -315,13 +315,12 @@ def _find_rightmost_highest_peak(
     if len(im_array) == 0:
         return None
 
-    min_mass = np.min(im_array)
-    max_mass = np.max(im_array)
-    nbins = math.ceil((max_mass - min_mass) / bin_width)
-    if nbins == 0:
-        return None
+    # Align bins to multiples of bin_width starting from 0
+    # so peak detection matches histogram bin edges
+    min_mass = np.floor(np.min(im_array) / bin_width) * bin_width
+    max_mass = np.ceil(np.max(im_array) / bin_width) * bin_width
 
-    bin_edges = np.linspace(min_mass, max_mass, nbins + 1)
+    bin_edges = np.arange(min_mass, max_mass + bin_width, bin_width)
     counts, _ = np.histogram(im_array, bins=bin_edges)
     if len(counts) == 0:
         return None
