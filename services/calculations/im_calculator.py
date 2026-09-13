@@ -9,6 +9,7 @@ import vector
 from typing import Dict, Iterator, List
 from collections import Counter
 
+from domain.events import particle_fields
 from services.calculations import consts, physics_calcs
 from services.calculations.combinatorics import get_count, get_start
 
@@ -44,7 +45,7 @@ class IMCalculator:
 
     def _concat_particles_to_vectors(self, particle_events: ak.Array) -> List[ak.Array]:
         all_vectors = []
-        for particle_type in particle_events.fields:
+        for particle_type in particle_fields(particle_events):
             particle_array = particle_events[particle_type]
             mass = self._get_particle_mass(particle_type, particle_array)
             momentum_vector = vector.zip({
@@ -62,7 +63,7 @@ class IMCalculator:
 
     def _get_all_events_fs(self) -> ak.Array:
         if self._all_events_fs is None:
-            particle_counts = ak.num(self.events)
+            particle_counts = physics_calcs.count_particles(self.events)
             num_events = len(self.events)
             zero_array = ak.Array([0] * num_events) if num_events > 0 else ak.Array([])
 

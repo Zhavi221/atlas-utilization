@@ -12,8 +12,16 @@ from typing import Dict, List, Optional, Tuple
 import awkward as ak
 import numpy as np
 
+from domain.events import (
+    MC_EVENT_INFO_FIELD,
+    MC_EVENT_WEIGHT_FIELD,
+    MC_CHANNEL_NUMBER_FIELD,
+)
 from services.calculations.im_calculator import IMCalculator
 from services.calculations.combinatorics import get_count, get_start
+
+# Signature suffix of the per-event MC weight array stored next to an IM array.
+MC_WEIGHT_SUFFIX = "_mcw"
 
 
 def process_final_state(
@@ -90,7 +98,7 @@ def process_final_state(
                 f"{stats['calculated']} calculated, {stats['skipped']} skipped"
             )
 
-        inv_mass, skip_reason = _calculate_combination_invariant_mass(
+        inv_mass, mc_event_weights, skip_reason = _calculate_combination_invariant_mass(
             fs_events, combination, config, calculator, logger, final_state, worker_num
         )
 
@@ -109,8 +117,18 @@ def process_final_state(
             fs_mapping_threshold_bytes, output_dir, logger,
             output_mode=output_mode, sqlite_writer=sqlite_writer
         )
-        if saved_files:
-            created_im_files.extend(saved_files)
+        # Store per-event MC weights as a parallel signature (_mcw suffix)
+        # through the same accumulate/flush path: same length and event order
+        # as the IM array, so every event carries its final weight and nothing
+        # downstream needs to know its dataset.
+        if mc_event_weights is not None:
+            saved_files += _accumulate_invariant_mass(
+                fs_im_mapping, final_state, combination_name + MC_WEIGHT_SUFFIX,
+                ak.Array(mc_event_weights),
+                fs_mapping_threshold_bytes, output_dir, logger,
+                output_mode=output_mode, sqlite_writer=sqlite_writer
+            )
+        created_im_files.extend(_without_weight_arrays(saved_files))
 
     remaining_files = _save_remaining_accumulated_data(
         fs_im_mapping,
@@ -119,8 +137,7 @@ def process_final_state(
         output_mode=output_mode,
         sqlite_writer=sqlite_writer,
     )
-    if remaining_files:
-        created_im_files.extend(remaining_files)
+    created_im_files.extend(_without_weight_arrays(remaining_files))
 
     logger.info(
         f"{prefix} [{filename}] Completed '{final_state}': "
@@ -128,6 +145,11 @@ def process_final_state(
     )
 
     return stats, created_im_files
+
+
+def _without_weight_arrays(names: List[str]) -> List[str]:
+    """Drop the MC weight siblings so only IM arrays are counted as created artifacts."""
+    return [n for n in names if not n.endswith(MC_WEIGHT_SUFFIX)]
 
 
 def _convert_array_to_gev(inv_mass: ak.Array) -> ak.Array:
@@ -142,14 +164,21 @@ def _calculate_combination_invariant_mass(
     logger: logging.Logger,
     final_state: str,
     worker_num: Optional[int] = None
-) -> Tuple[Optional[ak.Array], Optional[str]]:
+) -> Tuple[Optional[ak.Array], Optional[np.ndarray], Optional[str]]:
+    """
+    Returns:
+        (inv_mass, mc_event_weights, skip_reason)
+        mc_event_weights is a numpy array of final per-event MC weights
+        (generator weight x dataset normalization), or None when MC
+        weighting is disabled or the events carry no MC info (data).
+    """
     logger.debug(f"Processing combination: {combination} for final state: {final_state}")
 
     filtered_events = calculator.filter_by_particle_counts(
         events=fs_events, particle_counts=combination, is_exact_count=True
     )
     if len(filtered_events) == 0:
-        return None, 'no_events_after_filter'
+        return None, None, 'no_events_after_filter'
 
     field_to_slice_by = config["field_to_slice_by"]
     sliced_events = calculator.slice_by_field(
@@ -157,13 +186,53 @@ def _calculate_combination_invariant_mass(
         field_to_slice_by=field_to_slice_by
     )
     if len(sliced_events) == 0:
-        return None, 'no_events_after_slice'
+        return None, None, 'no_events_after_slice'
 
     inv_mass = calculator.calculate_invariant_mass(sliced_events)
     if not ak.any(inv_mass):
-        return None, 'empty_inv_mass'
+        return None, None, 'empty_inv_mass'
 
-    return inv_mass, None
+    # The MC info field survives the same filtering/slicing as the particle
+    # arrays (ak.Array[mask] preserves all fields), so weights stay aligned.
+    # Weights are only emitted when MC weighting is switched on.
+    mc_event_weights = None
+    if config.get("mc_weighting_enabled") and MC_EVENT_INFO_FIELD in sliced_events.fields:
+        mc_event_weights = _event_weights(
+            sliced_events[MC_EVENT_INFO_FIELD],
+            config.get("mc_norm_by_dsid"),
+            config.get("mc_norm_default", 1.0),
+        )
+
+    return inv_mass, mc_event_weights, None
+
+
+def _event_weights(
+    mc_info: ak.Array,
+    norm_by_dsid: Optional[Dict[int, float]],
+    default_norm: float = 1.0,
+) -> np.ndarray:
+    """
+    Final per-event MC weight: generator weight x per-dataset normalization.
+
+    ``norm_by_dsid`` maps dataset number -> w_norm (computed once per DSID by
+    the mass-calculation handler). Events whose dataset is not in the map, or
+    that carry no dataset number, get ``default_norm`` (the file-level factor,
+    or 1 when unknown).
+    """
+    n = len(mc_info)
+    if MC_EVENT_WEIGHT_FIELD in mc_info.fields:
+        weights = np.asarray(ak.to_numpy(mc_info[MC_EVENT_WEIGHT_FIELD]), dtype=np.float64)
+    else:
+        weights = np.ones(n, dtype=np.float64)
+
+    norm = np.full(n, float(default_norm), dtype=np.float64)
+    if norm_by_dsid and MC_CHANNEL_NUMBER_FIELD in mc_info.fields:
+        dsids = np.asarray(ak.to_numpy(mc_info[MC_CHANNEL_NUMBER_FIELD]))
+        for dsid in np.unique(dsids):
+            factor = norm_by_dsid.get(int(dsid))
+            if factor is not None:
+                norm[dsids == dsid] = factor
+    return weights * norm
 
 
 def _accumulate_invariant_mass(
