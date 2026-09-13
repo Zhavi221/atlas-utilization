@@ -41,6 +41,25 @@ Converts the processed arrays into ROOT histograms. When `use_bumpnet_naming` is
 
 Output: ROOT histogram file(s) in `histograms/`.
 
+### Monte-Carlo event weighting (optional)
+
+Simulated samples are generated with arbitrary statistics, so their histograms are only comparable to data (or to each other) once every event is scaled to a target integrated luminosity:
+
+```
+w_event = w_gen(event) * (sigma[pb] * 1000 * kFactor * genFiltEff * L[fb^-1]) / sumOfWeights
+```
+
+`sigma`, `kFactor`, `genFiltEff` and `sumOfWeights` are per-dataset (DSID) values fetched from the ATLAS Open Data metadata; `w_gen` is the per-event generator weight (`mcEventWeights[0]` in PHYSLITE; ±1 or larger for NLO samples); only `L` is chosen in the config. Enable it with the `mc_weighting_config` block:
+
+```yaml
+mc_weighting_config:
+  enabled: true
+  target_luminosity_fb: 140.1
+  require_metadata: true   # fail if a dataset lacks cross section / sumOfWeights
+```
+
+When enabled, the parser stores each event's generator weight and dataset number (`mcChannelNumber`) next to the particle arrays, chunks are closed at dataset boundaries (the DSID is stamped into the parsed filename), mass calculation writes a per-event weight array (`<signature>_mcw`) alongside every invariant-mass array, post-processing applies identical cuts to both, and histograms are filled with `Fill(mass, weight)` with `Sumw2()` enabled so bin errors are weighted. When disabled (the default) the pipeline output is identical to an unweighted run; data files never carry the weight branches and are unaffected either way. `python -m testing.smoke_test_mc_weighting` exercises the feature end-to-end on synthetic events.
+
 ## Output structure
 
 Each run writes to an isolated timestamped directory:
@@ -169,6 +188,9 @@ python main.py --dry-run
 | `histogram_creation_task_config` | `use_bumpnet_naming` | `true` for BumpNet-compatible histogram names |
 | `histogram_creation_task_config` | `bin_width_gev` | Histogram bin width in GeV |
 | `post_processing_task_config` | `peak_detection_bin_width_gev` | Bin width used during known-peak detection |
+| `mc_weighting_config` | `enabled` | Weight simulated events to `target_luminosity_fb` (default `false`) |
+| `mc_weighting_config` | `target_luminosity_fb` | Target integrated luminosity in fb⁻¹ (`luminosity_by_campaign` overrides it per MC campaign when known) |
+| `mc_weighting_config` | `require_metadata` | Abort when a dataset lacks `cross_section_pb` / `sumOfWeights`; otherwise such datasets stay unweighted |
 
 All paths (`output_path`, `input_dir`, `output_dir`, etc.) are defined once in the `paths:` block at the top of `config.yaml` and reused via YAML anchors. At runtime, **relative** paths are overridden to point inside the timestamped run directory. To point a specific stage at an external directory, set its path to an **absolute** path in `config.yaml` — absolute paths are preserved as-is.
 
