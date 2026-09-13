@@ -12,6 +12,14 @@ Based on: `master` of [atlas-utilization](https://github.com/Zhavi221/atlas-util
 
 ## Summary of Changes
 
+### Fix 18 — Remove obsolete global-range scan integration
+
+Histograms now use fixed 0–10,000 GeV ranges in every batch, so the former
+global min/max pre-scan is no longer required. The `--scan-only` CLI mode,
+range-file configuration plumbing, and scan helpers have been removed. The
+data and MC PBS workflows now schedule histogram creation directly after
+post-processing, followed by the existing `hadd` merge step.
+
 ### Fix 17 — Histogram batch jobs not splitting SQLite files correctly (`histograms_pipeline.py`, `orchestration/handlers/histogram_creation_handler.py`, `main.py`, `domain/config.py`)
 
 **Problem:** Multiple issues caused all histogram batch jobs to process all
