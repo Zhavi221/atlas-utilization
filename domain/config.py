@@ -103,13 +103,13 @@ class MassCalculationConfig:
     objects_to_calculate: tuple[str, ...] = (
         "Electrons", "Muons", "Jets", "BJets", "Photons", "Taus"
     )
-    min_particles_in_combination: int = 2
+    min_particles_in_combination: int = 1
     max_particles_in_combination: int = 4
     min_count_particle_in_combination: int = 2
     max_count_particle_in_combination: int = 4
     max_total_particles_in_combination: int = 4
     min_events_per_fs: int = 100  # Minimum events for a final state to be kept
-    include_subleading: bool = False       # set True to include e1, j1, etc.
+    include_subleading: bool = True        # include e1, j1, etc. by default
     max_subleading_index: int = 1          # highest rank index to consider
     
     def __post_init__(self):
@@ -188,9 +188,6 @@ class HistogramCreationConfig:
     use_bumpnet_naming: bool = False  # When true, use mass_<combo>_cat_<final_state> naming
     apply_peak_removal_at_histogram_level: bool = False
     
-    # Global ranges (set automatically by update_config_paths_with_run_dir)
-    global_ranges_path: Optional[str] = None
-
     # Pre-postproc histograms
     also_save_pre_postproc: bool = False
     pre_postproc_filename: Optional[str] = None
@@ -312,7 +309,7 @@ class PipelineConfig:
         
         # Parse mass calculation config if enabled
         mass_calculation_config = None
-        if tasks.do_mass_calculating:
+        if tasks.do_mass_calculating or tasks.do_post_processing:
             mass_dict = config_dict.get("mass_calculation_task_config", {})
             
             # Handle objects_to_calculate (can be None or list)
@@ -329,13 +326,13 @@ class PipelineConfig:
                 parallel_processes=mass_dict.get("parallel_processes", 4),
                 fs_chunk_threshold_bytes=mass_dict.get("fs_chunk_threshold_bytes", 500_000_000),
                 objects_to_calculate=objects,
-                min_particles_in_combination=mass_dict.get("min_particles_in_combination", 2),
+                min_particles_in_combination=mass_dict.get("min_particles_in_combination", 1),
                 max_particles_in_combination=mass_dict.get("max_particles_in_combination", 4),
                 min_count_particle_in_combination=mass_dict.get("min_count_particle_in_combination", 2),
                 max_count_particle_in_combination=mass_dict.get("max_count_particle_in_combination", 4),
                 max_total_particles_in_combination=mass_dict.get("max_total_particles_in_combination", 4),
                 min_events_per_fs=mass_dict.get("min_events_per_fs", 100),
-                include_subleading=mass_dict.get("include_subleading", False),
+                include_subleading=mass_dict.get("include_subleading", True),
                 max_subleading_index=mass_dict.get("max_subleading_index", 1),
             )
         
@@ -366,7 +363,6 @@ class PipelineConfig:
                 apply_peak_removal_at_histogram_level=hist_dict.get(
                     "apply_peak_removal_at_histogram_level", False
                 ),
-                global_ranges_path=hist_dict.get("global_ranges_path"),
                 also_save_pre_postproc=hist_dict.get("also_save_pre_postproc", False),
                 pre_postproc_filename=hist_dict.get("pre_postproc_filename"),
             )

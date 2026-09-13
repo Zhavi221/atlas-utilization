@@ -10,64 +10,67 @@ import os
 import fcntl
 import time
 import re
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 from collections import defaultdict
 import numpy as np
 import ROOT
 import math
 from services.storage.sqlite_shards import list_signatures, iter_arrays_for_signature
 
+# Fixed histogram range eliminates the range pre-scan and ensures that all
+# independently produced batch histograms have merge-compatible bin edges.
+FIXED_MASS_MIN_GEV = 0.0
+FIXED_MASS_MAX_GEV = 10000.0
 
-def save_global_ranges(ranges: Dict, output_path: str):
-    import json
-    with open(output_path, "w") as f:
-        json.dump(ranges, f, indent=2)
-    logging.getLogger(__name__).info(f"Saved global ranges to {output_path}")
 
-def load_global_ranges(path: str) -> Dict[str, Tuple[float, float]]:
-    import json
-    with open(path) as f:
-        data = json.load(f)
-    return {k: tuple(v) for k, v in data.items()}
+def trim_empty_tail(hist: ROOT.TH1F) -> None:
+    """Trim trailing empty bins by adjusting the display range.
 
-def compute_global_ranges(
-    sqlite_files: List[str],
-    input_dir: str,
-    exclude_outliers: bool = True,
-) -> Dict[str, Tuple[float, float]]:
+    Finds the last bin with content > 0 and sets the x-axis range to
+    [0, last_bin_upper_edge].  The histogram object is modified in place.
     """
-    Scan ALL processed SQLite files and compute global min/max per bumpnet_name.
-    Returns dict: {bumpnet_name: (global_min, global_max)}
-    Save result to JSON before running histogram creation batches.
-    """
-    logger = logging.getLogger(__name__)
-    db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
+    last_filled = 0
+    for b in range(hist.GetNbinsX(), 0, -1):
+        if hist.GetBinContent(b) > 0:
+            last_filled = b
+            break
+    if last_filled > 0:
+        hist.GetXaxis().SetRangeUser(
+            hist.GetXaxis().GetXmin(),
+            hist.GetBinLowEdge(last_filled + 1)
+        )
 
-    signatures = set()
-    for db_path in db_paths:
-        signatures.update(list_signatures(db_path))
-    signatures = sorted(signatures)
 
-    if exclude_outliers:
-        signatures = [s for s in signatures if not s.endswith("_outliers")]
+def trim_empty_tails_in_file(root_filepath: str) -> int:
+    """Apply tail display ranges after all histogram batches are merged."""
+    root_file = ROOT.TFile(root_filepath, "UPDATE")
+    if not root_file or root_file.IsZombie():
+        raise OSError(f"Failed to open ROOT file for tail trimming: {root_filepath}")
 
-    grouped = _group_signatures_by_bumpnet(signatures)
-    logger.info(f"Computing global ranges for {len(grouped)} bumpnet signatures...")
+    trimmed = 0
+    try:
+        histograms = []
+        for key in root_file.GetListOfKeys():
+            obj = key.ReadObj()
+            if obj.InheritsFrom("TH1"):
+                histograms.append(obj)
 
-    ranges = {}
-    for bumpnet_name, group_sigs in grouped.items():
-        gmin, gmax = float("inf"), float("-inf")
-        for sig in group_sigs:
-            for db_path in db_paths:
-                for chunk in iter_arrays_for_signature(db_path, sig):
-                    if len(chunk) > 0:
-                        gmin = min(gmin, float(np.min(chunk)))
-                        gmax = max(gmax, float(np.max(chunk)))
-        if gmin < float("inf"):
-            ranges[bumpnet_name] = (gmin, gmax)
+        for hist in histograms:
+            trim_empty_tail(hist)
+            hist.Write("", ROOT.TObject.kOverwrite)
+            trimmed += 1
+    finally:
+        root_file.Close()
+    return trimmed
 
-    logger.info(f"Computed ranges for {len(ranges)} signatures")
-    return ranges
+
+def _fill_mass(hist: ROOT.TH1F, value: float) -> None:
+    """Fill a fixed-range histogram, including the declared upper endpoint."""
+    mass = float(value)
+    if mass == FIXED_MASS_MAX_GEV:
+        mass = math.nextafter(mass, FIXED_MASS_MIN_GEV)
+    hist.Fill(mass)
+
 
 def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = None):
     logger = _init_logging()
@@ -84,6 +87,10 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
     use_bumpnet_naming = histograms_config.get("use_bumpnet_naming", False)
     exclude_outliers = histograms_config.get("exclude_outliers", False)
     apply_peak_removal = histograms_config.get("apply_peak_removal_at_histogram_level", False)
+    is_distributed_batch = (
+        histograms_config.get("batch_job_index") is not None
+        and histograms_config.get("total_batch_jobs") is not None
+    )
 
     if file_list is not None:
         sqlite_files = [f for f in file_list if f.endswith(".sqlite")]
@@ -168,6 +175,7 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
             single_output_file=single_output_file,
             output_filename=output_filename,
             apply_peak_removal=apply_peak_removal,
+            trim_before_write=not is_distributed_batch,
         )
     else:
         logger.info("Using standard naming mode")
@@ -176,6 +184,7 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
             single_output_file=single_output_file,
             output_filename=output_filename,
             apply_peak_removal=apply_peak_removal,
+            trim_before_write=not is_distributed_batch,
         )
 
 
@@ -189,9 +198,6 @@ def _create_histograms_from_sqlite(
     output_dir = histograms_config["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
 
-    # Load global ranges if available
-    global_ranges_path = histograms_config.get("global_ranges_path")
-    global_ranges = load_global_ranges(global_ranges_path) if global_ranges_path else None
 
     bin_width_gev = histograms_config["bin_width_gev"]
     bin_widths_gev = [bin_width_gev] if isinstance(bin_width_gev, (int, float)) else bin_width_gev
@@ -205,6 +211,7 @@ def _create_histograms_from_sqlite(
     # Split SQLite files across histogram batch jobs
     batch_job_index = histograms_config.get("batch_job_index")
     total_batch_jobs = histograms_config.get("total_batch_jobs")
+    trim_before_write = batch_job_index is None or total_batch_jobs is None
     if batch_job_index is not None and total_batch_jobs is not None:
         sqlite_files = _get_batch_files(
             sorted(sqlite_files), batch_job_index, total_batch_jobs
@@ -241,9 +248,11 @@ def _create_histograms_from_sqlite(
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
                     group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
-                    global_ranges=global_ranges,
                 )
                 if hists:
+                    if trim_before_write:
+                        for hist in hists:
+                            trim_empty_tail(hist)
                     _write_hists_to_shared_file(hists, root_filepath, logger)
                     hist_count += len(hists)
             logger.info(f"Wrote {hist_count} histograms to shared file {root_filepath}")
@@ -251,9 +260,11 @@ def _create_histograms_from_sqlite(
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
                     group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
-                    global_ranges=global_ranges,
                 )
                 if hists:
+                    if trim_before_write:
+                        for hist in hists:
+                            trim_empty_tail(hist)
                     root_filename = f"{bumpnet_name}_hists.root"
                     root_filepath = os.path.join(output_dir, root_filename)
                     root_file = ROOT.TFile(root_filepath, "RECREATE")
@@ -269,6 +280,9 @@ def _create_histograms_from_sqlite(
                     signature, db_paths, bin_widths_gev, logger, apply_peak_removal
                 )
                 if hists:
+                    if trim_before_write:
+                        for hist in hists:
+                            trim_empty_tail(hist)
                     _write_hists_to_shared_file(hists, root_filepath, logger)
                     hist_count += len(hists)
             logger.info(f"Wrote {hist_count} histograms to shared file {root_filepath}")
@@ -278,6 +292,9 @@ def _create_histograms_from_sqlite(
                     signature, db_paths, bin_widths_gev, logger, apply_peak_removal
                 )
                 if hists:
+                    if trim_before_write:
+                        for hist in hists:
+                            trim_empty_tail(hist)
                     root_filename = f"{signature}_hists.root"
                     root_filepath = os.path.join(output_dir, root_filename)
                     root_file = ROOT.TFile(root_filepath, "RECREATE")
@@ -320,29 +337,27 @@ def _create_histograms_for_signature(
     logger: logging.Logger,
     apply_peak_removal: bool = False,
 ) -> List[ROOT.TH1F]:
-    global_min, global_max = float("inf"), float("-inf")
+    histograms = []
+    for bin_width in bin_widths_gev:
+        nbins = max(1, math.ceil((FIXED_MASS_MAX_GEV - FIXED_MASS_MIN_GEV) / bin_width))
+        hist_name = f"ROI_{signature}_width_{bin_width}"
+        hist = ROOT.TH1F(hist_name, hist_name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
+        histograms.append(hist)
+
     has_data = False
     for chunk in _iter_signature_chunks(signature, db_paths):
         has_data = True
-        global_min = min(global_min, float(np.min(chunk)))
-        global_max = max(global_max, float(np.max(chunk)))
+        for hist in histograms:
+            for val in chunk:
+                _fill_mass(hist, val)
+
     if not has_data:
         return []
 
-    histograms = []
-    for bin_width in bin_widths_gev:
-        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
-        hist_name = f"ROI_{signature}_width_{bin_width}"
-        hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
-        histograms.append(hist)
-
-    for chunk in _iter_signature_chunks(signature, db_paths):
-        for hist in histograms:
-            for val in chunk:
-                hist.Fill(float(val))
     if apply_peak_removal:
         for hist in histograms:
             _apply_peak_removal_to_histogram(hist)
+
     return histograms
 
 
@@ -352,35 +367,8 @@ def _create_merged_histograms_from_sqlite_signatures(
     hist_name_base: str,
     bin_widths_gev: List[float],
     logger: logging.Logger,
-    global_ranges: Optional[Dict] = None,
     apply_peak_removal: bool = False,
 ) -> List[ROOT.TH1F]:
-
-    if global_ranges is not None:
-        if hist_name_base not in global_ranges:
-            logger.warning(
-                f"{hist_name_base} not found in global_ranges — skipping. "
-                "Re-run scan-only job to regenerate global_ranges.json."
-            )
-            return []
-        global_min, global_max = global_ranges[hist_name_base]
-        logger.debug(f"{hist_name_base}: using global range [{global_min:.1f}, {global_max:.1f}]")
-    else:
-        # No global ranges provided — compute from available data
-        # WARNING: this will produce batch-local edges, hadd will fail
-        logger.warning(
-            f"{hist_name_base}: no global_ranges provided — "
-            "computing from batch data only. hadd merging will likely fail!"
-        )
-        global_min, global_max = float("inf"), float("-inf")
-        for signature in signatures:
-            for chunk in _iter_signature_chunks(signature, db_paths):
-                global_min = min(global_min, float(np.min(chunk)))
-                global_max = max(global_max, float(np.max(chunk)))
-
-    if global_min == float("inf"):
-        return []
-
     if 'cat' not in hist_name_base and 'hCat' not in hist_name_base:
         raise ValueError(
             f"Invalid histogram name base '{hist_name_base}': must contain 'cat'"
@@ -388,20 +376,27 @@ def _create_merged_histograms_from_sqlite_signatures(
 
     histograms = []
     for bin_width in bin_widths_gev:
-        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
+        nbins = max(1, math.ceil((FIXED_MASS_MAX_GEV - FIXED_MASS_MIN_GEV) / bin_width))
         hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
         histograms.append(
-            ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+            ROOT.TH1F(hist_name, hist_name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
         )
 
+    has_data = False
     for signature in signatures:
         for chunk in _iter_signature_chunks(signature, db_paths):
+            has_data = True
             for hist in histograms:
                 for val in chunk:
-                    hist.Fill(float(val))
+                    _fill_mass(hist, val)
+
+    if not has_data:
+        return []
+
     if apply_peak_removal:
         for hist in histograms:
             _apply_peak_removal_to_histogram(hist)
+
     return histograms
 
 def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
@@ -463,6 +458,7 @@ def _process_im_arrays_bumpnet(
     single_output_file: bool = False,
     output_filename: str = "all_histograms.root",
     apply_peak_removal: bool = False,
+    trim_before_write: bool = True,
 ):
     os.makedirs(output_dir, exist_ok=True)
     grouped_files = _group_im_files_by_signature(im_array_files)
@@ -483,6 +479,9 @@ def _process_im_arrays_bumpnet(
                 apply_peak_removal=apply_peak_removal,
             )
             if hists:
+                if trim_before_write:
+                    for hist in hists:
+                        trim_empty_tail(hist)
                 _write_hists_to_shared_file(hists, root_filepath, logger)
                 hist_count += len(hists)
 
@@ -499,6 +498,9 @@ def _process_im_arrays_bumpnet(
                 apply_peak_removal=apply_peak_removal,
             )
             if hists:
+                if trim_before_write:
+                    for hist in hists:
+                        trim_empty_tail(hist)
                 root_filename = f"{bumpnet_name}_hists.root"
                 root_filepath = os.path.join(output_dir, root_filename)
                 root_file = ROOT.TFile(root_filepath, "RECREATE")
@@ -512,30 +514,9 @@ def _create_merged_histograms_streaming(
     files: List[str], directory: str, hist_name_base: str,
     bin_widths_gev: list, logger: logging.Logger, apply_peak_removal: bool = False
 ) -> List[ROOT.TH1F]:
-    global_min, global_max = float('inf'), float('-inf')
-    total_entries = 0
-
-    for f in files:
-        try:
-            arr = np.load(os.path.join(directory, f))
-            if len(arr) > 0:
-                global_min = min(global_min, np.min(arr))
-                global_max = max(global_max, np.max(arr))
-                total_entries += len(arr)
-            del arr
-        except Exception as e:
-            logger.warning(f"Error reading {f} for min/max: {e}")
-            continue
-
-    if global_min == float('inf') or global_max == float('-inf'):
-        logger.warning(f"No valid data found for {hist_name_base}")
-        return []
-
-    logger.debug(f"{hist_name_base}: {total_entries} entries, range [{global_min:.2f}, {global_max:.2f}]")
-
     histograms = []
     for bin_width in bin_widths_gev:
-        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
+        nbins = max(1, math.ceil((FIXED_MASS_MAX_GEV - FIXED_MASS_MIN_GEV) / bin_width))
         hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
         if 'cat' not in hist_name_base and 'hCat' not in hist_name_base:
             logger.error(
@@ -545,19 +526,33 @@ def _create_merged_histograms_streaming(
             raise ValueError(
                 f"Invalid histogram name base '{hist_name_base}': must contain 'cat' for BumpNet compatibility"
             )
-        hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+        hist = ROOT.TH1F(
+            hist_name, hist_name, nbins,
+            FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV,
+        )
         histograms.append(hist)
 
+    total_entries = 0
     for f in files:
         try:
             arr = np.load(os.path.join(directory, f))
+            total_entries += len(arr)
             for hist in histograms:
                 for val in arr:
-                    hist.Fill(val)
+                    _fill_mass(hist, val)
             del arr
         except Exception as e:
             logger.warning(f"Error filling from {f}: {e}")
             continue
+
+    if total_entries == 0:
+        logger.warning(f"No valid data found for {hist_name_base}")
+        return []
+
+    logger.debug(
+        f"{hist_name_base}: {total_entries} entries, fixed range "
+        f"[{FIXED_MASS_MIN_GEV:.2f}, {FIXED_MASS_MAX_GEV:.2f}]"
+    )
 
     if apply_peak_removal:
         for hist in histograms:
@@ -571,6 +566,7 @@ def _process_im_arrays_standard(
     single_output_file: bool = False,
     output_filename: str = "all_histograms.root",
     apply_peak_removal: bool = False,
+    trim_before_write: bool = True,
 ):
     if im_array_files is None:
         im_array_files = [f for f in os.listdir(im_arrays_dir) if f.endswith(".npy")]
@@ -590,6 +586,9 @@ def _process_im_arrays_standard(
                 apply_peak_removal=apply_peak_removal,
             )
             if hists:
+                if trim_before_write:
+                    for hist in hists:
+                        trim_empty_tail(hist)
                 _write_hists_to_shared_file(hists, root_filepath, logger)
                 hist_count += len(hists)
 
@@ -603,6 +602,9 @@ def _process_im_arrays_standard(
                 logger,
                 apply_peak_removal=apply_peak_removal,
             )
+            if trim_before_write:
+                for hist in hists:
+                    trim_empty_tail(hist)
             _save_hists(hists, output_dir, im_array_filename, logger)
 
 
@@ -644,14 +646,15 @@ def _apply_peak_removal_to_histogram(hist: ROOT.TH1F) -> None:
 
 
 def _create_histogram_single_array(im_array_filename, im_array, bin_width) -> ROOT.TH1F:
-    nbins = math.ceil((np.max(im_array) - np.min(im_array)) / bin_width)
-    bin_edges = np.linspace(np.min(im_array), np.max(im_array), nbins + 1)
-
+    nbins = max(1, math.ceil((FIXED_MASS_MAX_GEV - FIXED_MASS_MIN_GEV) / bin_width))
     hist_name = f"ROI_{im_array_filename}_width_{bin_width}"
-    hist = ROOT.TH1F(hist_name, hist_name, len(bin_edges) - 1, bin_edges)
+    hist = ROOT.TH1F(
+        hist_name, hist_name, nbins,
+        FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV,
+    )
 
     for mass in im_array:
-        hist.Fill(mass)
+        _fill_mass(hist, mass)
     return hist
 
 

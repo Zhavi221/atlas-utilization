@@ -37,6 +37,11 @@ class PostProcessingHandler(StateHandler):
             "z_peak_cutoff": pp.z_peak_cutoff,
             "max_mass_cutoff": pp.max_mass_cutoff,
             "batch_job_index": context.config.batch_job_index,
+            "min_events_per_fs": (
+                context.config.mass_calculation_config.min_events_per_fs
+                if context.config.mass_calculation_config is not None
+                else 0
+            ),
         }
 
         # If the previous stage produced files, pass them explicitly
@@ -58,7 +63,13 @@ class PostProcessingHandler(StateHandler):
             f"in {elapsed:.1f}s"
         )
 
-        updated = context.with_processed_files(processed_files)
+        updated = context.with_processed_files(processed_files).with_custom_data(
+            "post_processing",
+            {
+                "total_time_sec": elapsed,
+                "processed_arrays": len(processed_files),
+            },
+        )
         next_state = self._determine_next_state(updated)
         self._log_state_exit(context, next_state)
         return updated, next_state

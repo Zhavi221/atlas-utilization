@@ -20,6 +20,7 @@ from services.storage.sqlite_shards import (
     SqliteArrayShardWriter,
     iter_arrays_for_signature,
     list_signatures,
+    prune_final_states_below_min_events,
 )
 
 
@@ -156,6 +157,17 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
     bin_width = config["peak_detection_bin_width_gev"]
     z_peak_cutoff = config["z_peak_cutoff"]
     max_mass_cutoff = config["max_mass_cutoff"]
+    min_events_per_fs = int(config.get("min_events_per_fs", 0))
+    db_paths = [os.path.join(input_dir, filename) for filename in sqlite_files]
+    removed_final_states = prune_final_states_below_min_events(
+        db_paths, min_events_per_fs
+    )
+    if removed_final_states:
+        logger.info(
+            "Removed %d final states below the global %d-event threshold",
+            len(removed_final_states),
+            min_events_per_fs,
+        )
 
     batch_idx = config.get("batch_job_index")
     if batch_idx is None:
@@ -315,13 +327,12 @@ def _find_rightmost_highest_peak(
     if len(im_array) == 0:
         return None
 
-    min_mass = np.min(im_array)
-    max_mass = np.max(im_array)
-    nbins = math.ceil((max_mass - min_mass) / bin_width)
-    if nbins == 0:
-        return None
+    # Align bins to multiples of bin_width starting from 0
+    # so peak detection matches histogram bin edges
+    min_mass = np.floor(np.min(im_array) / bin_width) * bin_width
+    max_mass = np.ceil(np.max(im_array) / bin_width) * bin_width
 
-    bin_edges = np.linspace(min_mass, max_mass, nbins + 1)
+    bin_edges = np.arange(min_mass, max_mass + bin_width, bin_width)
     counts, _ = np.histogram(im_array, bins=bin_edges)
     if len(counts) == 0:
         return None
