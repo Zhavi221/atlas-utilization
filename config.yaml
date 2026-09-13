@@ -75,14 +75,18 @@ testing_config:
 mc_weighting_config:
   enabled: false                         # apply MC weights to simulated samples
   target_luminosity_fb: 1.0              # default/fallback target luminosity in fb^-1
-  # Optional per-campaign luminosity (used when a dataset's campaign is known).
-  # Example Run-2 values:
+  # Optional per-campaign luminosity, used when a dataset's metadata exposes its
+  # MC campaign. ATLAS Open Data metadata currently does not, so this stays
+  # unused (with a warning) and target_luminosity_fb applies. Example Run-2 values:
   # luminosity_by_campaign:
   #   mc16a: 36.2
   #   mc16d: 44.3
   #   mc16e: 58.5
   luminosity_by_campaign: null
-  require_metadata: true                 # hard-error if a dataset lacks cross_section_pb / sumOfWeights
+  require_metadata: true                 # hard-error when a sample cannot be normalized correctly: a dataset
+                                         # lacking cross_section_pb / sumOfWeights, or MC events without a
+                                         # generator-weight branch or dataset number. When false such events
+                                         # are filled unweighted (w_gen = 1, w_norm = 1) with a warning.
                                          # (missing kFactor / genFiltEff always default to 1.0, never an error)
 
 # ============================================================================

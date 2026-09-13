@@ -260,7 +260,10 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
             if len(arr) == 0:
                 continue
 
-            peak_mass = _find_rightmost_highest_peak(arr, bin_width, logger)
+            # The peak is located on the weighted spectrum when weights exist:
+            # that is the distribution BumpNet will see, and for sliced samples
+            # the raw-count maximum sits where the tiny-weight slice piles up.
+            peak_mass = _find_rightmost_highest_peak(arr, bin_width, logger, weights=warr)
             if peak_mass is not None:
                 keep = arr >= peak_mass
                 arr = arr[keep]
@@ -365,13 +368,14 @@ def _aligned_bin_edges(im_array: np.ndarray, bin_width: float) -> np.ndarray:
 
 
 def _find_rightmost_highest_peak(
-    im_array: np.ndarray, bin_width: float, logger: logging.Logger
+    im_array: np.ndarray, bin_width: float, logger: logging.Logger,
+    weights: Optional[np.ndarray] = None,
 ) -> Optional[float]:
     if len(im_array) == 0:
         return None
 
     bin_edges = _aligned_bin_edges(im_array, bin_width)
-    counts, _ = np.histogram(im_array, bins=bin_edges)
+    counts, _ = np.histogram(im_array, bins=bin_edges, weights=weights)
     if len(counts) == 0:
         return None
 

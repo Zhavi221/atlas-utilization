@@ -7,6 +7,7 @@ mass calculations using the combinatorics and IM calculator modules.
 
 import os
 import logging
+import re
 import time
 from collections import Counter
 from pathlib import Path
@@ -28,6 +29,16 @@ from services.parsing import schemas
 from services.parsing.dsid import dsids_in_events, extract_dsid_from_url
 from services.storage.sqlite_shards import (
     SqliteArrayShardWriter,
+)
+
+
+class MCWeightingError(RuntimeError):
+    """A simulated sample cannot be normalized correctly; the run must not continue silently."""
+
+
+# Parsed chunk filenames: parsed_<release>[_batchN][_dsidN]_(chunkN|final).root
+_PARSED_FILENAME_RE = re.compile(
+    r"^parsed_(?P<release>.+?)(?:_batch\d+)?(?:_dsid\d+)?_(?:chunk\d+|final)\.root$"
 )
 
 
@@ -91,6 +102,8 @@ class MassCalculationHandler(StateHandler):
             "mc_norm_by_dsid": {},
             "mc_norm_default": 1.0,
         }
+        # {release: {dsid: w_norm}} — metadata is scoped per Open Data release.
+        self._mc_norm_by_release: Dict[str, Dict[int, float]] = {}
 
         # ── Discover parsed ROOT files ──
         parsed_dir = Path(mc.input_dir)
@@ -145,6 +158,8 @@ class MassCalculationHandler(StateHandler):
                     )
                     if created:
                         total_created_chunks += len(created)
+                except MCWeightingError:
+                    raise  # a mis-normalized sample must abort the run, not be skipped
                 except Exception as exc:
                     self.logger.error(
                         f"Error processing {root_file_path.name}: {exc}",
@@ -187,13 +202,19 @@ class MassCalculationHandler(StateHandler):
         context: PipelineContext,
     ) -> None:
         """
-        Make sure ``config_dict["mc_norm_by_dsid"]`` covers every dataset in
-        this file, fetching metadata once per newly seen DSID.
+        Point ``config_dict["mc_norm_by_dsid"]`` at this file's release map and
+        make sure it covers every dataset in the file, fetching metadata once
+        per newly seen (release, DSID).
 
         The dataset number comes from the events themselves; the parsed
         filename (``..._dsid<N>_...``) is the fallback for files whose events
         carry no channel number, in which case the whole file gets that
         dataset's factor via ``mc_norm_default``. Inert when weighting is off.
+
+        Raises:
+            MCWeightingError: when ``require_metadata`` is set and the file
+                cannot be normalized correctly (no generator weights, or a
+                dataset without the required metadata).
         """
         mc_cfg = context.config.mc_weighting_config
         config_dict["mc_norm_default"] = 1.0
@@ -206,16 +227,35 @@ class MassCalculationHandler(StateHandler):
             )
             return
 
-        norm_by_dsid: Dict[int, float] = config_dict["mc_norm_by_dsid"]
+        release = self._release_of(root_file_path, context)
+        norm_by_dsid = self._mc_norm_by_release.setdefault(release, {})
+        config_dict["mc_norm_by_dsid"] = norm_by_dsid
+
+        mc_info = particle_arrays[MC_EVENT_INFO_FIELD]
+        if MC_EVENT_WEIGHT_FIELD not in mc_info.fields:
+            # sumOfWeights sums the real generator weights; filling with
+            # w_gen = 1 would mis-normalize any sample that is not unit-weight.
+            message = (
+                f"{root_file_path.name} has no per-event generator weights "
+                f"(expected branch {schemas.MC_EVENT_WEIGHT_BRANCHES.get(release)!r} "
+                f"for release {release}); w_gen = 1 is only correct for unit-weight samples."
+            )
+            if mc_cfg.require_metadata:
+                raise MCWeightingError(message)
+            self.logger.warning(message)
+
         dsids = [int(d) for d in dsids_in_events(particle_arrays)]
         file_dsid = None
         if not dsids:
             file_dsid = extract_dsid_from_url(root_file_path.name)
             if file_dsid is None:
-                self.logger.warning(
+                message = (
                     f"MC weighting enabled but no dataset number found for "
                     f"{root_file_path.name}; w_norm=1 for its events."
                 )
+                if mc_cfg.require_metadata:
+                    raise MCWeightingError(message)
+                self.logger.warning(message)
                 return
             dsids = [file_dsid]
 
@@ -224,15 +264,26 @@ class MassCalculationHandler(StateHandler):
             from services.metadata.fetcher import MetadataFetcher
             from services.calculations.mc_weights import compute_normalization
 
-            metadata_by_dsid = MetadataFetcher().fetch_mc_metadata_for_datasets(
-                missing, require_metadata=mc_cfg.require_metadata
-            )
+            try:
+                metadata_by_dsid = MetadataFetcher().fetch_mc_metadata_for_datasets(
+                    missing, require_metadata=mc_cfg.require_metadata, release=release
+                )
+            except ValueError as exc:
+                raise MCWeightingError(str(exc)) from exc
             for dsid in missing:
                 md = metadata_by_dsid.get(dsid)
                 if md is None:
-                    self.logger.warning(f"No metadata for DSID {dsid}; w_norm defaults to 1.")
-                    norm_by_dsid[dsid] = 1.0
+                    # Not cached: a later file may succeed (transient fetch failure).
+                    self.logger.warning(
+                        f"No metadata for DSID {dsid} in release {release}; "
+                        f"w_norm=1 for its events in {root_file_path.name}."
+                    )
                     continue
+                if mc_cfg.luminosity_by_campaign and md.campaign is None:
+                    self.logger.warning(
+                        "luminosity_by_campaign is configured but the metadata for DSID "
+                        f"{dsid} carries no campaign; using target_luminosity_fb."
+                    )
                 luminosity = mc_cfg.get_luminosity(md.campaign)
                 norm_by_dsid[dsid] = compute_normalization(md, luminosity)
                 self.logger.info(
@@ -241,7 +292,33 @@ class MassCalculationHandler(StateHandler):
                 )
 
         if file_dsid is not None:
-            config_dict["mc_norm_default"] = norm_by_dsid[file_dsid]
+            config_dict["mc_norm_default"] = norm_by_dsid.get(file_dsid, 1.0)
+
+    def _release_of(self, root_file_path: Path, context: PipelineContext) -> str:
+        """
+        Open Data release of a parsed file, for release-scoped metadata lookups.
+
+        Read from the ``parsed_<release>_...`` filename; raw (unparsed) inputs
+        fall back to the single configured release, else to whatever release
+        atlasopenmagic currently has active.
+        """
+        match = _PARSED_FILENAME_RE.match(root_file_path.name)
+        if match:
+            return schemas.normalize_release_year(match.group("release"))
+        pc = context.config.parsing_config
+        configured = [
+            schemas.normalize_release_year(r) for r in (pc.release_years if pc else [])
+            if not r.startswith("record_")
+        ]
+        if len(set(configured)) == 1:
+            return configured[0]
+        import atlasopenmagic as atom
+        release = atom.get_current_release()
+        self.logger.warning(
+            f"Cannot tell the release of {root_file_path.name}; using atlasopenmagic's "
+            f"active release {release!r} for MC metadata."
+        )
+        return release
 
     def _find_eligible_final_states(
         self,

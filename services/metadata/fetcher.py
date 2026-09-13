@@ -354,7 +354,7 @@ class MetadataFetcher:
 
         return separated
     
-    def fetch_mc_metadata(self, dataset_id) -> Optional[MCDatasetMetadata]:
+    def fetch_mc_metadata(self, dataset_id, release: Optional[str] = None) -> Optional[MCDatasetMetadata]:
         """
         Fetch Monte-Carlo metadata for a single dataset (DSID).
 
@@ -364,12 +364,18 @@ class MetadataFetcher:
 
         Args:
             dataset_id: The dataset number (DSID), as int or str.
+            release: Open Data release the dataset belongs to (e.g.
+                ``2024r-pp``). atlasopenmagic scopes metadata to its active
+                release, so this must match the files being weighted; when
+                omitted the currently active release is used.
 
         Returns:
             MCDatasetMetadata for the dataset, or None if metadata could not be
             fetched or lacks the fields required to normalize the sample.
         """
         try:
+            if release and atom.get_current_release() != release:
+                atom.set_release(release)
             raw = atom.get_metadata(str(dataset_id))
         except Exception as e:
             logging.warning(f"Could not fetch MC metadata for dataset {dataset_id}: {e}")
@@ -410,6 +416,7 @@ class MetadataFetcher:
         self,
         dataset_ids,
         require_metadata: bool = False,
+        release: Optional[str] = None,
     ) -> dict:
         """
         Fetch MC metadata for many datasets (DSIDs).
@@ -419,6 +426,8 @@ class MetadataFetcher:
             require_metadata: When True, raise if any dataset lacks the required
                 metadata to normalize it (cross_section_pb, sumOfWeights).
                 When False, such datasets are skipped and simply omitted.
+            release: Open Data release the datasets belong to (see
+                :meth:`fetch_mc_metadata`).
 
         Returns:
             Dict mapping dataset_number (int) -> MCDatasetMetadata for every
@@ -432,7 +441,7 @@ class MetadataFetcher:
         missing = []
 
         for dataset_id in dataset_ids:
-            md = self.fetch_mc_metadata(dataset_id)
+            md = self.fetch_mc_metadata(dataset_id, release=release)
             if md is None:
                 missing.append(dataset_id)
             else:

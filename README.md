@@ -190,7 +190,7 @@ python main.py --dry-run
 | `post_processing_task_config` | `peak_detection_bin_width_gev` | Bin width used during known-peak detection |
 | `mc_weighting_config` | `enabled` | Weight simulated events to `target_luminosity_fb` (default `false`) |
 | `mc_weighting_config` | `target_luminosity_fb` | Target integrated luminosity in fb⁻¹ (`luminosity_by_campaign` overrides it per MC campaign when known) |
-| `mc_weighting_config` | `require_metadata` | Abort when a dataset lacks `cross_section_pb` / `sumOfWeights`; otherwise such datasets stay unweighted |
+| `mc_weighting_config` | `require_metadata` | Abort when a sample cannot be normalized (missing `cross_section_pb` / `sumOfWeights`, generator weights or dataset number); otherwise such events stay unweighted with a warning |
 
 All paths (`output_path`, `input_dir`, `output_dir`, etc.) are defined once in the `paths:` block at the top of `config.yaml` and reused via YAML anchors. At runtime, **relative** paths are overridden to point inside the timestamped run directory. To point a specific stage at an external directory, set its path to an **absolute** path in `config.yaml` — absolute paths are preserved as-is.
 

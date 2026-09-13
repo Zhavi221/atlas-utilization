@@ -65,7 +65,23 @@ def trim_empty_tails_in_file(root_filepath: str) -> int:
     return trimmed
 
 
-def _fill_mass(hist: ROOT.TH1F, value: float, weight: float = 1.0) -> None:
+def _new_histogram(name: str, nbins: int, weighted: bool) -> ROOT.TH1:
+    """
+    Fixed-range histogram; double precision when filled with MC weights.
+
+    TH1F keeps float32 bin contents, so a small weight added to a populated
+    bin is rounded away (a rare process on top of a large background simply
+    vanishes). Weighted histograms therefore use TH1D with Sumw2 so both the
+    contents and the errors (sqrt(sum w^2)) are exact.
+    """
+    if weighted:
+        hist = ROOT.TH1D(name, name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
+        hist.Sumw2()
+        return hist
+    return ROOT.TH1F(name, name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
+
+
+def _fill_mass(hist: ROOT.TH1, value: float, weight: float = 1.0) -> None:
     """Fill a fixed-range histogram, including the declared upper endpoint."""
     mass = float(value)
     if mass == FIXED_MASS_MAX_GEV:
@@ -73,7 +89,7 @@ def _fill_mass(hist: ROOT.TH1F, value: float, weight: float = 1.0) -> None:
     hist.Fill(mass, weight)
 
 
-def _fill_chunk(histograms: List[ROOT.TH1F], masses, weights=None) -> None:
+def _fill_chunk(histograms: List[ROOT.TH1], masses, weights=None) -> None:
     """Fill every histogram with a chunk of masses and, when given, their per-event MC weights."""
     if weights is None:
         for hist in histograms:
@@ -393,10 +409,7 @@ def _create_histograms_for_signature(
     for bin_width in bin_widths_gev:
         nbins = max(1, math.ceil((FIXED_MASS_MAX_GEV - FIXED_MASS_MIN_GEV) / bin_width))
         hist_name = f"ROI_{signature}_width_{bin_width}"
-        hist = ROOT.TH1F(hist_name, hist_name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
-        if weighted:
-            hist.Sumw2()  # bin errors = sqrt(sum w^2), not sqrt(N)
-        histograms.append(hist)
+        histograms.append(_new_histogram(hist_name, nbins, weighted))
 
     has_data = False
     for chunk, weights in _iter_weighted_signature_chunks(signature, db_paths, logger):
@@ -431,10 +444,7 @@ def _create_merged_histograms_from_sqlite_signatures(
     for bin_width in bin_widths_gev:
         nbins = max(1, math.ceil((FIXED_MASS_MAX_GEV - FIXED_MASS_MIN_GEV) / bin_width))
         hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
-        hist = ROOT.TH1F(hist_name, hist_name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
-        if weighted:
-            hist.Sumw2()  # bin errors = sqrt(sum w^2), not sqrt(N)
-        histograms.append(hist)
+        histograms.append(_new_histogram(hist_name, nbins, weighted))
 
     has_data = False
     for signature in signatures:

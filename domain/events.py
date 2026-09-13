@@ -36,21 +36,38 @@ def _empty_particle_collection(collection: ak.Array, event_count: int) -> ak.Arr
     return ak.unflatten(no_particles, counts)
 
 
-def _default_mc_event_info(example: ak.Array, event_count: int) -> ak.Array:
-    """Build a per-event MC info record with default values, typed like ``example``."""
+def _default_mc_event_info_column(name: str, example: ak.Array, event_count: int) -> ak.Array:
+    """One MC info column holding its default value, typed like ``example[name]``."""
+    return ak.values_astype(
+        ak.Array(np.full(event_count, _MC_EVENT_INFO_DEFAULTS.get(name, 0))),
+        example[name].layout.dtype,
+    )
+
+
+def _normalized_mc_event_info(info: Optional[ak.Array], example: ak.Array, event_count: int) -> ak.Array:
+    """
+    A per-event MC info record carrying every column of ``example``.
+
+    Columns missing from ``info`` (a file without that branch, or no MC info at
+    all) get their default value, so concatenation yields a plain record rather
+    than a union type that would hide the columns only some files have.
+    """
     return ak.zip({
-        name: ak.values_astype(
-            ak.Array(np.full(event_count, _MC_EVENT_INFO_DEFAULTS.get(name, 0))),
-            example[name].layout.dtype,
-        )
+        name: info[name] if info is not None and name in info.fields
+        else _default_mc_event_info_column(name, example, event_count)
         for name in example.fields
     })
 
 
-def _missing_collection(field: str, example: ak.Array, event_count: int) -> ak.Array:
-    if field == MC_EVENT_INFO_FIELD:
-        return _default_mc_event_info(example, event_count)
-    return _empty_particle_collection(example, event_count)
+def _mc_event_info_example(arrays: list[ak.Array]) -> Optional[ak.Array]:
+    """A record exposing the union of MC info columns seen across ``arrays``."""
+    columns = {}
+    for array in arrays:
+        if MC_EVENT_INFO_FIELD in array.fields:
+            info = array[MC_EVENT_INFO_FIELD]
+            for name in info.fields:
+                columns.setdefault(name, info[name][:0])
+    return ak.zip(columns) if columns else None
 
 
 def _concatenate_events(arrays: list[ak.Array]) -> ak.Array:
@@ -63,11 +80,20 @@ def _concatenate_events(arrays: list[ak.Array]) -> ak.Array:
     at a time keeps a plain record, with empty lists for the files that lack it.
     """
     example_of = {field: array[field] for array in arrays for field in array.fields}
+    mc_info_example = _mc_event_info_example(arrays)
 
     combined = {}
     for field, example in example_of.items():
+        if field == MC_EVENT_INFO_FIELD:
+            combined[field] = ak.concatenate([
+                _normalized_mc_event_info(
+                    array[field] if field in array.fields else None, mc_info_example, len(array)
+                )
+                for array in arrays
+            ])
+            continue
         combined[field] = ak.concatenate([
-            array[field] if field in array.fields else _missing_collection(field, example, len(array))
+            array[field] if field in array.fields else _empty_particle_collection(example, len(array))
             for array in arrays
         ])
 
