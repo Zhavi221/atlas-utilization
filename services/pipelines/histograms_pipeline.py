@@ -15,6 +15,7 @@ from collections import defaultdict
 import numpy as np
 import ROOT
 import math
+from services.pipelines.im_pipeline import MC_WEIGHT_SUFFIX
 from services.storage.sqlite_shards import list_signatures, iter_arrays_for_signature
 
 # Fixed histogram range eliminates the range pre-scan and ensures that all
@@ -64,12 +65,24 @@ def trim_empty_tails_in_file(root_filepath: str) -> int:
     return trimmed
 
 
-def _fill_mass(hist: ROOT.TH1F, value: float) -> None:
+def _fill_mass(hist: ROOT.TH1F, value: float, weight: float = 1.0) -> None:
     """Fill a fixed-range histogram, including the declared upper endpoint."""
     mass = float(value)
     if mass == FIXED_MASS_MAX_GEV:
         mass = math.nextafter(mass, FIXED_MASS_MIN_GEV)
-    hist.Fill(mass)
+    hist.Fill(mass, weight)
+
+
+def _fill_chunk(histograms: List[ROOT.TH1F], masses, weights=None) -> None:
+    """Fill every histogram with a chunk of masses and, when given, their per-event MC weights."""
+    if weights is None:
+        for hist in histograms:
+            for val in masses:
+                _fill_mass(hist, val)
+        return
+    for hist in histograms:
+        for val, weight in zip(masses, weights):
+            _fill_mass(hist, val, float(weight))
 
 
 def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = None):
@@ -227,6 +240,14 @@ def _create_histograms_from_sqlite(
         signatures.update(list_signatures(db_path))
     signatures = sorted(signatures)
 
+    # Per-event MC weight arrays are consumed as siblings during the fill;
+    # they are never histogrammed as data. Their presence turns on Sumw2 so
+    # bin errors are weighted errors.
+    weighted = any(s.endswith(MC_WEIGHT_SUFFIX) for s in signatures)
+    signatures = [s for s in signatures if not s.endswith(MC_WEIGHT_SUFFIX)]
+    if weighted:
+        logger.info("MC event weights present: filling weighted histograms with Sumw2")
+
     if exclude_outliers:
         before = len(signatures)
         signatures = [s for s in signatures if not s.endswith("_outliers")]
@@ -248,6 +269,7 @@ def _create_histograms_from_sqlite(
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
                     group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
+                    weighted=weighted,
                 )
                 if hists:
                     if trim_before_write:
@@ -260,6 +282,7 @@ def _create_histograms_from_sqlite(
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
                     group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
+                    weighted=weighted,
                 )
                 if hists:
                     if trim_before_write:
@@ -277,7 +300,8 @@ def _create_histograms_from_sqlite(
             hist_count = 0
             for signature in signatures:
                 hists = _create_histograms_for_signature(
-                    signature, db_paths, bin_widths_gev, logger, apply_peak_removal
+                    signature, db_paths, bin_widths_gev, logger, apply_peak_removal,
+                    weighted=weighted,
                 )
                 if hists:
                     if trim_before_write:
@@ -289,7 +313,8 @@ def _create_histograms_from_sqlite(
         else:
             for signature in signatures:
                 hists = _create_histograms_for_signature(
-                    signature, db_paths, bin_widths_gev, logger, apply_peak_removal
+                    signature, db_paths, bin_widths_gev, logger, apply_peak_removal,
+                    weighted=weighted,
                 )
                 if hists:
                     if trim_before_write:
@@ -330,26 +355,53 @@ def _iter_signature_chunks(signature: str, db_paths: List[str]):
                 yield arr
 
 
+def _iter_weighted_signature_chunks(signature: str, db_paths: List[str], logger: logging.Logger):
+    """
+    Yield ``(masses, weights)`` per stored chunk of ``signature``.
+
+    ``weights`` is the aligned chunk of the ``_mcw`` sibling signature, or None
+    when the signature has no per-event MC weights. A sibling that does not
+    line up chunk-for-chunk is ignored (with a warning) rather than misapplied.
+    """
+    for db_path in db_paths:
+        chunks = [a for a in iter_arrays_for_signature(db_path, signature) if len(a) > 0]
+        weights = [
+            a for a in iter_arrays_for_signature(db_path, signature + MC_WEIGHT_SUFFIX)
+            if len(a) > 0
+        ]
+        aligned = bool(weights) and len(weights) == len(chunks) and all(
+            len(w) == len(c) for w, c in zip(weights, chunks)
+        )
+        if weights and not aligned:
+            logger.warning(
+                f"{signature}: MC weights in {os.path.basename(db_path)} do not align "
+                "with the masses; filling unweighted"
+            )
+        for i, chunk in enumerate(chunks):
+            yield chunk, (weights[i] if aligned else None)
+
+
 def _create_histograms_for_signature(
     signature: str,
     db_paths: List[str],
     bin_widths_gev: List[float],
     logger: logging.Logger,
     apply_peak_removal: bool = False,
+    weighted: bool = False,
 ) -> List[ROOT.TH1F]:
     histograms = []
     for bin_width in bin_widths_gev:
         nbins = max(1, math.ceil((FIXED_MASS_MAX_GEV - FIXED_MASS_MIN_GEV) / bin_width))
         hist_name = f"ROI_{signature}_width_{bin_width}"
         hist = ROOT.TH1F(hist_name, hist_name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
+        if weighted:
+            hist.Sumw2()  # bin errors = sqrt(sum w^2), not sqrt(N)
         histograms.append(hist)
 
     has_data = False
-    for chunk in _iter_signature_chunks(signature, db_paths):
+    for chunk, weights in _iter_weighted_signature_chunks(signature, db_paths, logger):
         has_data = True
-        for hist in histograms:
-            for val in chunk:
-                _fill_mass(hist, val)
+        _fill_chunk(histograms, chunk, weights)
 
     if not has_data:
         return []
@@ -368,6 +420,7 @@ def _create_merged_histograms_from_sqlite_signatures(
     bin_widths_gev: List[float],
     logger: logging.Logger,
     apply_peak_removal: bool = False,
+    weighted: bool = False,
 ) -> List[ROOT.TH1F]:
     if 'cat' not in hist_name_base and 'hCat' not in hist_name_base:
         raise ValueError(
@@ -378,17 +431,16 @@ def _create_merged_histograms_from_sqlite_signatures(
     for bin_width in bin_widths_gev:
         nbins = max(1, math.ceil((FIXED_MASS_MAX_GEV - FIXED_MASS_MIN_GEV) / bin_width))
         hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
-        histograms.append(
-            ROOT.TH1F(hist_name, hist_name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
-        )
+        hist = ROOT.TH1F(hist_name, hist_name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
+        if weighted:
+            hist.Sumw2()  # bin errors = sqrt(sum w^2), not sqrt(N)
+        histograms.append(hist)
 
     has_data = False
     for signature in signatures:
-        for chunk in _iter_signature_chunks(signature, db_paths):
+        for chunk, weights in _iter_weighted_signature_chunks(signature, db_paths, logger):
             has_data = True
-            for hist in histograms:
-                for val in chunk:
-                    _fill_mass(hist, val)
+            _fill_chunk(histograms, chunk, weights)
 
     if not has_data:
         return []
