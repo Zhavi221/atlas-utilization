@@ -17,6 +17,30 @@ import ROOT
 import math
 from services.storage.sqlite_shards import list_signatures, iter_arrays_for_signature
 
+# Fixed histogram range — eliminates the need for global_ranges.json
+# and the race condition between batches.  Post-processing trims
+# empty tails via trim_empty_tail().
+FIXED_MASS_MIN_GEV = 0.0
+FIXED_MASS_MAX_GEV = 10000.0
+
+
+def trim_empty_tail(hist: ROOT.TH1F) -> None:
+    """Trim trailing empty bins by adjusting the display range.
+
+    Finds the last bin with content > 0 and sets the x-axis range to
+    [0, last_bin_upper_edge].  The histogram object is modified in place.
+    """
+    last_filled = 0
+    for b in range(hist.GetNbinsX(), 0, -1):
+        if hist.GetBinContent(b) > 0:
+            last_filled = b
+            break
+    if last_filled > 0:
+        hist.GetXaxis().SetRangeUser(
+            hist.GetXaxis().GetXmin(),
+            hist.GetBinLowEdge(last_filled + 1)
+        )
+
 
 def save_global_ranges(ranges: Dict, output_path: str):
     import json
@@ -189,9 +213,6 @@ def _create_histograms_from_sqlite(
     output_dir = histograms_config["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
 
-    # Load global ranges if available
-    global_ranges_path = histograms_config.get("global_ranges_path")
-    global_ranges = load_global_ranges(global_ranges_path) if global_ranges_path else None
 
     bin_width_gev = histograms_config["bin_width_gev"]
     bin_widths_gev = [bin_width_gev] if isinstance(bin_width_gev, (int, float)) else bin_width_gev
@@ -241,7 +262,7 @@ def _create_histograms_from_sqlite(
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
                     group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
-                    global_ranges=global_ranges,
+                    global_ranges=None,
                 )
                 if hists:
                     _write_hists_to_shared_file(hists, root_filepath, logger)
@@ -251,7 +272,7 @@ def _create_histograms_from_sqlite(
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
                     group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
-                    global_ranges=global_ranges,
+                    global_ranges=None,
                 )
                 if hists:
                     root_filename = f"{bumpnet_name}_hists.root"
@@ -320,29 +341,30 @@ def _create_histograms_for_signature(
     logger: logging.Logger,
     apply_peak_removal: bool = False,
 ) -> List[ROOT.TH1F]:
-    global_min, global_max = float("inf"), float("-inf")
+    histograms = []
+    for bin_width in bin_widths_gev:
+        nbins = max(1, math.ceil((FIXED_MASS_MAX_GEV - FIXED_MASS_MIN_GEV) / bin_width))
+        hist_name = f"ROI_{signature}_width_{bin_width}"
+        hist = ROOT.TH1F(hist_name, hist_name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
+        histograms.append(hist)
+
     has_data = False
     for chunk in _iter_signature_chunks(signature, db_paths):
         has_data = True
-        global_min = min(global_min, float(np.min(chunk)))
-        global_max = max(global_max, float(np.max(chunk)))
-    if not has_data:
-        return []
-
-    histograms = []
-    for bin_width in bin_widths_gev:
-        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
-        hist_name = f"ROI_{signature}_width_{bin_width}"
-        hist = ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
-        histograms.append(hist)
-
-    for chunk in _iter_signature_chunks(signature, db_paths):
         for hist in histograms:
             for val in chunk:
                 hist.Fill(float(val))
+
+    if not has_data:
+        return []
+
     if apply_peak_removal:
         for hist in histograms:
             _apply_peak_removal_to_histogram(hist)
+
+    for hist in histograms:
+        trim_empty_tail(hist)
+
     return histograms
 
 
@@ -356,31 +378,8 @@ def _create_merged_histograms_from_sqlite_signatures(
     apply_peak_removal: bool = False,
 ) -> List[ROOT.TH1F]:
 
-    if global_ranges is not None:
-        if hist_name_base not in global_ranges:
-            logger.warning(
-                f"{hist_name_base} not found in global_ranges — skipping. "
-                "Re-run scan-only job to regenerate global_ranges.json."
-            )
-            return []
-        global_min, global_max = global_ranges[hist_name_base]
-        logger.debug(f"{hist_name_base}: using global range [{global_min:.1f}, {global_max:.1f}]")
-    else:
-        # No global ranges provided — compute from available data
-        # WARNING: this will produce batch-local edges, hadd will fail
-        logger.warning(
-            f"{hist_name_base}: no global_ranges provided — "
-            "computing from batch data only. hadd merging will likely fail!"
-        )
-        global_min, global_max = float("inf"), float("-inf")
-        for signature in signatures:
-            for chunk in _iter_signature_chunks(signature, db_paths):
-                global_min = min(global_min, float(np.min(chunk)))
-                global_max = max(global_max, float(np.max(chunk)))
-
-    if global_min == float("inf"):
-        return []
-
+    # global_ranges parameter kept for backward compatibility but ignored —
+    # fixed range is always used.
     if 'cat' not in hist_name_base and 'hCat' not in hist_name_base:
         raise ValueError(
             f"Invalid histogram name base '{hist_name_base}': must contain 'cat'"
@@ -388,20 +387,30 @@ def _create_merged_histograms_from_sqlite_signatures(
 
     histograms = []
     for bin_width in bin_widths_gev:
-        nbins = max(1, math.ceil((global_max - global_min) / bin_width))
+        nbins = max(1, math.ceil((FIXED_MASS_MAX_GEV - FIXED_MASS_MIN_GEV) / bin_width))
         hist_name = f"ROI_{hist_name_base}_width_{bin_width}"
         histograms.append(
-            ROOT.TH1F(hist_name, hist_name, nbins, global_min, global_max)
+            ROOT.TH1F(hist_name, hist_name, nbins, FIXED_MASS_MIN_GEV, FIXED_MASS_MAX_GEV)
         )
 
+    has_data = False
     for signature in signatures:
         for chunk in _iter_signature_chunks(signature, db_paths):
+            has_data = True
             for hist in histograms:
                 for val in chunk:
                     hist.Fill(float(val))
+
+    if not has_data:
+        return []
+
     if apply_peak_removal:
         for hist in histograms:
             _apply_peak_removal_to_histogram(hist)
+
+    for hist in histograms:
+        trim_empty_tail(hist)
+
     return histograms
 
 def _group_im_files_by_signature(im_files: List[str]) -> Dict[str, List[str]]:
