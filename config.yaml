@@ -75,12 +75,12 @@ parsing_task_config:
 
   # ===DATA SELECTION===
   release_years:
-    - "2024r-pp_mc"
+    - "2024r-pp"
   specific_record_ids: null              # list of CERN record IDs, or null for all
   parse_mc: true
 
   # ===PERFORMANCE===
-  use_multiprocessing: false
+  use_multiprocessing: true
   parallel_processes: 4
   threads: 8
   env_threshold_memory_mb: 8000
