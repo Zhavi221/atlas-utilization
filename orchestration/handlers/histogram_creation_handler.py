@@ -41,7 +41,6 @@ class HistogramCreationHandler(StateHandler):
             "apply_peak_removal_at_histogram_level": hc.apply_peak_removal_at_histogram_level,
             "batch_job_index": context.config.batch_job_index,
             "total_batch_jobs": context.config.total_batch_jobs,
-            "global_ranges_path": getattr(hc, 'global_ranges_path', None),
         }
 
         # If the previous stage produced files, pass them explicitly

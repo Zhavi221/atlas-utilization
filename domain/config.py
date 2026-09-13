@@ -188,9 +188,6 @@ class HistogramCreationConfig:
     use_bumpnet_naming: bool = False  # When true, use mass_<combo>_cat_<final_state> naming
     apply_peak_removal_at_histogram_level: bool = False
     
-    # Global ranges (set automatically by update_config_paths_with_run_dir)
-    global_ranges_path: Optional[str] = None
-
     # Pre-postproc histograms
     also_save_pre_postproc: bool = False
     pre_postproc_filename: Optional[str] = None
@@ -366,7 +363,6 @@ class PipelineConfig:
                 apply_peak_removal_at_histogram_level=hist_dict.get(
                     "apply_peak_removal_at_histogram_level", False
                 ),
-                global_ranges_path=hist_dict.get("global_ranges_path"),
                 also_save_pre_postproc=hist_dict.get("also_save_pre_postproc", False),
                 pre_postproc_filename=hist_dict.get("pre_postproc_filename"),
             )

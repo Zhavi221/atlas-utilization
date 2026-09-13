@@ -4,7 +4,7 @@
 #
 # Job chain:
 #   batch array (parsing+mass_calculating) → postproc (single job) →
-#   scan → histogram array → merge
+#   histogram array → merge
 # ===========================================================================
 
 set -e
@@ -15,7 +15,6 @@ CPUS_PER_JOB=4
 MEM_PER_JOB="20gb"
 WALLTIME="24:00:00"
 POSTPROC_WALLTIME="24:00:00"
-SCAN_WALLTIME="04:00:00"
 HIST_WALLTIME="12:00:00"
 MERGE_WALLTIME="04:00:00"
 QUEUE="N"
@@ -104,7 +103,7 @@ EOF
 )
 echo "Submitted postproc: ${POSTPROC_JOB_ID} (depends on all batches)"
 
-# Stage 4: histogram creation — per batch, depends on postproc
+# Stage 3: histogram creation — per batch, depends on postproc
 HIST_JOB_IDS=""
 for i in $(seq 1 $NUM_JOBS); do
     JOB_ID=$(qsub -W depend=afterok:"${POSTPROC_JOB_ID}" <<EOF
@@ -138,9 +137,8 @@ EOF
 done
 echo "All hist jobs: ${HIST_JOB_IDS}"
 
-# Stage 5: merge — depends on ALL histogram jobs
-# ── Stage 5: merge ────────────────────────────────────────────────────
-echo "=== Stage 5: merge ===" >> "${LOG_DIR}/pipeline.out"
+# Stage 4: merge — depends on ALL histogram jobs
+echo "=== Stage 4: merge ===" >> "${LOG_DIR}/pipeline.out"
 MERGE_JOB_ID=$(qsub -W depend=afterok:"${HIST_JOB_IDS}" <<EOF
 #!/bin/bash
 #PBS -q ${QUEUE}
@@ -171,7 +169,6 @@ echo ""
 echo "Job chain:"
 echo "  Batches:    ${BATCH_JOB_IDS}"
 echo "  Postproc:   ${POSTPROC_JOB_ID}"
-echo "  Scan:       ${SCAN_JOB_ID}"
 echo "  Histograms: ${HIST_JOB_IDS}"
 echo "  Merge:      ${MERGE_JOB_ID}"
 echo ""

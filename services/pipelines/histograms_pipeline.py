@@ -10,15 +10,15 @@ import os
 import fcntl
 import time
 import re
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 from collections import defaultdict
 import numpy as np
 import ROOT
 import math
 from services.storage.sqlite_shards import list_signatures, iter_arrays_for_signature
 
-# Fixed histogram range — eliminates the need for global_ranges.json
-# and the race condition between batches.
+# Fixed histogram range eliminates the range pre-scan and ensures that all
+# independently produced batch histograms have merge-compatible bin edges.
 FIXED_MASS_MIN_GEV = 0.0
 FIXED_MASS_MAX_GEV = 10000.0
 
@@ -71,57 +71,6 @@ def _fill_mass(hist: ROOT.TH1F, value: float) -> None:
         mass = math.nextafter(mass, FIXED_MASS_MIN_GEV)
     hist.Fill(mass)
 
-
-def save_global_ranges(ranges: Dict, output_path: str):
-    import json
-    with open(output_path, "w") as f:
-        json.dump(ranges, f, indent=2)
-    logging.getLogger(__name__).info(f"Saved global ranges to {output_path}")
-
-def load_global_ranges(path: str) -> Dict[str, Tuple[float, float]]:
-    import json
-    with open(path) as f:
-        data = json.load(f)
-    return {k: tuple(v) for k, v in data.items()}
-
-def compute_global_ranges(
-    sqlite_files: List[str],
-    input_dir: str,
-    exclude_outliers: bool = True,
-) -> Dict[str, Tuple[float, float]]:
-    """
-    Scan ALL processed SQLite files and compute global min/max per bumpnet_name.
-    Returns dict: {bumpnet_name: (global_min, global_max)}
-    Save result to JSON before running histogram creation batches.
-    """
-    logger = logging.getLogger(__name__)
-    db_paths = [os.path.join(input_dir, f) for f in sqlite_files]
-
-    signatures = set()
-    for db_path in db_paths:
-        signatures.update(list_signatures(db_path))
-    signatures = sorted(signatures)
-
-    if exclude_outliers:
-        signatures = [s for s in signatures if not s.endswith("_outliers")]
-
-    grouped = _group_signatures_by_bumpnet(signatures)
-    logger.info(f"Computing global ranges for {len(grouped)} bumpnet signatures...")
-
-    ranges = {}
-    for bumpnet_name, group_sigs in grouped.items():
-        gmin, gmax = float("inf"), float("-inf")
-        for sig in group_sigs:
-            for db_path in db_paths:
-                for chunk in iter_arrays_for_signature(db_path, sig):
-                    if len(chunk) > 0:
-                        gmin = min(gmin, float(np.min(chunk)))
-                        gmax = max(gmax, float(np.max(chunk)))
-        if gmin < float("inf"):
-            ranges[bumpnet_name] = (gmin, gmax)
-
-    logger.info(f"Computed ranges for {len(ranges)} signatures")
-    return ranges
 
 def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = None):
     logger = _init_logging()
@@ -299,7 +248,6 @@ def _create_histograms_from_sqlite(
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
                     group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
-                    global_ranges=None,
                 )
                 if hists:
                     if trim_before_write:
@@ -312,7 +260,6 @@ def _create_histograms_from_sqlite(
             for bumpnet_name, group_sigs in grouped.items():
                 hists = _create_merged_histograms_from_sqlite_signatures(
                     group_sigs, db_paths, bumpnet_name, bin_widths_gev, logger,
-                    global_ranges=None,
                 )
                 if hists:
                     if trim_before_write:
@@ -420,12 +367,8 @@ def _create_merged_histograms_from_sqlite_signatures(
     hist_name_base: str,
     bin_widths_gev: List[float],
     logger: logging.Logger,
-    global_ranges: Optional[Dict] = None,
     apply_peak_removal: bool = False,
 ) -> List[ROOT.TH1F]:
-
-    # global_ranges parameter kept for backward compatibility but ignored —
-    # fixed range is always used.
     if 'cat' not in hist_name_base and 'hCat' not in hist_name_base:
         raise ValueError(
             f"Invalid histogram name base '{hist_name_base}': must contain 'cat'"
