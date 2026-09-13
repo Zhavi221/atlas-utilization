@@ -10,6 +10,7 @@ from typing import Iterator, Optional, Callable
 from tqdm import tqdm
 
 from domain.events import EventBatch
+from .dsid import dsid_of_events, extract_dsid_from_url
 from .file_parser import FileParser, PartialFileReadError
 
 
@@ -219,7 +220,10 @@ class ThreadedFileProcessor:
             release_year=release_year,
             size_bytes=size_bytes,
             event_count=event_count,
-            processing_time_sec=processing_time
+            processing_time_sec=processing_time,
+            # The events' own channel number is authoritative; the URL is a
+            # fallback for releases whose files do not carry it.
+            dsid=dsid_of_events(events) or extract_dsid_from_url(file_url),
         )
     
     def _create_progress_bar(self, total: int):

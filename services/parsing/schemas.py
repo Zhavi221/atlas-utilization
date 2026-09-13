@@ -132,6 +132,34 @@ def get_all_trigger_branches() -> list[str]:
     }
     return sorted(stem + TRIGGER_BRANCH_SUFFIX for stem in stems)
 
+
+# Per-event MC generator weight branches, keyed by normalized release year.
+# PHYSLITE stores a vector of weights per event (index 0 is the nominal one);
+# the legacy ntuples store one float per event.  Data files won't have these
+# branches — the parser handles their absence gracefully.
+MC_EVENT_WEIGHT_BRANCHES = {
+    "2024r-pp": "EventInfoAuxDyn.mcEventWeights",
+    "2020e-13tev": "EventInfoAuxDyn.mcEventWeights",
+    "2025r-evgen-13tev": "EventInfoAuxDyn.mcEventWeights",
+    "2025r-evgen-13p6tev": "EventInfoAuxDyn.mcEventWeights",
+    "cms-nanoaod": "genWeight",
+    "2025e-13tev-beta": "weight_mc",
+    "2016e-8tev": "mcWeight",
+}
+
+# Per-event MC dataset number (DSID) branches, keyed by normalized release
+# year.  This is the authoritative dataset identity: ATLAS Open Data URLs
+# carry rucio container IDs rather than DSIDs, so the number must be read
+# from the events themselves.  Releases without such a branch are absent.
+MC_CHANNEL_NUMBER_BRANCHES = {
+    "2024r-pp": "EventInfoAuxDyn.mcChannelNumber",
+    "2020e-13tev": "EventInfoAuxDyn.mcChannelNumber",
+    "2025r-evgen-13tev": "EventInfoAuxDyn.mcChannelNumber",
+    "2025r-evgen-13p6tev": "EventInfoAuxDyn.mcChannelNumber",
+    "2025e-13tev-beta": "channelNumber",
+    "2016e-8tev": "channelNumber",
+}
+
 # Mapping from specific record IDs to their release year/schema identifier
 # This will be populated when schemas are extracted from record IDs
 RECORD_ID_TO_SCHEMA = {

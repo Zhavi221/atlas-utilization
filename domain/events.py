@@ -9,12 +9,48 @@ from typing import Optional
 import awkward as ak
 import numpy as np
 
+# Event-level Monte-Carlo information carried alongside the per-particle
+# collections of an event array, as a record with one scalar per event.
+# It is NOT a particle type: code that iterates particle fields must skip it,
+# and every event filter must carry it through unchanged. Data files have no
+# such field.
+MC_EVENT_INFO_FIELD = "_mcEventInfo"
+MC_EVENT_WEIGHT_FIELD = "mcEventWeight"      # nominal per-event generator weight
+MC_CHANNEL_NUMBER_FIELD = "mcChannelNumber"  # dataset number (DSID) of the event's sample
+NON_PARTICLE_FIELDS = frozenset({MC_EVENT_INFO_FIELD})
+
+# Values assumed for events whose file lacks the MC info branches: an
+# unweighted event (w_gen = 1) from an unknown dataset (DSID 0).
+_MC_EVENT_INFO_DEFAULTS = {MC_EVENT_WEIGHT_FIELD: 1.0, MC_CHANNEL_NUMBER_FIELD: 0}
+
+
+def particle_fields(events: ak.Array) -> list[str]:
+    """Names of the particle collections in ``events`` (event-level fields excluded)."""
+    return [f for f in events.fields if f not in NON_PARTICLE_FIELDS]
+
 
 def _empty_particle_collection(collection: ak.Array, event_count: int) -> ak.Array:
     """Build a typed jagged record collection containing no particles."""
     counts = np.zeros(event_count, dtype=np.int64)
     no_particles = ak.flatten(collection[:0])  # zero records, carrying ``collection``'s field types
     return ak.unflatten(no_particles, counts)
+
+
+def _default_mc_event_info(example: ak.Array, event_count: int) -> ak.Array:
+    """Build a per-event MC info record with default values, typed like ``example``."""
+    return ak.zip({
+        name: ak.values_astype(
+            ak.Array(np.full(event_count, _MC_EVENT_INFO_DEFAULTS.get(name, 0))),
+            example[name].layout.dtype,
+        )
+        for name in example.fields
+    })
+
+
+def _missing_collection(field: str, example: ak.Array, event_count: int) -> ak.Array:
+    if field == MC_EVENT_INFO_FIELD:
+        return _default_mc_event_info(example, event_count)
+    return _empty_particle_collection(example, event_count)
 
 
 def _concatenate_events(arrays: list[ak.Array]) -> ak.Array:
@@ -31,7 +67,7 @@ def _concatenate_events(arrays: list[ak.Array]) -> ak.Array:
     combined = {}
     for field, example in example_of.items():
         combined[field] = ak.concatenate([
-            array[field] if field in array.fields else _empty_particle_collection(example, len(array))
+            array[field] if field in array.fields else _missing_collection(field, example, len(array))
             for array in arrays
         ])
 
@@ -49,7 +85,8 @@ class EventBatch:
     event_count: int
     processing_time_sec: float
     file_url: str = ""
-    
+    dsid: Optional[int] = None  # MC dataset number, when the batch is single-DSID
+
     def __post_init__(self):
         """Validate the event batch."""
         if self.event_count < 0:
@@ -74,7 +111,8 @@ class EventChunk:
     size_bytes: int
     event_count: int
     file_ids: tuple[int, ...]  # Use tuple for immutability
-    
+    dsid: Optional[int] = None  # MC dataset number when the chunk is single-DSID
+
     def __post_init__(self):
         """Validate the event chunk."""
         if self.chunk_index < 0:
@@ -96,7 +134,8 @@ class EventChunk:
         cls,
         batches: list[EventBatch],
         chunk_index: int,
-        release_year: str
+        release_year: str,
+        dsid: Optional[int] = None
     ) -> 'EventChunk':
         """
         Create an EventChunk from multiple EventBatches.
@@ -105,6 +144,7 @@ class EventChunk:
             batches: List of event batches to combine
             chunk_index: Index of this chunk in the sequence
             release_year: Release year for this chunk
+            dsid: MC dataset number, when all batches share one DSID
             
         Returns:
             EventChunk with concatenated events
@@ -126,5 +166,6 @@ class EventChunk:
             release_year=release_year,
             size_bytes=total_size,
             event_count=total_events,
-            file_ids=file_ids
+            file_ids=file_ids,
+            dsid=dsid
         )
