@@ -34,13 +34,13 @@ paths:
 
 # ===NAMES====================================================================
 names:
-  run_name:           &run_name           "bug_hunt"
+  run_name:           &run_name           "atlas_full_fixComb_fixCut"
   histogram_filename: &histogram_filename "atlas_opendata_full_bumpnet.root"
 
 # ===RUN METADATA=============================================================
 run_metadata:
   run_name: *run_name
-  base_output_dir: "../data"
+  base_output_dir: "/data"
   batch_job_index: null                  # set by submit.sh (--batch-job-index)
   total_batch_jobs: null                 # set by submit.sh (--total-batch-jobs)
 
@@ -171,6 +171,3 @@ histogram_creation_task_config:
   exclude_outliers: true # was designed to remove high-mass outliers from very broad distributions, but it doesn't work properly during merging
   use_bumpnet_naming: true               # mass_<combo>_cat_<final_state> format
   apply_peak_removal_at_histogram_level: false
-
-  also_save_pre_postproc: true
-  pre_postproc_filename: "atlas_btag_ttbar_test_bumpnet_nopostproc.root"
