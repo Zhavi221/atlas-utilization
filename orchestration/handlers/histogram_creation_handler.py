@@ -41,7 +41,6 @@ class HistogramCreationHandler(StateHandler):
             "apply_peak_removal_at_histogram_level": hc.apply_peak_removal_at_histogram_level,
             "batch_job_index": context.config.batch_job_index,
             "total_batch_jobs": context.config.total_batch_jobs,
-            "global_ranges_path": getattr(hc, 'global_ranges_path', None),
         }
 
         # If the previous stage produced files, pass them explicitly
@@ -60,6 +59,10 @@ class HistogramCreationHandler(StateHandler):
         elapsed = (datetime.now() - start).total_seconds()
         self.logger.info(f"Histogram creation complete in {elapsed:.1f}s")
 
-        next_state = self._determine_next_state(context)
+        updated = context.with_custom_data(
+            "histograms",
+            {"total_time_sec": elapsed},
+        )
+        next_state = self._determine_next_state(updated)
         self._log_state_exit(context, next_state)
-        return context, next_state
+        return updated, next_state
