@@ -311,10 +311,9 @@ def filter_events_by_kinematics(
             iso_name = consts.ELECTRON_REL_ISOLATION_FIELD
             if hasattr(particles, iso_name):
                 iso = getattr(particles, iso_name)
-                pt_vals = ak.values_astype(particles.pt, float)
                 iso_vals = ak.values_astype(iso, float)
-                rel = iso_vals / ak.where(pt_vals > 0, pt_vals, np.inf)
-                mask = mask & (rel < float(cuts["rel_isolation_max"]))
+                iso_max = float(cuts["rel_isolation_max"])
+                mask = mask & (iso_vals < iso_max)
             else:
                 raise ValueError(
                     f"Electron rel_isolation_max requires missing field {iso_name!r}"
