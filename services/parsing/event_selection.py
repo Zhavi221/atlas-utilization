@@ -99,24 +99,29 @@ def apply_trigger_selection(
     one per trigger chain.  An event passes if ANY electron chain OR ANY muon
     chain is True.
 
-    For MC (``release_year`` ending in ``_mc``), all Run-2 year chains are
-    OR'd together since the MC covers the full period.
-
     Returns the filtered events array (``_triggerMatch`` field is dropped
     from the output to avoid downstream issues with non-particle fields).
     """
     if "_triggerMatch" not in events.fields:
-        return events
+        raise KeyError(
+        "_triggerMatch field missing — trigger branches may not have been read. "
+        "Check that trigger_config.enabled is true and branches exist in the input file."
+    )
 
     trig = events["_triggerMatch"]
     chain_defs = schemas.SINGLE_LEPTON_TRIGGER_CHAINS
 
-    # Collect all electron and muon chains across years (OR within flavour)
     e_chains = set()
     mu_chains = set()
-    for year_chains in chain_defs.values():
-        e_chains.update(year_chains.get("Electrons", []))
-        mu_chains.update(year_chains.get("Muons", []))
+
+    if release_year not in chain_defs:
+        raise ValueError(
+            f"No trigger config for year '{release_year}'. "
+            f"Supported: {sorted(chain_defs.keys())}"
+        )
+    year_chains = chain_defs[release_year]    
+    e_chains.update(year_chains.get("Electrons", []))
+    mu_chains.update(year_chains.get("Muons", []))
 
     # Build per-event boolean: did any electron chain fire?
     electron_pass = ak.zeros_like(ak.Array([False] * len(events)))
