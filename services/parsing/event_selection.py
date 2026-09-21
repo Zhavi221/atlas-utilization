@@ -91,6 +91,7 @@ def apply_parsing_event_selection(
 def apply_trigger_selection(
     events: ak.Array,
     release_year: str = "2024r-pp",
+    file_path: str = "",
 ) -> ak.Array:
     """
     Keep only events where at least one lepton fired a single-lepton trigger.
@@ -111,17 +112,18 @@ def apply_trigger_selection(
     trig = events["_triggerMatch"]
     chain_defs = schemas.SINGLE_LEPTON_TRIGGER_CHAINS
 
+    trigger_years = schemas.get_trigger_years(release_year, file_path)
     e_chains = set()
     mu_chains = set()
-
-    if release_year not in chain_defs:
-        raise ValueError(
-            f"No trigger config for year '{release_year}'. "
-            f"Supported: {sorted(chain_defs.keys())}"
-        )
-    year_chains = chain_defs[release_year]    
-    e_chains.update(year_chains.get("Electrons", []))
-    mu_chains.update(year_chains.get("Muons", []))
+    for year in trigger_years:
+        if year not in chain_defs:
+            raise ValueError(
+                f"No trigger chains defined for year '{year}'. "
+                f"Supported: {sorted(chain_defs.keys())}"
+            )
+        year_chains = chain_defs[year]
+        e_chains.update(year_chains.get("Electrons", []))
+        mu_chains.update(year_chains.get("Muons", []))
 
     # Build per-event boolean: did any electron chain fire?
     electron_pass = ak.zeros_like(ak.Array([False] * len(events)))
