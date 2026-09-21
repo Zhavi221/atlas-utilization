@@ -95,13 +95,7 @@ parsing_task_config:
   chunk_yield_threshold_bytes:  2147483648  # 2 GB
   count_retries_failed_files: 3
   fetching_metadata_timeout: 60
-  max_files_to_process: 40              # data files only because parse_mc is false
-  enable_jet_tagging: true              # when true, split Jets into BJets/LJets. Must give thresholds for btagging discriminants!
-  jet_btagging_thresholds:
-    btagDeepFlavB: 0.5
-    DL1d: 2.51
-
-  # ===ROOT TREES===
+  max_files_to_process: 40              # data files only
   possible_data_tree_names:
     - "CollectionTree"
     - "mini"
@@ -124,10 +118,12 @@ parsing_task_config:
     jets:      { pt_min: 30000.0, eta_max: 2.5 }
     bjets:     { pt_min: 30000.0, eta_max: 2.5 }
     photons:   { pt_min: 25000.0, eta_max: 2.37 }
-    taus:      { pt_min: 20000.0, eta_max: 2.5 }
+    taus:      { pt_min: 25000.0, eta_max: 2.5 }
+  enable_jet_tagging: true
+  jet_btagging_thresholds:
+    btagDeepFlavB: 0.5
+    DL1d: 2.51
 
-# --- 2. Mass Calculation -----------------------------------------------------
-# Computes invariant masses for every valid particle combination per final state.
 mass_calculation_task_config:
   # ===PATHS===
   input_dir:  "/data/atlas_pp_root_files"

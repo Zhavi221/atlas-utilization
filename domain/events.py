@@ -44,11 +44,11 @@ class EventBatch:
     
     events: ak.Array
     file_id: int
-    file_url: str = ""
     release_year: str
     size_bytes: int
     event_count: int
     processing_time_sec: float
+    file_url: str = ""
     
     def __post_init__(self):
         """Validate the event batch."""

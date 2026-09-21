@@ -658,6 +658,7 @@ def get_available_releases() -> list:
 
 RELEASE_TRIGGER_YEARS = {
     "2024r-pp": ["2015", "2016", "2017", "2018"],  # Run-2 PHYSLITE
+    "2024r-pp_mc": ["2015", "2016", "2017", "2018"],
 }
 
 
