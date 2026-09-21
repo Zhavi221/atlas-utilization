@@ -101,6 +101,12 @@ SINGLE_LEPTON_TRIGGER_CHAINS = {
 TRIGGER_BRANCH_SUFFIX = "AuxDyn.TrigMatchedObjects"
 
 
+RELEASE_TRIGGER_YEARS = {
+    "2024r-pp": ["2015", "2016", "2017", "2018"],  # Run-2 PHYSLITE
+    "2024r-pp_mc": ["2015", "2016", "2017", "2018"],
+}
+
+
 def get_all_trigger_branches() -> list[str]:
     """Return the branch names of every chain in ``SINGLE_LEPTON_TRIGGER_CHAINS``.
 
@@ -647,12 +653,6 @@ def build_branch_name(obj_name: str, release_year: str = "2024r-pp", field: str 
 def get_available_releases() -> list:
     """Return list of all available release years."""
     return list(RELEASE_SCHEMAS.keys())
-
-
-RELEASE_TRIGGER_YEARS = {
-    "2024r-pp": ["2015", "2016", "2017", "2018"],  # Run-2 PHYSLITE
-    "2024r-pp_mc": ["2015", "2016", "2017", "2018"],
-}
 
 
 def get_trigger_years(release_year: str, file_path: str = "") -> list[str]:
