@@ -116,32 +116,37 @@ def apply_trigger_selection(
     trig = events["_triggerMatch"]
     chain_defs = schemas.SINGLE_LEPTON_TRIGGER_CHAINS
 
-    trigger_years = schemas.get_trigger_years(release_year, file_path)
-    e_chains = set()
-    mu_chains = set()
-    for year in trigger_years:
+    if "_runNumber" in events.fields:
+        # MC: each event's trigger year is set by its random run number
+        rrn = events["_runNumber"]
+        trigger_years = [
+            (year, (rrn >= lo) & (rrn <= hi))
+            for year, (lo, hi) in schemas.YEAR_RUN_RANGES.items()
+        ]
+    else:
+        # Data: the file's year applies to every event
+        trigger_years = [
+            (year, True) for year in schemas.get_trigger_years(release_year, file_path)
+        ]
+
+    # Build per-event booleans: did any electron / muon chain of the event's year fire?
+    electron_pass = ak.zeros_like(ak.Array([False] * len(events)))
+    muon_pass = ak.zeros_like(ak.Array([False] * len(events)))
+    for year, in_year in trigger_years:
         if year not in chain_defs:
             raise ValueError(
                 f"No trigger chains defined for year '{year}'. "
                 f"Supported: {sorted(chain_defs.keys())}"
             )
         year_chains = chain_defs[year]
-        e_chains.update(year_chains.get("Electrons", []))
-        mu_chains.update(year_chains.get("Muons", []))
-
-    # Build per-event boolean: did any electron chain fire?
-    electron_pass = ak.zeros_like(ak.Array([False] * len(events)))
-    for chain in e_chains:
-        full_branch = chain + schemas.TRIGGER_BRANCH_SUFFIX
-        if full_branch in trig.fields:
-            electron_pass = electron_pass | trig[full_branch]
-
-    # Did any muon chain fire?
-    muon_pass = ak.zeros_like(ak.Array([False] * len(events)))
-    for chain in mu_chains:
-        full_branch = chain + schemas.TRIGGER_BRANCH_SUFFIX
-        if full_branch in trig.fields:
-            muon_pass = muon_pass | trig[full_branch]
+        for chain in year_chains.get("Electrons", []):
+            full_branch = chain + schemas.TRIGGER_BRANCH_SUFFIX
+            if full_branch in trig.fields:
+                electron_pass = electron_pass | (in_year & trig[full_branch])
+        for chain in year_chains.get("Muons", []):
+            full_branch = chain + schemas.TRIGGER_BRANCH_SUFFIX
+            if full_branch in trig.fields:
+                muon_pass = muon_pass | (in_year & trig[full_branch])
 
     # Event passes if any lepton trigger fired
     event_mask = electron_pass | muon_pass
@@ -161,5 +166,5 @@ def apply_trigger_selection(
 
     # Drop _triggerMatch from the output — it's event-level metadata that
     # would cause axis errors in downstream particle-level operations
-    particle_fields = {f: filtered[f] for f in filtered.fields if f != "_triggerMatch"}
+    particle_fields = {f: filtered[f] for f in filtered.fields if f not in ("_triggerMatch", "_runNumber")}
     return ak.zip(particle_fields, depth_limit=1)

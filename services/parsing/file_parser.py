@@ -267,6 +267,9 @@ class FileParser:
         available_trigger = [b for b in trigger_branches if b in tree_branches]
         if available_trigger:
             obj_branches["_triggerMatch"] = {b: b for b in available_trigger}
+        # MC only: the random run number picks each event's trigger year.
+        if schemas.RANDOM_RUN_NUMBER_BRANCH in tree_branches:
+            obj_branches["_runNumber"] = {schemas.RANDOM_RUN_NUMBER_BRANCH: "_runNumber"}
 
         return obj_branches
     
@@ -483,7 +486,7 @@ class FileParser:
                 bp: qty for bp, qty in branch_mapping.items()
                 if bp in accessible_set
             }
-            if obj_name in ("DirectObjects", "_triggerMatch"):
+            if obj_name in ("DirectObjects", "_triggerMatch", "_runNumber"):
                 # These are not particle types — skip the inv-mass field check.
                 if accessible_branches:
                     accessible_obj_branches[obj_name] = accessible_branches
@@ -563,6 +566,8 @@ class FileParser:
                         trig_fields[full_branch] = ak.any(per_particle_matched, axis=1)
                     if trig_fields:
                         result[obj_name] = ak.zip(trig_fields)
+                elif obj_name == "_runNumber":
+                    result[obj_name] = concatenated[schemas.RANDOM_RUN_NUMBER_BRANCH]
                 else:
                     result[obj_name] = ak.zip({
                         quantity: concatenated[full_branch]

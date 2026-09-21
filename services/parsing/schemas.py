@@ -100,6 +100,16 @@ SINGLE_LEPTON_TRIGGER_CHAINS = {
 
 TRIGGER_BRANCH_SUFFIX = "AuxDyn.TrigMatchedObjects"
 
+# MC: the data-taking run each event simulates (pileup reweighting), used to
+# pick the event's trigger year.  Inclusive run ranges per year.
+RANDOM_RUN_NUMBER_BRANCH = "EventInfoAuxDyn.RandomRunNumber"
+YEAR_RUN_RANGES = {
+    "2015": (276262, 284484),
+    "2016": (296939, 311481),
+    "2017": (324320, 341649),
+    "2018": (348197, 364292),
+}
+
 
 RELEASE_TRIGGER_YEARS = {
     "2024r-pp": ["2015", "2016", "2017", "2018"],  # Run-2 PHYSLITE

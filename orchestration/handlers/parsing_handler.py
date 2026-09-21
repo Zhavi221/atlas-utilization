@@ -236,9 +236,9 @@ class ParsingHandler(StateHandler):
                         event_count=len(filtered),
                         processing_time_sec=batch.processing_time_sec,
                     )
-                elif "_triggerMatch" in batch.events.fields:
+                elif "_triggerMatch" in batch.events.fields or "_runNumber" in batch.events.fields:
                     # Strip trigger fields even when not filtering
-                    clean = {f: batch.events[f] for f in batch.events.fields if f != "_triggerMatch"}
+                    clean = {f: batch.events[f] for f in batch.events.fields if f not in ("_triggerMatch", "_runNumber")}
                     cleaned_events = ak.zip(clean, depth_limit=1)
                     batch = EventBatch(
                         events=cleaned_events,
