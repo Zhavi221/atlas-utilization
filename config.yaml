@@ -28,19 +28,19 @@ paths:
   parsed_data_path:        &parsed_data_path        "./output/parsed_data"
   im_arrays_path:          &im_arrays_path          "./output/im_arrays"
   im_arrays_processed_path: &im_arrays_processed_path "./output/im_arrays_processed"
-  histograms_path:          &histograms_path          "./output/histograms"
-  metadata_cache_path:      &metadata_cache_path      "/storage/agrp/marybo/DDP/BumpNet4AtlasOpenData/Test_master_atlas-utilization/atlas-utilization/metadata_ttbar_cache.json"
-  jobs_logs_path:           &jobs_logs_path           "./output/logs"
+  histograms_path:         &histograms_path         "./output/histograms"
+  metadata_cache_path:     &metadata_cache_path     "./output/metadata_cache.json"
+  jobs_logs_path:          &jobs_logs_path          "./output/logs"
 
 # ===NAMES====================================================================
 names:
-  run_name:           &run_name           "atlas_ttbar_test_NoLeptontriggers"
+  run_name:           &run_name           "atlas_full_fixComb_fixCut"
   histogram_filename: &histogram_filename "atlas_opendata_full_bumpnet.root"
 
 # ===RUN METADATA=============================================================
 run_metadata:
   run_name: *run_name
-  base_output_dir: "../data"
+  base_output_dir: "/data"
   batch_job_index: null                  # set by submit.sh (--batch-job-index)
   total_batch_jobs: null                 # set by submit.sh (--total-batch-jobs)
 
@@ -58,8 +58,6 @@ tasks:
 # (surviving kinematic and isolation cuts) that is trigger-matched.
 trigger_config:
   enabled: false
-
-# ===STAGE CONFIGURATIONS=====================================================
 
 # ===TESTING==================================================================
 testing_config:
@@ -88,14 +86,20 @@ parsing_task_config:
   parse_mc: true
 
   # ===PERFORMANCE===
-  use_multiprocessing: false
+  use_multiprocessing: true
   parallel_processes: 4
   threads: 8
   env_threshold_memory_mb: 8000
   chunk_yield_threshold_bytes:  2147483648  # 2 GB
   count_retries_failed_files: 3
   fetching_metadata_timeout: 60
-  max_files_to_process: 40              # data files only
+  max_files_to_process: 100              # data files only because parse_mc is false
+  enable_jet_tagging: true              # when true, split Jets into BJets/LJets. Must give thresholds for btagging discriminants!
+  jet_btagging_thresholds:
+    btagDeepFlavB: 0.5
+    DL1d: 2.51
+
+  # ===ROOT TREES===
   possible_data_tree_names:
     - "CollectionTree"
     - "mini"
@@ -104,6 +108,7 @@ parsing_task_config:
   create_dirs: true
   show_progress_bar: true
 
+  # ===EVENT FILTERING===
   particle_counts:
     electrons: { min: 0, max: 4 }
     muons:     { min: 0, max: 4 }
@@ -118,12 +123,10 @@ parsing_task_config:
     jets:      { pt_min: 30000.0, eta_max: 2.5 }
     bjets:     { pt_min: 30000.0, eta_max: 2.5 }
     photons:   { pt_min: 25000.0, eta_max: 2.37 }
-    taus:      { pt_min: 25000.0, eta_max: 2.5 }
-  enable_jet_tagging: true
-  jet_btagging_thresholds:
-    btagDeepFlavB: 0.5
-    DL1d: 2.51
+    taus:      { pt_min: 20000.0, eta_max: 2.5 }
 
+# --- 2. Mass Calculation -----------------------------------------------------
+# Computes invariant masses for every valid particle combination per final state.
 mass_calculation_task_config:
   # ===PATHS===
   input_dir:  "/data/atlas_pp_root_files"
@@ -142,7 +145,7 @@ mass_calculation_task_config:
   min_count_particle_in_combination: 1   # min count per type
   max_count_particle_in_combination: 4   # max count per type was 4
   max_total_particles_in_combination: 4
-  min_events_per_fs: 10                 # drop final states with fewer events
+  min_events_per_fs: 100                 # drop final states with fewer events
   include_subleading: true        # set true to include e1, j1, etc.
   max_subleading_index: 1          # highest rank index to consider
 
@@ -171,7 +174,6 @@ histogram_creation_task_config:
   # ===OUTPUT===
   single_output_file: true
   output_filename: *histogram_filename
-  exclude_outliers: true
-  use_bumpnet_naming: true
-  also_save_pre_postproc: true
-  pre_postproc_filename: "atlas_btag_ttbar_test_bumpnet_nopostproc.root"
+  exclude_outliers: true # was designed to remove high-mass outliers from very broad distributions, but it doesn't work properly during merging
+  use_bumpnet_naming: true               # mass_<combo>_cat_<final_state> format
+  apply_peak_removal_at_histogram_level: false
