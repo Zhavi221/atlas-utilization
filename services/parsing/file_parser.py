@@ -556,8 +556,9 @@ class FileParser:
                         if full_branch not in concatenated.fields:
                             continue
                         raw = concatenated[full_branch]
-                        # raw[i][j] is the list of trigger objects particle j
-                        # of event i matched; the event matched if any is non-empty.
+                        # raw[i] holds one entry per matched combination in event i;
+                        # raw[i][j] links the offline particle(s) of combination j.
+                        # The event matched if any combination is non-empty.
                         per_particle_matched = ak.num(raw, axis=2) > 0
                         trig_fields[full_branch] = ak.any(per_particle_matched, axis=1)
                     if trig_fields:
