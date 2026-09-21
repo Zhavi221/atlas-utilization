@@ -150,6 +150,8 @@ class ParsingHandler(StateHandler):
             next_state = self._determine_next_state(context)
             return context, next_state
         
+        trigger_cfg = getattr(context.config, "trigger_config", None) or {}
+
         start_time = datetime.now()
         stats_collector = ParsingStatisticsCollector()
         parsed_files = []
@@ -213,9 +215,8 @@ class ParsingHandler(StateHandler):
                 on_error=on_error
             ):
 
-               # Apply single-lepton trigger matching if enabled,
+                # Apply single-lepton trigger matching if enabled,
                 # and always strip _triggerMatch before kinematic cuts
-                trigger_cfg = getattr(context.config, "trigger_config", None) or {}
                 if trigger_cfg.get("enabled", False):
                     filtered = apply_trigger_selection(
                         batch.events,
