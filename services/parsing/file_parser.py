@@ -263,7 +263,7 @@ class FileParser:
         # that offline particle matched the HLT trigger object within ΔR < 0.07.
         # Stored under ``_triggerMatch`` so downstream code can distinguish them
         # from particle-type fields.
-        trigger_branches = schemas.get_trigger_branches_for_release(release_year)
+        trigger_branches = schemas.get_all_trigger_branches()
         available_trigger = [b for b in trigger_branches if b in tree_branches]
         if available_trigger:
             obj_branches["_triggerMatch"] = {b: b for b in available_trigger}

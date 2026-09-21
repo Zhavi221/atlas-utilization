@@ -101,27 +101,20 @@ SINGLE_LEPTON_TRIGGER_CHAINS = {
 TRIGGER_BRANCH_SUFFIX = "AuxDyn.TrigMatchedObjects"
 
 
-def get_trigger_branches_for_release(release_year: str) -> list[str]:
-    """Return flat list of all trigger branch names for a release year.
+def get_all_trigger_branches() -> list[str]:
+    """Return the branch names of every chain in ``SINGLE_LEPTON_TRIGGER_CHAINS``.
 
-    For MC (``release_year`` ending in ``_mc``), returns the union of all
-    years since the MC sample covers the full Run-2 period.
+    This is the union over all years and lepton types: the set of branches
+    the parser tries to read from a file.  Which of them apply to a given
+    file is decided later, per year, by ``get_trigger_years``.
     """
-    normalized = normalize_release_year(release_year)
-    # MC covers all years — take the union of all chains
-    if release_year.endswith("_mc") or normalized in ("2024r-pp",):
-        all_branches = set()
-        for year_chains in SINGLE_LEPTON_TRIGGER_CHAINS.values():
-            for chains in year_chains.values():
-                all_branches.update(chains)
-        return sorted(c + TRIGGER_BRANCH_SUFFIX for c in all_branches)
-    # Data: could filter by year if encoded in the file URL — for now, union
-    return sorted(
-        b + TRIGGER_BRANCH_SUFFIX
+    stems = {
+        stem
         for year_chains in SINGLE_LEPTON_TRIGGER_CHAINS.values()
         for chains in year_chains.values()
-        for b in chains
-    )
+        for stem in chains
+    }
+    return sorted(stem + TRIGGER_BRANCH_SUFFIX for stem in stems)
 
 # Mapping from specific record IDs to their release year/schema identifier
 # This will be populated when schemas are extracted from record IDs
