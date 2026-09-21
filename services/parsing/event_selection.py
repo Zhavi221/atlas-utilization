@@ -104,11 +104,14 @@ def apply_trigger_selection(
     Returns the filtered events array (``_triggerMatch`` field is dropped
     from the output to avoid downstream issues with non-particle fields).
     """
+    logger = logging.getLogger(__name__)
+
     if "_triggerMatch" not in events.fields:
-        raise KeyError(
-        "_triggerMatch field missing — trigger branches may not have been read. "
-        "Check that trigger_config.enabled is true and branches exist in the input file."
-    )
+        logger.warning(
+            "Skipping file %s: no trigger-match branches on file (%d events dropped)",
+            file_path, len(events),
+        )
+        return events[:0]
 
     trig = events["_triggerMatch"]
     chain_defs = schemas.SINGLE_LEPTON_TRIGGER_CHAINS
@@ -146,7 +149,6 @@ def apply_trigger_selection(
     # Log trigger efficiency
     n_total = len(events)
     n_pass = int(ak.sum(event_mask))
-    logger = logging.getLogger(__name__)
     logger.info(
         "Trigger selection: %d / %d events pass (%.1f%%), "
         "electron-only: %d, muon-only: %d",
