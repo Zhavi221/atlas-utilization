@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 import awkward as ak
+import logging
 import numpy as np
 
 from services.calculations import physics_calcs
@@ -145,7 +146,6 @@ def apply_trigger_selection(
     # Log trigger efficiency
     n_total = len(events)
     n_pass = int(ak.sum(event_mask))
-    import logging
     logger = logging.getLogger(__name__)
     logger.info(
         "Trigger selection: %d / %d events pass (%.1f%%), "
