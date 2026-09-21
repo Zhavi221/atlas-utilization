@@ -206,6 +206,7 @@ class ParsingHandler(StateHandler):
                 file_urls=file_urls,
                 tree_names=list(parsing_config.possible_data_tree_names),
                 release_year=release_year,
+                        file_path=batch.file_url,
                 batch_size=40_000,
                 enable_jet_tagging=parsing_config.enable_jet_tagging,
                 jet_btagging_thresholds=parsing_config.jet_btagging_thresholds,
@@ -220,10 +221,12 @@ class ParsingHandler(StateHandler):
                     filtered = apply_trigger_selection(
                         batch.events,
                         release_year=release_year,
+                        file_path=batch.file_url,
                     )
                     batch = EventBatch(
                         events=filtered,
                         file_id=batch.file_id,
+                        file_url=batch.file_url,
                         release_year=batch.release_year,
                         size_bytes=(
                             filtered.layout.nbytes
@@ -240,6 +243,7 @@ class ParsingHandler(StateHandler):
                     batch = EventBatch(
                         events=cleaned_events,
                         file_id=batch.file_id,
+                        file_url=batch.file_url,
                         release_year=batch.release_year,
                         size_bytes=batch.size_bytes,
                         event_count=len(cleaned_events),
@@ -255,6 +259,7 @@ class ParsingHandler(StateHandler):
                     batch = EventBatch(
                         events=filtered,
                         file_id=batch.file_id,
+                        file_url=batch.file_url,
                         release_year=batch.release_year,
                         size_bytes=(
                             filtered.layout.nbytes

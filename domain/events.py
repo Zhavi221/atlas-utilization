@@ -44,6 +44,7 @@ class EventBatch:
     
     events: ak.Array
     file_id: int
+    file_url: str = ""
     release_year: str
     size_bytes: int
     event_count: int

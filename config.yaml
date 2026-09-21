@@ -58,7 +58,6 @@ tasks:
 # (surviving kinematic and isolation cuts) that is trigger-matched.
 trigger_config:
   enabled: false
-  year: 2024
 
 # ===STAGE CONFIGURATIONS=====================================================
 
