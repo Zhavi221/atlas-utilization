@@ -556,20 +556,10 @@ class FileParser:
                         if full_branch not in concatenated.fields:
                             continue
                         raw = concatenated[full_branch]
-                        # raw is var * var * ElementLink (per-particle lists).
-                        # ak.num(raw, axis=1) gives the number of particles per event.
-                        # For each particle, ak.num(raw, axis=2) would give match counts,
-                        # but the structure may vary.  Safest: check if the per-event
-                        # list has any non-empty sub-list.
-                        try:
-                            # per_particle_matched[i][j] = did particle j match?
-                            per_particle_matched = ak.num(raw, axis=2) > 0
-                            # event_matched[i] = did any particle in event i match?
-                            event_matched = ak.any(per_particle_matched, axis=1)
-                            trig_fields[full_branch] = event_matched
-                        except Exception:
-                            # Fallback: just check if the outer list is non-empty
-                            trig_fields[full_branch] = ak.num(raw, axis=1) > 0
+                        # raw[i][j] is the list of trigger objects particle j
+                        # of event i matched; the event matched if any is non-empty.
+                        per_particle_matched = ak.num(raw, axis=2) > 0
+                        trig_fields[full_branch] = ak.any(per_particle_matched, axis=1)
                     if trig_fields:
                         result[obj_name] = ak.zip(trig_fields)
                 else:
