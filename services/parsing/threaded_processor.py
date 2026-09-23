@@ -198,6 +198,7 @@ class ThreadedFileProcessor:
         return EventBatch(
             events=events,
             file_id=file_id,
+            file_url=file_url,
             release_year=release_year,
             size_bytes=size_bytes,
             event_count=event_count,

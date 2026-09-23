@@ -6,6 +6,7 @@ Schemas use a template-based approach: prefix + object_name + suffix
 """
 import requests
 import json
+import re
 from services import consts
 from services.parsing.root_io import open_root_file
 
@@ -37,6 +38,99 @@ PHYSLITE_BTAGGING_OBJECTS = [
 NANOAOD_BTAGGING_OBJECTS = [
     "Jet_btagDeepFlavB"
 ]
+
+# ---------------------------------------------------------------------------
+# Single-lepton trigger chains per data-taking year (Run 2).
+#
+# For each year the list gives the ``AnalysisTrigMatch_HLT_*`` branch stems
+# present in the ATLAS Open Data PHYSLITE files.  An event passes the
+# trigger requirement when *any* offline electron (muon) has a non-empty
+# match to *any* electron (muon) chain — the chains within a year are OR'd.
+#
+# MC samples produced for the full Run-2 period ("mc20") should use the
+# union of all years.
+# ---------------------------------------------------------------------------
+SINGLE_LEPTON_TRIGGER_CHAINS = {
+    "2015": {
+        "Electrons": [
+            "AnalysisTrigMatch_HLT_e24_lhmedium_L1EM20VH",
+            "AnalysisTrigMatch_HLT_e60_lhmedium",
+            "AnalysisTrigMatch_HLT_e120_lhloose",
+        ],
+        "Muons": [
+            "AnalysisTrigMatch_HLT_mu20_iloose_L1MU15",
+            "AnalysisTrigMatch_HLT_mu40",
+        ],
+    },
+    "2016": {
+        "Electrons": [
+            "AnalysisTrigMatch_HLT_e26_lhtight_nod0_ivarloose",
+            "AnalysisTrigMatch_HLT_e60_lhmedium_nod0",
+            "AnalysisTrigMatch_HLT_e140_lhloose_nod0",
+        ],
+        "Muons": [
+            "AnalysisTrigMatch_HLT_mu26_ivarmedium",
+            "AnalysisTrigMatch_HLT_mu50",
+        ],
+    },
+    "2017": {
+        "Electrons": [
+            "AnalysisTrigMatch_HLT_e26_lhtight_nod0_ivarloose",
+            "AnalysisTrigMatch_HLT_e60_lhmedium_nod0",
+            "AnalysisTrigMatch_HLT_e140_lhloose_nod0",
+        ],
+        "Muons": [
+            "AnalysisTrigMatch_HLT_mu26_ivarmedium",
+            "AnalysisTrigMatch_HLT_mu50",
+        ],
+    },
+    "2018": {
+        "Electrons": [
+            "AnalysisTrigMatch_HLT_e26_lhtight_nod0_ivarloose",
+            "AnalysisTrigMatch_HLT_e60_lhmedium_nod0",
+            "AnalysisTrigMatch_HLT_e140_lhloose_nod0",
+        ],
+        "Muons": [
+            "AnalysisTrigMatch_HLT_mu26_ivarmedium",
+            "AnalysisTrigMatch_HLT_mu50",
+        ],
+    },
+}
+
+
+TRIGGER_BRANCH_SUFFIX = "AuxDyn.TrigMatchedObjects"
+
+# MC: the data-taking run each event simulates (pileup reweighting), used to
+# pick the event's trigger year.  Inclusive run ranges per year.
+RANDOM_RUN_NUMBER_BRANCH = "EventInfoAuxDyn.RandomRunNumber"
+YEAR_RUN_RANGES = {
+    "2015": (276262, 284484),
+    "2016": (296939, 311481),
+    "2017": (324320, 341649),
+    "2018": (348197, 364292),
+}
+
+
+RELEASE_TRIGGER_YEARS = {
+    "2024r-pp": ["2015", "2016", "2017", "2018"],  # Run-2 PHYSLITE
+    "2024r-pp_mc": ["2015", "2016", "2017", "2018"],
+}
+
+
+def get_all_trigger_branches() -> list[str]:
+    """Return the branch names of every chain in ``SINGLE_LEPTON_TRIGGER_CHAINS``.
+
+    This is the union over all years and lepton types: the set of branches
+    the parser tries to read from a file.  Which of them apply to a given
+    file is decided later, per year, by ``get_trigger_years``.
+    """
+    stems = {
+        stem
+        for year_chains in SINGLE_LEPTON_TRIGGER_CHAINS.values()
+        for chains in year_chains.values()
+        for stem in chains
+    }
+    return sorted(stem + TRIGGER_BRANCH_SUFFIX for stem in stems)
 
 # Mapping from specific record IDs to their release year/schema identifier
 # This will be populated when schemas are extracted from record IDs
@@ -569,3 +663,28 @@ def build_branch_name(obj_name: str, release_year: str = "2024r-pp", field: str 
 def get_available_releases() -> list:
     """Return list of all available release years."""
     return list(RELEASE_SCHEMAS.keys())
+
+
+def get_trigger_years(release_year: str, file_path: str = "") -> list[str]:
+    """
+    Determine which trigger years apply.
+
+    - Data: extract year from file path (data15_13TeV -> 2015)
+    - MC: OR all years for the release (MC covers full Run-2 period)
+    """
+    match = re.search(r'data(\d{2})_\d+TeV', file_path)
+    if match:
+        year = f"20{match.group(1)}"
+        if year in SINGLE_LEPTON_TRIGGER_CHAINS:
+            return [year]
+        raise ValueError(
+            f"Data file year '{year}' (from {file_path}) has no trigger chains defined."
+        )
+
+    years = RELEASE_TRIGGER_YEARS.get(release_year)
+    if years is None:
+        raise ValueError(
+            f"No trigger mapping for release '{release_year}'. "
+            f"Supported: {sorted(RELEASE_TRIGGER_YEARS.keys())}"
+        )
+    return years

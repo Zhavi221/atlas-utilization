@@ -10,7 +10,7 @@
 set -e
 
 NUM_JOBS=3
-CONFIG="configWmaxTotal_up4j_minEvt10_subleading_btag_4.yaml"
+CONFIG="config.yaml"
 CPUS_PER_JOB=4
 MEM_PER_JOB="20gb"
 WALLTIME="24:00:00"
