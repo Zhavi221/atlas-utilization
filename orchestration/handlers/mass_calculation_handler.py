@@ -202,7 +202,9 @@ class MassCalculationHandler(StateHandler):
         global_counts: Counter = Counter()
         try:
             for root_file_path in root_files:
-                particle_arrays = self._load_particle_arrays(root_file_path)
+                particle_arrays = self._load_particle_arrays(
+                    root_file_path, mc.objects_to_calculate
+                )
                 if particle_arrays is None:
                     raise RuntimeError(
                         f"could not load final-state counts from {root_file_path.name}"
@@ -240,7 +242,9 @@ class MassCalculationHandler(StateHandler):
         return eligible
 
     @staticmethod
-    def _reconstruct_particle_arrays(tree) -> ak.Array:
+    def _reconstruct_particle_arrays(
+        tree, objects_to_calculate: Optional[tuple[str, ...]] = None
+    ) -> ak.Array:
         """
         Reconstruct the nested awkward array structure that IMCalculator
         expects from the flat ROOT branches written by ParsingHandler.
@@ -262,7 +266,10 @@ class MassCalculationHandler(StateHandler):
                 particle_types.append(ptype)
 
         particle_dict = {}
+        allowed = set(objects_to_calculate) if objects_to_calculate else None
         for ptype in particle_types:
+            if allowed is not None and ptype not in allowed:
+                continue
             sub_branches = {}
             for bn in branch_names:
                 # Match  Electrons_pt, Electrons_eta, etc.
@@ -286,14 +293,19 @@ class MassCalculationHandler(StateHandler):
     }
 
     @classmethod
-    def _reconstruct_from_atlas_tree(cls, tree) -> ak.Array:
+    def _reconstruct_from_atlas_tree(
+        cls, tree, objects_to_calculate: Optional[tuple[str, ...]] = None
+    ) -> ak.Array:
         """
         Reconstruct particle arrays from a raw ATLAS CollectionTree.
 
         Branch naming: Analysis{Type}sAuxDyn.{field} (e.g. AnalysisElectronsAuxDyn.pt)
         """
         particle_dict = {}
+        allowed = set(objects_to_calculate) if objects_to_calculate else None
         for ptype, prefix in cls.ATLAS_BRANCH_MAP.items():
+            if allowed is not None and ptype not in allowed:
+                continue
             sub_branches = {}
             for field in ("pt", "eta", "phi"):
                 branch_name = f"{prefix}.{field}"
@@ -304,13 +316,17 @@ class MassCalculationHandler(StateHandler):
 
         return ak.Array(particle_dict)
 
-    def _load_particle_arrays(self, root_file_path: Path) -> Optional[ak.Array]:
+    def _load_particle_arrays(
+        self, root_file_path: Path, objects_to_calculate: Optional[tuple[str, ...]] = None
+    ) -> Optional[ak.Array]:
         """Load either a parsed events tree or a supported raw ATLAS tree."""
         with uproot.open(str(root_file_path)) as f:
             if "events" in f:
-                return self._reconstruct_particle_arrays(f["events"])
+                return self._reconstruct_particle_arrays(f["events"], objects_to_calculate)
             if "CollectionTree" in f:
-                return self._reconstruct_from_atlas_tree(f["CollectionTree"])
+                return self._reconstruct_from_atlas_tree(
+                    f["CollectionTree"], objects_to_calculate
+                )
 
         self.logger.warning(
             f"{root_file_path.name} has no recognised tree – skipping"
@@ -331,7 +347,9 @@ class MassCalculationHandler(StateHandler):
         """Read one parsed ROOT file and compute invariant masses."""
         self.logger.info(f"Reading parsed file: {root_file_path.name}")
 
-        particle_arrays = self._load_particle_arrays(root_file_path)
+        particle_arrays = self._load_particle_arrays(
+            root_file_path, mc.objects_to_calculate
+        )
         if particle_arrays is None:
             return []
 

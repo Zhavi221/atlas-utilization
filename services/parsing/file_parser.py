@@ -82,7 +82,7 @@ class FileParser:
         batch_size: int,
         file_path: str,
         enable_jet_tagging: bool,
-        jet_btagging_thresholds: Optional[dict[str, float]]
+        jet_btagging_thresholds: Optional[dict[str, float]],
     ) -> Optional[ak.Array]:
         """Parse an already-opened ROOT file."""
         tree_name = FileParser._get_data_tree_name(root_file.keys(), tree_names)
@@ -92,7 +92,8 @@ class FileParser:
         
         obj_branches = FileParser._extract_branches_by_schema(
             all_tree_branches,
-            release_year
+            release_year,
+            include_direct_objects=enable_jet_tagging,
         )
 
         if not obj_branches:
@@ -136,7 +137,11 @@ class FileParser:
         source = obj_events.get("Electrons")
         if source is None:
             source = obj_events.get("Muons")
-        if source is None or "type" not in source.fields:
+        # A restricted allow-list may intentionally omit both combined-lepton
+        # collections, in which case there is nothing to split.
+        if source is None:
+            return obj_events
+        if "type" not in source.fields:
             raise ValueError(
                 f"{normalized_release} combined lepton branches require lep_type"
             )
@@ -213,7 +218,8 @@ class FileParser:
     @staticmethod
     def _extract_branches_by_schema(
         tree_branches: set[str],
-        release_year: str
+        release_year: str,
+        include_direct_objects: bool = False,
     ) -> dict[str, dict[str, str]]:
         """
         Extract branches by object based on release-specific schema.
@@ -256,7 +262,8 @@ class FileParser:
             if obj_branches_for_obj:
                 obj_branches[obj_name] = obj_branches_for_obj
         # Keep direct object names as-is, but store them under the "DirectObjects" key.
-        obj_branches.update({"DirectObjects": {k: k for k in direct_objects}})
+        if include_direct_objects:
+            obj_branches.update({"DirectObjects": {k: k for k in direct_objects}})
 
         # Trigger matching branches (event-level, per-particle ElementLink vectors).
         # Each branch is a ``var * var * ElementLink``; a non-empty inner list means
@@ -272,7 +279,7 @@ class FileParser:
             obj_branches["_runNumber"] = {schemas.RANDOM_RUN_NUMBER_BRANCH: "_runNumber"}
 
         return obj_branches
-    
+
     @staticmethod
     def _prepare_obj_branch_name(
         obj_name: str,
@@ -577,7 +584,9 @@ class FileParser:
         return result, read_error
     
     @staticmethod
-    def _auto_detect_branches(tree_branches: set[str]) -> dict[str, dict[str, str]]:
+    def _auto_detect_branches(
+        tree_branches: set[str]
+    ) -> dict[str, dict[str, str]]:
         """
         Auto-detect branch structure when schema is not available.
         Attempts to find branches matching common patterns.
