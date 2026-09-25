@@ -314,7 +314,17 @@ class PipelineExecutor:
 
         # ----- Parsed data -----
         parsed_dir = os.path.join(run_dir, "parsed_data")
-        parsing_stats, particle_stats = self._read_parsed_data_stats(parsed_dir)
+        mass_config = self.config.mass_calculation_config
+        parsing_config = self.config.parsing_config
+        configured_objects = (
+            mass_config.objects_to_calculate if mass_config is not None
+            else parsing_config.objects_to_parse if parsing_config is not None
+            else None
+        )
+        allowed_objects = set(configured_objects) if configured_objects is not None else None
+        parsing_stats, particle_stats = self._read_parsed_data_stats(
+            parsed_dir, allowed_objects
+        )
         if parsing_stats:
             parsing_stats["total_time_sec"] = stage_timings.get("parsing", 0.0)
             pipeline_stats['parsing'] = parsing_stats
@@ -369,7 +379,9 @@ class PipelineExecutor:
                     self.logger.warning(f"Could not read stage statistics {stats_path}: {exc}")
         return timings
 
-    def _read_parsed_data_stats(self, parsed_dir: str):
+    def _read_parsed_data_stats(
+        self, parsed_dir: str, allowed_objects: Optional[set[str]] = None
+    ):
         import uproot
         import numpy as np
 
@@ -399,6 +411,8 @@ class PipelineExecutor:
                     for branch_name in tree.keys():
                         if branch_name.startswith("n") and branch_name != "nEvents":
                             ptype = branch_name[1:]
+                            if allowed_objects is not None and ptype not in allowed_objects:
+                                continue
                             # Only read sum, not full array — avoids memory blowup
                             counts = tree[branch_name].array(library="np")
                             particle_counts[ptype] = particle_counts.get(ptype, 0) + int(np.sum(counts))
