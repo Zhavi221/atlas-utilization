@@ -101,6 +101,16 @@ class ObjectAllowListTests(unittest.TestCase):
         self.assertEqual(len(selected), 1)
         self.assertEqual(ak.num(selected.Taus, axis=1).to_list(), [1])
 
+    def test_adding_photon_to_allow_list_disables_its_implicit_veto(self):
+        events = object_events(
+            Jets=[[{"pt": 100.0, "eta": 0.1, "phi": 0.2}]],
+            Photons=[[{"pt": 40.0, "eta": 0.2, "phi": 0.1}]],
+        )
+
+        selected = self._select(events, allowed=ALLOWED + ("Photons",))
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(ak.num(selected.Photons, axis=1).to_list(), [1])
+
     def test_particle_counts_rejects_excluded_tau_and_photon_keys(self):
         for name in ("taus", "photons"):
             config = {
