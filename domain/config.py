@@ -61,9 +61,9 @@ class ParsingConfig:
     # Optional selection (from YAML): applied after reading each file, before chunking
     particle_counts: Optional[dict] = None
     kinematic_cuts: Optional[dict] = None
-    # Physics objects retained from input files.  This is derived from the
-    # mass-calculation allow-list so parsing does not read unused branches.
-    objects_to_parse: tuple[str, ...] = (
+    # Physics objects persisted after event selection.  The parser still reads
+    # all recognized physics objects so excluded objects can veto an event.
+    objects_to_store: tuple[str, ...] = (
         "Electrons", "Muons", "Jets", "BJets", "Photons", "Taus"
     )
     
@@ -88,8 +88,8 @@ class ParsingConfig:
         if self.enable_jet_tagging and not self.jet_btagging_thresholds:
             # TODO add algorithm-specific validation
             raise ValueError("jet_btagging_thresholds must be specified when enable_jet_tagging is set")
-        if not self.objects_to_parse:
-            raise ValueError("objects_to_parse cannot be empty")
+        if not self.objects_to_store:
+            raise ValueError("objects_to_store cannot be empty")
         if self.particle_counts:
             # Keep this local rather than importing the parsing service into
             # the domain layer.  YAML accepts lower-case plural names.
@@ -99,7 +99,7 @@ class ParsingConfig:
             }
             excluded = sorted(
                 str(key) for key in self.particle_counts
-                if yaml_names.get(str(key).lower(), key) not in self.objects_to_parse
+                if yaml_names.get(str(key).lower(), key) not in self.objects_to_store
             )
             if excluded:
                 raise ValueError(
@@ -338,7 +338,7 @@ class PipelineConfig:
                 jet_btagging_thresholds=parsing_dict.get("jet_btagging_thresholds", None),
                 particle_counts=parsing_dict.get("particle_counts"),
                 kinematic_cuts=parsing_dict.get("kinematic_cuts"),
-                objects_to_parse=objects,
+                objects_to_store=objects,
             )
         
         # Parse mass calculation config if enabled

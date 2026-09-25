@@ -61,6 +61,7 @@ def apply_parsing_event_selection(
     events: ak.Array,
     particle_counts: Optional[Dict[str, Any]] = None,
     kinematic_cuts: Optional[Dict[str, Any]] = None,
+    allowed_objects: Optional[tuple[str, ...]] = None,
 ) -> ak.Array:
     """
     Kinematic cuts are applied per particle type first, then event-level count ranges.
@@ -79,6 +80,19 @@ def apply_parsing_event_selection(
         for key, val in particle_counts.items():
             cname = canonical_particle_field_name(key)
             mapped[cname] = val
+
+    else:
+        mapped = {}
+
+    if allowed_objects is not None:
+        allowed = set(allowed_objects)
+        # Excluded recognized objects remain present until this point so they
+        # can veto events rather than being silently erased from final states.
+        for particle_type in YAML_PARTICLE_KEYS.values():
+            if particle_type not in allowed:
+                mapped[particle_type] = {"min": 0, "max": 0}
+
+    if mapped:
         events = physics_calcs.filter_events_by_particle_counts(
             events,
             mapped,
@@ -87,6 +101,20 @@ def apply_parsing_event_selection(
         )
 
     return events
+
+
+def retain_objects_for_storage(
+    events: ak.Array, objects_to_store: tuple[str, ...]
+) -> ak.Array:
+    """Drop non-persisted physics collections after all event vetoes ran."""
+    return ak.zip(
+        {
+            field: events[field]
+            for field in events.fields
+            if field in objects_to_store
+        },
+        depth_limit=1,
+    )
 
 
 def apply_trigger_selection(

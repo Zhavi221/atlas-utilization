@@ -318,7 +318,7 @@ class PipelineExecutor:
         parsing_config = self.config.parsing_config
         configured_objects = (
             mass_config.objects_to_calculate if mass_config is not None
-            else parsing_config.objects_to_parse if parsing_config is not None
+            else parsing_config.objects_to_store if parsing_config is not None
             else None
         )
         allowed_objects = set(configured_objects) if configured_objects is not None else None

@@ -44,7 +44,6 @@ class FileParser:
         batch_size: int = 40_000,
         enable_jet_tagging: bool = False,
         jet_btagging_thresholds: Optional[dict[str, float]] = None,
-        objects_to_parse: Optional[tuple[str, ...]] = None,
     ) -> Optional[ak.Array]:
         """
         Parse a single ROOT file and return events.
@@ -68,7 +67,6 @@ class FileParser:
                     file_path,
                     enable_jet_tagging,
                     jet_btagging_thresholds,
-                    objects_to_parse,
                 )
         except PartialFileReadError:
             raise
@@ -85,7 +83,6 @@ class FileParser:
         file_path: str,
         enable_jet_tagging: bool,
         jet_btagging_thresholds: Optional[dict[str, float]],
-        objects_to_parse: Optional[tuple[str, ...]] = None,
     ) -> Optional[ak.Array]:
         """Parse an already-opened ROOT file."""
         tree_name = FileParser._get_data_tree_name(root_file.keys(), tree_names)
@@ -96,7 +93,6 @@ class FileParser:
         obj_branches = FileParser._extract_branches_by_schema(
             all_tree_branches,
             release_year,
-            objects_to_parse=objects_to_parse,
             include_direct_objects=enable_jet_tagging,
         )
 
@@ -124,7 +120,6 @@ class FileParser:
         # Strip out DirectObjects -- they are not physics objects!
         if "DirectObjects" in obj_events.keys():
             obj_events.pop("DirectObjects")
-        obj_events = FileParser._retain_requested_objects(obj_events, objects_to_parse)
         events = ak.zip(obj_events, depth_limit=1)
         if read_error is not None:
             raise PartialFileReadError(file_path, events, read_error) from read_error
@@ -224,7 +219,6 @@ class FileParser:
     def _extract_branches_by_schema(
         tree_branches: set[str],
         release_year: str,
-        objects_to_parse: Optional[tuple[str, ...]] = None,
         include_direct_objects: bool = False,
     ) -> dict[str, dict[str, str]]:
         """
@@ -248,23 +242,14 @@ class FileParser:
                 f"Release year '{release_year}' not found in schemas. "
                 "Attempting auto-detection."
             )
-            return FileParser._auto_detect_branches(tree_branches, objects_to_parse)
+            return FileParser._auto_detect_branches(tree_branches)
         
         obj_branches = {}
         objects = schema_config["objects"]
         direct_objects = schema_config.get("direct_objects", [])
         naming_pattern = schema_config.get("naming_pattern", "dotted")
         
-        requested_objects = set(objects_to_parse) if objects_to_parse else None
-        # BJets are derived from Jets when tagging is enabled, so Jets remain
-        # an internal input in that one case but are stripped before output.
-        source_objects = set(requested_objects or objects)
-        if include_direct_objects and "BJets" in source_objects:
-            source_objects.add("Jets")
-
         for obj_name, fields in objects.items():
-            if obj_name not in source_objects:
-                continue
             if naming_pattern == "flat":
                 obj_branches_for_obj = FileParser._extract_flat_branches(
                     obj_name, fields, tree_branches, release_year
@@ -295,21 +280,6 @@ class FileParser:
 
         return obj_branches
 
-    @staticmethod
-    def _retain_requested_objects(
-        obj_events: dict[str, ak.Array],
-        objects_to_parse: Optional[tuple[str, ...]],
-    ) -> dict[str, ak.Array]:
-        """Drop physical objects outside the configured mass allow-list."""
-        if objects_to_parse is None:
-            return obj_events
-        allowed = set(objects_to_parse)
-        technical_fields = {"_triggerMatch", "_runNumber"}
-        return {
-            name: values for name, values in obj_events.items()
-            if name in allowed or name in technical_fields
-        }
-    
     @staticmethod
     def _prepare_obj_branch_name(
         obj_name: str,
@@ -615,7 +585,7 @@ class FileParser:
     
     @staticmethod
     def _auto_detect_branches(
-        tree_branches: set[str], objects_to_parse: Optional[tuple[str, ...]] = None
+        tree_branches: set[str]
     ) -> dict[str, dict[str, str]]:
         """
         Auto-detect branch structure when schema is not available.
@@ -633,10 +603,7 @@ class FileParser:
 
         required_fields = ["pt", "eta", "phi"]
 
-        allowed = set(objects_to_parse) if objects_to_parse else None
         for obj_name, patterns in object_patterns.items():
-            if allowed is not None and obj_name not in allowed:
-                continue
             for pattern in patterns:
                 matching_branches = [b for b in tree_branches if pattern.lower() in b.lower()]
 

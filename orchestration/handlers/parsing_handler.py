@@ -21,7 +21,9 @@ from services.parsing.event_accumulator import EventAccumulator
 from services.parsing.threaded_processor import ThreadedFileProcessor, ParsingStatisticsCollector
 from domain.statistics import ParsingStatistics
 from domain.events import EventBatch
-from services.parsing.event_selection import apply_parsing_event_selection, apply_trigger_selection
+from services.parsing.event_selection import (
+    apply_parsing_event_selection, apply_trigger_selection, retain_objects_for_storage,
+)
 from services.parsing.schemas import normalize_release_year
 from utils.batching import get_batch_slice_by_year
 
@@ -211,7 +213,6 @@ class ParsingHandler(StateHandler):
                 batch_size=40_000,
                 enable_jet_tagging=parsing_config.enable_jet_tagging,
                 jet_btagging_thresholds=parsing_config.jet_btagging_thresholds,
-                objects_to_parse=parsing_config.objects_to_parse,
                 on_success=on_success,
                 on_error=on_error
             ):
@@ -251,25 +252,32 @@ class ParsingHandler(StateHandler):
                         processing_time_sec=batch.processing_time_sec,
                     )
 
-                if parsing_config.kinematic_cuts or parsing_config.particle_counts:
-                    filtered = apply_parsing_event_selection(
-                        batch.events,
-                        particle_counts=parsing_config.particle_counts,
-                        kinematic_cuts=parsing_config.kinematic_cuts,
-                    )
-                    batch = EventBatch(
-                        events=filtered,
-                        file_id=batch.file_id,
-                        file_url=batch.file_url,
-                        release_year=batch.release_year,
-                        size_bytes=(
-                            filtered.layout.nbytes
-                            if hasattr(filtered, "layout")
-                            else batch.size_bytes
-                        ),
-                        event_count=len(filtered),
-                        processing_time_sec=batch.processing_time_sec,
-                    )
+                # Always apply selection: objects excluded from mass calculation
+                # have an implicit 0..0 count range and must veto the event.
+                filtered = apply_parsing_event_selection(
+                    batch.events,
+                    particle_counts=parsing_config.particle_counts,
+                    kinematic_cuts=parsing_config.kinematic_cuts,
+                    allowed_objects=parsing_config.objects_to_store,
+                )
+                # Discard excluded collections only after their kinematic and
+                # count-based veto has been applied.
+                filtered = retain_objects_for_storage(
+                    filtered, parsing_config.objects_to_store
+                )
+                batch = EventBatch(
+                    events=filtered,
+                    file_id=batch.file_id,
+                    file_url=batch.file_url,
+                    release_year=batch.release_year,
+                    size_bytes=(
+                        filtered.layout.nbytes
+                        if hasattr(filtered, "layout")
+                        else batch.size_bytes
+                    ),
+                    event_count=len(filtered),
+                    processing_time_sec=batch.processing_time_sec,
+                )
                 # Accumulate batch into chunks
                 chunk = self.accumulator.add_batch(batch)
                 
