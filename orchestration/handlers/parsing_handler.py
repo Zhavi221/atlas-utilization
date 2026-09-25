@@ -151,6 +151,7 @@ class ParsingHandler(StateHandler):
             return context, next_state
         
         trigger_cfg = getattr(context.config, "trigger_config", None) or {}
+        enable_trigger_matching = trigger_cfg.get("enabled", False)
 
         start_time = datetime.now()
         stats_collector = ParsingStatisticsCollector()
@@ -211,13 +212,14 @@ class ParsingHandler(StateHandler):
                 batch_size=40_000,
                 enable_jet_tagging=parsing_config.enable_jet_tagging,
                 jet_btagging_thresholds=parsing_config.jet_btagging_thresholds,
+                enable_trigger_matching=enable_trigger_matching,
                 on_success=on_success,
                 on_error=on_error
             ):
 
                 # Apply single-lepton trigger matching if enabled,
                 # and always strip _triggerMatch before kinematic cuts
-                if trigger_cfg.get("enabled", False):
+                if enable_trigger_matching:
                     filtered = apply_trigger_selection(
                         batch.events,
                         release_year=release_year,

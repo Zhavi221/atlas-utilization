@@ -44,6 +44,7 @@ class FileParser:
         batch_size: int = 40_000,
         enable_jet_tagging: bool = False,
         jet_btagging_thresholds: Optional[dict[str, float]] = None,
+        enable_trigger_matching: bool = False,
     ) -> Optional[ak.Array]:
         """
         Parse a single ROOT file and return events.
@@ -67,6 +68,7 @@ class FileParser:
                     file_path,
                     enable_jet_tagging,
                     jet_btagging_thresholds,
+                    enable_trigger_matching,
                 )
         except PartialFileReadError:
             raise
@@ -82,7 +84,8 @@ class FileParser:
         batch_size: int,
         file_path: str,
         enable_jet_tagging: bool,
-        jet_btagging_thresholds: Optional[dict[str, float]]
+        jet_btagging_thresholds: Optional[dict[str, float]],
+        enable_trigger_matching: bool,
     ) -> Optional[ak.Array]:
         """Parse an already-opened ROOT file."""
         tree_name = FileParser._get_data_tree_name(root_file.keys(), tree_names)
@@ -92,7 +95,8 @@ class FileParser:
         
         obj_branches = FileParser._extract_branches_by_schema(
             all_tree_branches,
-            release_year
+            release_year,
+            enable_trigger_matching,
         )
 
         if not obj_branches:
@@ -213,7 +217,8 @@ class FileParser:
     @staticmethod
     def _extract_branches_by_schema(
         tree_branches: set[str],
-        release_year: str
+        release_year: str,
+        enable_trigger_matching: bool = False,
     ) -> dict[str, dict[str, str]]:
         """
         Extract branches by object based on release-specific schema.
@@ -263,13 +268,14 @@ class FileParser:
         # that offline particle matched the HLT trigger object within ΔR < 0.07.
         # Stored under ``_triggerMatch`` so downstream code can distinguish them
         # from particle-type fields.
-        trigger_branches = schemas.get_all_trigger_branches()
-        available_trigger = [b for b in trigger_branches if b in tree_branches]
-        if available_trigger:
-            obj_branches["_triggerMatch"] = {b: b for b in available_trigger}
-        # MC only: the random run number picks each event's trigger year.
-        if schemas.RANDOM_RUN_NUMBER_BRANCH in tree_branches:
-            obj_branches["_runNumber"] = {schemas.RANDOM_RUN_NUMBER_BRANCH: "_runNumber"}
+        if enable_trigger_matching:
+            trigger_branches = schemas.get_all_trigger_branches()
+            available_trigger = [b for b in trigger_branches if b in tree_branches]
+            if available_trigger:
+                obj_branches["_triggerMatch"] = {b: b for b in available_trigger}
+            # MC only: the random run number picks each event's trigger year.
+            if schemas.RANDOM_RUN_NUMBER_BRANCH in tree_branches:
+                obj_branches["_runNumber"] = {schemas.RANDOM_RUN_NUMBER_BRANCH: "_runNumber"}
 
         return obj_branches
     
