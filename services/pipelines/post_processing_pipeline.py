@@ -14,7 +14,6 @@ import os
 import re
 from typing import Dict, List, Optional, Tuple
 import numpy as np
-import math
 
 from services.storage.sqlite_shards import (
     SqliteArrayShardWriter,
@@ -321,18 +320,24 @@ def _process_single_array(
     return output_files
 
 
+def _aligned_bin_edges(im_array: np.ndarray, bin_width: float) -> np.ndarray:
+    """Bin edges on the global grid (multiples of bin_width from 0) covering im_array.
+
+    Both peak detection and the outlier split use this grid so their cut
+    boundaries coincide with the fixed-range histogram bin edges.
+    """
+    min_mass = np.floor(np.min(im_array) / bin_width) * bin_width
+    max_mass = np.ceil(np.max(im_array) / bin_width) * bin_width
+    return np.arange(min_mass, max_mass + bin_width, bin_width)
+
+
 def _find_rightmost_highest_peak(
     im_array: np.ndarray, bin_width: float, logger: logging.Logger
 ) -> Optional[float]:
     if len(im_array) == 0:
         return None
 
-    # Align bins to multiples of bin_width starting from 0
-    # so peak detection matches histogram bin edges
-    min_mass = np.floor(np.min(im_array) / bin_width) * bin_width
-    max_mass = np.ceil(np.max(im_array) / bin_width) * bin_width
-
-    bin_edges = np.arange(min_mass, max_mass + bin_width, bin_width)
+    bin_edges = _aligned_bin_edges(im_array, bin_width)
     counts, _ = np.histogram(im_array, bins=bin_edges)
     if len(counts) == 0:
         return None
@@ -358,14 +363,10 @@ def _split_by_first_empty_bin(
     if len(im_array) == 0:
         return np.array([]), np.array([])
 
-    min_mass = np.min(im_array)
-    max_mass = np.max(im_array)
-    nbins = math.ceil((max_mass - min_mass) / bin_width)
-    if nbins == 0:
-        return im_array, np.array([])
-
-    bin_edges = np.linspace(min_mass, max_mass, nbins + 1)
+    bin_edges = _aligned_bin_edges(im_array, bin_width)
     counts, _ = np.histogram(im_array, bins=bin_edges)
+    if len(counts) == 0:
+        return im_array, np.array([])
 
     first_empty_bin_idx = None
     for i in range(len(counts)):
