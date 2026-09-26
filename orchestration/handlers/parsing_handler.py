@@ -21,8 +21,11 @@ from services.parsing.event_accumulator import EventAccumulator
 from services.parsing.threaded_processor import ThreadedFileProcessor, ParsingStatisticsCollector
 from domain.statistics import ParsingStatistics
 from domain.events import EventBatch
-from services.parsing.event_selection import apply_parsing_event_selection, apply_trigger_selection
-from services.parsing.schemas import normalize_release_year
+from services.parsing.event_selection import (
+    apply_parsing_event_selection,
+    apply_trigger_selection,
+    apply_overlap_removal,
+)
 from utils.batching import get_batch_slice_by_year
 
 
@@ -269,6 +272,25 @@ class ParsingHandler(StateHandler):
                             else batch.size_bytes
                         ),
                         event_count=len(filtered),
+                        processing_time_sec=batch.processing_time_sec,
+                    )
+
+                if parsing_config.enable_overlap_removal:
+                    overlap_removed = apply_overlap_removal(
+                        batch.events,
+                        cuts=parsing_config.overlap_removal,
+                    )
+                    batch = EventBatch(
+                        events=overlap_removed,
+                        file_id=batch.file_id,
+                        file_url=batch.file_url,
+                        release_year=batch.release_year,
+                        size_bytes=(
+                            overlap_removed.layout.nbytes
+                            if hasattr(overlap_removed, "layout")
+                            else batch.size_bytes
+                        ),
+                        event_count=len(overlap_removed),
                         processing_time_sec=batch.processing_time_sec,
                     )
                 # Accumulate batch into chunks

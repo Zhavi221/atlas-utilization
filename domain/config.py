@@ -61,6 +61,12 @@ class ParsingConfig:
     # Optional selection (from YAML): applied after reading each file, before chunking
     particle_counts: Optional[dict] = None
     kinematic_cuts: Optional[dict] = None
+
+    # ATLAS-style overlap removal (arXiv:1606.03903, Table 2), applied after
+    # kinematic cuts. False disables it entirely; True or a dict of cut
+    # overrides enables it (see event_selection.DEFAULT_OVERLAP_REMOVAL_CUTS).
+    overlap_removal: Optional[dict] = None
+    enable_overlap_removal: bool = False
     
     def __post_init__(self):
         """Validate parsing configuration."""
@@ -307,6 +313,8 @@ class PipelineConfig:
                 jet_btagging_thresholds=parsing_dict.get("jet_btagging_thresholds", None),
                 particle_counts=parsing_dict.get("particle_counts"),
                 kinematic_cuts=parsing_dict.get("kinematic_cuts"),
+                enable_overlap_removal=parsing_dict.get("enable_overlap_removal", False),
+                overlap_removal=parsing_dict.get("overlap_removal"),
             )
         
         # Parse mass calculation config if enabled
