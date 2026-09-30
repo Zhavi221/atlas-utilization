@@ -26,7 +26,7 @@ from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
 from services.parsing import schemas
-from services.parsing.dsid import dsids_in_events, extract_dsid_from_url
+from services.parsing.dsid import dsids_in_events
 from services.storage.sqlite_shards import (
     SqliteArrayShardWriter,
 )
@@ -100,7 +100,6 @@ class MassCalculationHandler(StateHandler):
             "sqlite_writer": sqlite_writer,
             "mc_weighting_enabled": bool(mc_cfg and mc_cfg.enabled),
             "mc_norm_by_dsid": {},
-            "mc_norm_default": 1.0,
         }
         # {release: {dsid: w_norm}} — metadata is scoped per Open Data release.
         self._mc_norm_by_release: Dict[str, Dict[int, float]] = {}
@@ -206,18 +205,15 @@ class MassCalculationHandler(StateHandler):
         make sure it covers every dataset in the file, fetching metadata once
         per newly seen (release, DSID).
 
-        The dataset number comes from the events themselves; the parsed
-        filename (``..._dsid<N>_...``) is the fallback for files whose events
-        carry no channel number, in which case the whole file gets that
-        dataset's factor via ``mc_norm_default``. Inert when weighting is off.
+        The dataset number is read from the events' own ``mcChannelNumber``;
+        it is never inferred from file names. Inert when weighting is off.
 
         Raises:
             MCWeightingError: when ``require_metadata`` is set and the file
-                cannot be normalized correctly (no generator weights, or a
-                dataset without the required metadata).
+                cannot be normalized correctly (no generator weights, no
+                dataset number, or a dataset without the required metadata).
         """
         mc_cfg = context.config.mc_weighting_config
-        config_dict["mc_norm_default"] = 1.0
         if not config_dict.get("mc_weighting_enabled"):
             return
         if MC_EVENT_INFO_FIELD not in particle_arrays.fields:
@@ -245,19 +241,16 @@ class MassCalculationHandler(StateHandler):
             self.logger.warning(message)
 
         dsids = [int(d) for d in dsids_in_events(particle_arrays)]
-        file_dsid = None
         if not dsids:
-            file_dsid = extract_dsid_from_url(root_file_path.name)
-            if file_dsid is None:
-                message = (
-                    f"MC weighting enabled but no dataset number found for "
-                    f"{root_file_path.name}; w_norm=1 for its events."
-                )
-                if mc_cfg.require_metadata:
-                    raise MCWeightingError(message)
-                self.logger.warning(message)
-                return
-            dsids = [file_dsid]
+            message = (
+                f"MC weighting enabled but {root_file_path.name} carries no dataset "
+                f"number (expected branch {schemas.MC_CHANNEL_NUMBER_BRANCHES.get(release)!r} "
+                f"for release {release}); w_norm=1 for its events."
+            )
+            if mc_cfg.require_metadata:
+                raise MCWeightingError(message)
+            self.logger.warning(message)
+            return
 
         missing = sorted(d for d in dsids if d not in norm_by_dsid)
         if missing:
@@ -290,9 +283,6 @@ class MassCalculationHandler(StateHandler):
                     f"DSID {dsid} ({md.physics_short}): w_norm={norm_by_dsid[dsid]:.6g} "
                     f"at L={luminosity} fb^-1"
                 )
-
-        if file_dsid is not None:
-            config_dict["mc_norm_default"] = norm_by_dsid.get(file_dsid, 1.0)
 
     def _release_of(self, root_file_path: Path, context: PipelineContext) -> str:
         """

@@ -194,7 +194,6 @@ def _calculate_combination_invariant_mass(
         mc_event_weights = _event_weights(
             sliced_events[MC_EVENT_INFO_FIELD],
             config.get("mc_norm_by_dsid"),
-            config.get("mc_norm_default", 1.0),
         )
 
     return inv_mass, mc_event_weights, None
@@ -203,15 +202,13 @@ def _calculate_combination_invariant_mass(
 def _event_weights(
     mc_info: ak.Array,
     norm_by_dsid: Optional[Dict[int, float]],
-    default_norm: float = 1.0,
 ) -> np.ndarray:
     """
     Final per-event MC weight: generator weight x per-dataset normalization.
 
     ``norm_by_dsid`` maps dataset number -> w_norm (computed once per DSID by
     the mass-calculation handler). Events whose dataset is not in the map, or
-    that carry no dataset number, get ``default_norm`` (the file-level factor,
-    or 1 when unknown).
+    that carry no dataset number, get w_norm = 1.
     """
     n = len(mc_info)
     if MC_EVENT_WEIGHT_FIELD in mc_info.fields:
@@ -219,7 +216,7 @@ def _event_weights(
     else:
         weights = np.ones(n, dtype=np.float64)
 
-    norm = np.full(n, float(default_norm), dtype=np.float64)
+    norm = np.ones(n, dtype=np.float64)
     if norm_by_dsid and MC_CHANNEL_NUMBER_FIELD in mc_info.fields:
         dsids = np.asarray(ak.to_numpy(mc_info[MC_CHANNEL_NUMBER_FIELD]))
         for dsid in np.unique(dsids):

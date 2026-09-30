@@ -36,20 +36,22 @@ def _record(section, status, detail=""):
 # 1. Pure logic (no heavy deps) — must PASS everywhere
 # --------------------------------------------------------------------------- #
 def check_pure_logic():
-    section = "1. Pure logic (DSID extraction, weight math)"
+    section = "1. Pure logic (DSID from events, weight math)"
     try:
+        import awkward as ak
+        from domain.events import MC_EVENT_INFO_FIELD, MC_CHANNEL_NUMBER_FIELD, MC_EVENT_WEIGHT_FIELD
         from domain.metadata import MCDatasetMetadata
         from services.calculations.mc_weights import compute_event_weight, compute_normalization
-        from services.parsing.dsid import extract_dsid_from_url
+        from services.parsing.dsid import dsid_of_events
 
-        # DSID extraction: strict, no false positives on container / sequence numbers
-        assert extract_dsid_from_url("mc20_13TeV.410470.ttbar.DAOD_PHYSLITE.root") == 410470
-        assert extract_dsid_from_url("parsed_2024r-pp_mc_dsid700320_chunk0.root") == 700320
-        assert extract_dsid_from_url("2024r-pp_deadbeef.root") is None
-        assert extract_dsid_from_url(
-            "root://eospublic.cern.ch:1094//eos/opendata/atlas/rucio/mc20_13TeV/"
-            "DAOD_PHYSLITE.37621257._000071.pool.root.1"
-        ) is None
+        # DSID comes only from the events' mcChannelNumber
+        def events(info):
+            return ak.Array({"Jets": [[{"pt": 1.0}]] * len(next(iter(info.values()))),
+                             MC_EVENT_INFO_FIELD: ak.zip(info)})
+        assert dsid_of_events(events({MC_CHANNEL_NUMBER_FIELD: [410470, 410470]})) == 410470
+        assert dsid_of_events(events({MC_CHANNEL_NUMBER_FIELD: [410470, 700320]})) is None  # mixed
+        assert dsid_of_events(events({MC_EVENT_WEIGHT_FIELD: [1.0, 1.0]})) is None  # no branch
+        assert dsid_of_events(ak.Array({"Jets": [[{"pt": 1.0}]]})) is None  # data
 
         # weight math
         md = MCDatasetMetadata(dataset_number=410470, cross_section_pb=729.77,
@@ -218,7 +220,7 @@ def check_end_to_end_synthetic():
             fs_events = calc.get_events_for_final_state(fs_list[0])
             config = {"field_to_slice_by": "pt", "fs_chunk_threshold_bytes": 10**9,
                       "output_mode": "sqlite", "sqlite_writer": writer,
-                      "mc_weighting_enabled": True, "mc_norm_by_dsid": norm, "mc_norm_default": 1.0}
+                      "mc_weighting_enabled": True, "mc_norm_by_dsid": norm}
             process_final_state(fs_list[0], fs_events, "parsed_2024r-pp_mc_chunk0.root",
                                 [{"Electrons": (2, 0)}], config, im_dir, logger, calc)
             writer.close()

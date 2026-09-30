@@ -2,44 +2,17 @@
 Monte-Carlo dataset number (DSID) resolution.
 
 The DSID keys every per-dataset normalization input (cross section, k-factor,
-filter efficiency, sum of weights), so it must be identified reliably. The
-authoritative source is the ``mcChannelNumber`` carried by the events
-themselves; names are a fallback for files without that branch. A *wrong* DSID
-silently produces a wrong weight — worse than an unweighted histogram — so name
-matching is deliberately strict and returns ``None`` when in doubt.
+filter efficiency, sum of weights), so it must be identified reliably. It is
+read only from the ``mcChannelNumber`` carried by the events themselves, never
+inferred from file names or URLs.
 """
 
-import re
 from typing import Optional
 
 import awkward as ak
 import numpy as np
 
 from domain.events import MC_EVENT_INFO_FIELD, MC_CHANNEL_NUMBER_FIELD
-
-# Match the 6-digit ATLAS DSID only in its canonical position, e.g.
-# "mc20_13TeV.410470.PhPy8EG_..." -> "410470". Rucio container numbers
-# (DAOD_PHYSLITE.37620644._000001) and file-sequence indices must not match.
-_DSID_PATTERNS = (
-    re.compile(r"dsid_?(\d{6,8})"),            # dsid410470 / dsid_410470 (our chunk filenames)
-    re.compile(r"[Tt]e[Vv]\.(\d{6})\."),      # ...TeV.410470.  (canonical)
-    re.compile(r"\.(\d{6})\.[A-Za-z]"),        # .410470.PhPy8... (DSID before physics_short)
-)
-
-
-def extract_dsid_from_url(url_or_name: Optional[str]) -> Optional[int]:
-    """
-    Extract the dataset number (DSID) from an ATLAS Open Data URL or filename.
-
-    Returns the DSID as an int, or None if no DSID-like token is found.
-    """
-    if not url_or_name:
-        return None
-    for pattern in _DSID_PATTERNS:
-        match = pattern.search(url_or_name)
-        if match:
-            return int(match.group(1))
-    return None
 
 
 def dsids_in_events(events: ak.Array) -> np.ndarray:
