@@ -287,6 +287,54 @@ def check_end_to_end_synthetic():
         _record(section, "FAIL", f"{type(e).__name__}: {e}")
 
 
+# --------------------------------------------------------------------------- #
+# 5. Masses and their _mcw weights are flushed together, whatever the threshold
+# --------------------------------------------------------------------------- #
+def check_flush_alignment():
+    section = "5. IM / _mcw chunks stay aligned across threshold flushes"
+    try:
+        import logging
+        import awkward as ak
+        import numpy as np
+        from services.pipelines.im_pipeline import (
+            MC_WEIGHT_SUFFIX, _accumulate_invariant_mass, _save_remaining_accumulated_data,
+        )
+        from services.storage.sqlite_shards import SqliteArrayShardWriter, iter_arrays_for_signature
+    except Exception as e:
+        _record(section, "SKIP", f"dependency not available ({e})")
+        return
+    try:
+        logger = logging.getLogger("smoke_flush")
+        sig = "f_FS_2e_IM_2e"
+        batch_sizes = (100, 100, 100, 100)
+        # Thresholds chosen so a flush trips at every point of the add sequence,
+        # including right after a batch's masses were added.
+        thresholds = (1500, 2000, 2500, 3500, 4000, 5000, 6000)
+        with tempfile.TemporaryDirectory() as tmp:
+            for threshold in thresholds:
+                db = os.path.join(tmp, f"im_{threshold}.sqlite")
+                writer = SqliteArrayShardWriter(db)
+                mapping = {}
+                for n in batch_sizes:
+                    _accumulate_invariant_mass(
+                        mapping, "2e", sig, ak.Array(np.random.rand(n) * 100),
+                        threshold, tmp, logger, output_mode="sqlite", sqlite_writer=writer,
+                        mc_weights=ak.Array(np.full(n, 0.5)),
+                    )
+                _save_remaining_accumulated_data(mapping, tmp, logger, output_mode="sqlite", sqlite_writer=writer)
+                writer.commit()
+                writer.close()
+
+                im_sizes = [len(a) for a in iter_arrays_for_signature(db, sig)]
+                w_sizes = [len(a) for a in iter_arrays_for_signature(db, sig + MC_WEIGHT_SUFFIX)]
+                assert sum(im_sizes) == sum(batch_sizes), f"threshold={threshold}: lost masses {im_sizes}"
+                assert im_sizes == w_sizes, f"threshold={threshold}: masses {im_sizes} vs weights {w_sizes}"
+
+        _record(section, "PASS", f"{len(thresholds)} thresholds, chunk sizes identical")
+    except Exception as e:
+        _record(section, "FAIL", f"{type(e).__name__}: {e}")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="MC weighting smoke test")
     parser.add_argument("--dsid", type=int, default=700320, help="DSID for live metadata fetch")
@@ -305,6 +353,7 @@ def main(argv=None):
         _record(f"2. Live ATLAS metadata fetch (DSID {args.dsid})", "SKIP", "--skip-network")
     check_accumulator_real_awkward()
     check_end_to_end_synthetic()
+    check_flush_alignment()
 
     print("=" * 74)
     print("SUMMARY")

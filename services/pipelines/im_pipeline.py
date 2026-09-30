@@ -112,22 +112,16 @@ def process_final_state(
 
         stats['calculated'] += 1
         combination_name = prepare_im_combination_name(filename, final_state, combination)
+        # Per-event MC weights are stored as a parallel signature (_mcw suffix)
+        # with the same length and event order as the IM array, so every event
+        # carries its final weight and nothing downstream needs to know its
+        # dataset.
         saved_files = _accumulate_invariant_mass(
             fs_im_mapping, final_state, combination_name, inv_mass,
             fs_mapping_threshold_bytes, output_dir, logger,
-            output_mode=output_mode, sqlite_writer=sqlite_writer
+            output_mode=output_mode, sqlite_writer=sqlite_writer,
+            mc_weights=None if mc_event_weights is None else ak.Array(mc_event_weights),
         )
-        # Store per-event MC weights as a parallel signature (_mcw suffix)
-        # through the same accumulate/flush path: same length and event order
-        # as the IM array, so every event carries its final weight and nothing
-        # downstream needs to know its dataset.
-        if mc_event_weights is not None:
-            saved_files += _accumulate_invariant_mass(
-                fs_im_mapping, final_state, combination_name + MC_WEIGHT_SUFFIX,
-                ak.Array(mc_event_weights),
-                fs_mapping_threshold_bytes, output_dir, logger,
-                output_mode=output_mode, sqlite_writer=sqlite_writer
-            )
         created_im_files.extend(_without_weight_arrays(saved_files))
 
     remaining_files = _save_remaining_accumulated_data(
@@ -245,15 +239,16 @@ def _accumulate_invariant_mass(
     logger: logging.Logger,
     output_mode: str = "npy",
     sqlite_writer=None,
+    mc_weights: Optional[ak.Array] = None,
 ) -> List[str]:
     if final_state not in fs_im_mapping:
         fs_im_mapping[final_state] = {}
 
-    if combination_name in fs_im_mapping[final_state]:
-        existing_im = fs_im_mapping[final_state][combination_name]
-        fs_im_mapping[final_state][combination_name] = ak.concatenate([existing_im, inv_mass])
-    else:
-        fs_im_mapping[final_state][combination_name] = inv_mass
+    _append_to_mapping(fs_im_mapping[final_state], combination_name, inv_mass)
+    # The masses' MC weights enter the buffer together with them, before the
+    # threshold check, so a flush can never store one without the other.
+    if mc_weights is not None:
+        _append_to_mapping(fs_im_mapping[final_state], combination_name + MC_WEIGHT_SUFFIX, mc_weights)
 
     saved_files = []
     if _fs_dict_exceeding_threshold(fs_im_mapping, threshold_bytes):
@@ -268,6 +263,13 @@ def _accumulate_invariant_mass(
         fs_im_mapping[final_state].clear()
 
     return saved_files
+
+
+def _append_to_mapping(fs_mapping: Dict[str, ak.Array], name: str, arr: ak.Array) -> None:
+    if name in fs_mapping:
+        fs_mapping[name] = ak.concatenate([fs_mapping[name], arr])
+    else:
+        fs_mapping[name] = arr
 
 
 def _save_remaining_accumulated_data(
