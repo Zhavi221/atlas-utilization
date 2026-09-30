@@ -335,6 +335,46 @@ def check_flush_alignment():
         _record(section, "FAIL", f"{type(e).__name__}: {e}")
 
 
+# --------------------------------------------------------------------------- #
+# 6. The config file must not enable MC weighting with parse_mc: false
+# --------------------------------------------------------------------------- #
+def check_config_requires_parse_mc():
+    section = "6. Config file rejects MC weighting without parse_mc"
+    try:
+        import copy
+        import yaml
+        from domain.config import PipelineConfig
+    except Exception as e:
+        _record(section, "SKIP", f"dependency not available ({e})")
+        return
+    try:
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(repo, "config.yaml")) as f:
+            base = yaml.safe_load(f)
+
+        def load(parse_mc, weighting):
+            cfg = copy.deepcopy(base)
+            cfg["mc_weighting_config"]["enabled"] = weighting
+            if parse_mc is None:
+                cfg["parsing_task_config"].pop("parse_mc", None)
+            else:
+                cfg["parsing_task_config"]["parse_mc"] = parse_mc
+            return PipelineConfig.from_dict(cfg)
+
+        load(parse_mc=True, weighting=True)
+        load(parse_mc=False, weighting=False)
+        for parse_mc in (False, None):  # parse_mc defaults to false when omitted
+            try:
+                load(parse_mc=parse_mc, weighting=True)
+            except ValueError:
+                continue
+            raise AssertionError(f"parse_mc={parse_mc} with MC weighting enabled was accepted")
+
+        _record(section, "PASS", "weighting + parse_mc: false rejected, valid combinations load")
+    except Exception as e:
+        _record(section, "FAIL", f"{type(e).__name__}: {e}")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="MC weighting smoke test")
     parser.add_argument("--dsid", type=int, default=700320, help="DSID for live metadata fetch")
@@ -354,6 +394,7 @@ def main(argv=None):
     check_accumulator_real_awkward()
     check_end_to_end_synthetic()
     check_flush_alignment()
+    check_config_requires_parse_mc()
 
     print("=" * 74)
     print("SUMMARY")

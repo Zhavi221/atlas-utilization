@@ -453,6 +453,9 @@ class PipelineConfig:
                 luminosity_by_campaign=mc_dict.get("luminosity_by_campaign"),
                 require_metadata=mc_dict.get("require_metadata", False),
             )
+            # MC weighting normalizes simulated samples only.
+            if mc_weighting_config.enabled and not (config_dict.get("parsing_task_config") or {}).get("parse_mc", False):
+                raise ValueError("mc_weighting_config.enabled requires parsing_task_config.parse_mc: true")
 
         # Parse run metadata
         run_metadata = config_dict.get("run_metadata", {})
