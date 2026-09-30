@@ -15,8 +15,8 @@ import numpy as np
 # and every event filter must carry it through unchanged. Data files have no
 # such field.
 MC_EVENT_INFO_FIELD = "_mcEventInfo"
-MC_EVENT_WEIGHT_FIELD = "mcEventWeight"      # nominal per-event generator weight
-MC_CHANNEL_NUMBER_FIELD = "mcChannelNumber"  # dataset number (DSID) of the event's sample
+MC_EVENT_WEIGHT_FIELD = "_mcEventWeight"      # nominal per-event generator weight
+MC_CHANNEL_NUMBER_FIELD = "_mcChannelNumber"  # dataset number (DSID) of the event's sample
 NON_PARTICLE_FIELDS = frozenset({MC_EVENT_INFO_FIELD})
 
 # Values assumed for events whose file lacks the MC info branches: an
