@@ -114,8 +114,6 @@ parsing_task_config:
     muons:     { min: 0, max: 4 }
     jets:      { min: 0, max: 4 }
     bjets:     { min: 0, max: 4 }
-    photons:   { min: 0, max: 0 }
-    taus:      { min: 0, max: 0 }
 
   kinematic_cuts:
     electrons: { pt_min: 25000.0, eta_max: 2.47, rel_isolation_max: 0.06 }

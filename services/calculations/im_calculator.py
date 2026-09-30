@@ -14,6 +14,11 @@ from services.calculations.combinatorics import get_count, get_start
 
 
 class IMCalculator:
+    FINAL_STATE_OBJECTS = (
+        ("Electrons", "e"), ("Muons", "m"), ("Jets", "j"),
+        ("Photons", "g"), ("Taus", "t"), ("BJets", "b"),
+    )
+
     def __init__(self, events: ak.Array, min_events_per_fs: int,
                  min_k: int, max_k: int, min_n: int, max_n: int):
         self.events = events
@@ -61,18 +66,20 @@ class IMCalculator:
             num_events = len(self.events)
             zero_array = ak.Array([0] * num_events) if num_events > 0 else ak.Array([])
 
-            e = ak.to_numpy(getattr(particle_counts, "Electrons", zero_array))
-            m = ak.to_numpy(getattr(particle_counts, "Muons", zero_array))
-            j = ak.to_numpy(getattr(particle_counts, "Jets", zero_array))
-            g = ak.to_numpy(getattr(particle_counts, "Photons", zero_array))
-            t = ak.to_numpy(getattr(particle_counts, "Taus", zero_array))
-            b = ak.to_numpy(getattr(particle_counts, "BJets", zero_array))
+            present_types = [
+                (name, letter, ak.to_numpy(getattr(particle_counts, name, zero_array)))
+                for name, letter in self.FINAL_STATE_OBJECTS
+                if name in self.events.fields
+            ]
 
             all_events_fs = [
-                f"{e}e_{m}m_{j}j_{g}g_{t}t_{b}b"
+                "_".join(
+                    f"{count}{letter}"
+                    for (_name, letter, _values), count in zip(present_types, counts)
+                )
                 # This is used to create a mask later on, so we must keep this the same length as the event list.
-                if self._is_valid_fs([e, m, j, g, t, b]) else ""
-                for e, m, j, g, t, b in zip(e, m, j, g, t, b)
+                if self._is_valid_fs(counts) else ""
+                for counts in zip(*[values for _name, _letter, values in present_types])
             ]
             self._all_events_fs = ak.Array(all_events_fs)
         return self._all_events_fs
