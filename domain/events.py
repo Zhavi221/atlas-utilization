@@ -29,6 +29,25 @@ def particle_fields(events: ak.Array) -> list[str]:
     return [f for f in events.fields if f not in NON_PARTICLE_FIELDS]
 
 
+def dsids_in_events(events: ak.Array) -> np.ndarray:
+    """Distinct MC dataset numbers (DSIDs) carried by ``events`` (empty for data / no MC info)."""
+    if len(events) == 0 or MC_EVENT_INFO_FIELD not in events.fields:
+        return np.array([], dtype=np.int64)
+    info = events[MC_EVENT_INFO_FIELD]
+    if MC_CHANNEL_NUMBER_FIELD not in info.fields:
+        return np.array([], dtype=np.int64)
+    channels = np.unique(ak.to_numpy(info[MC_CHANNEL_NUMBER_FIELD]))
+    return channels[channels > 0]  # 0 marks events from files without the branch
+
+
+def dsid_of_events(events: ak.Array) -> Optional[int]:
+    """The single DSID of ``events``, or None when unknown or mixed."""
+    dsids = dsids_in_events(events)
+    if len(dsids) == 1:
+        return int(dsids[0])
+    return None
+
+
 def _empty_particle_collection(collection: ak.Array, event_count: int) -> ak.Array:
     """Build a typed jagged record collection containing no particles."""
     counts = np.zeros(event_count, dtype=np.int64)

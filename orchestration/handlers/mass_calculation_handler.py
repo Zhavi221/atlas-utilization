@@ -21,12 +21,12 @@ from domain.events import (
     MC_EVENT_INFO_FIELD,
     MC_EVENT_WEIGHT_FIELD,
     MC_CHANNEL_NUMBER_FIELD,
+    dsids_in_events,
 )
 from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
 from services.parsing import schemas
-from services.parsing.dsid import dsids_in_events
 from services.storage.sqlite_shards import (
     SqliteArrayShardWriter,
 )

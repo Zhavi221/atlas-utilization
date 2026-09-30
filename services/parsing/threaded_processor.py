@@ -9,8 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterator, Optional, Callable
 from tqdm import tqdm
 
-from domain.events import EventBatch
-from .dsid import dsid_of_events
+from domain.events import EventBatch, dsid_of_events
 from .file_parser import FileParser, PartialFileReadError
 
 

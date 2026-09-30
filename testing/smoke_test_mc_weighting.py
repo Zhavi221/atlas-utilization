@@ -39,10 +39,11 @@ def check_pure_logic():
     section = "1. Pure logic (DSID from events, weight math)"
     try:
         import awkward as ak
-        from domain.events import MC_EVENT_INFO_FIELD, MC_CHANNEL_NUMBER_FIELD, MC_EVENT_WEIGHT_FIELD
+        from domain.events import (
+            MC_EVENT_INFO_FIELD, MC_CHANNEL_NUMBER_FIELD, MC_EVENT_WEIGHT_FIELD, dsid_of_events,
+        )
         from domain.metadata import MCDatasetMetadata
         from services.calculations.mc_weights import compute_event_weight, compute_normalization
-        from services.parsing.dsid import dsid_of_events
 
         # DSID comes only from the events' mcChannelNumber
         def events(info):
