@@ -74,6 +74,9 @@ testing_config:
 # --- 1. Parsing --------------------------------------------------------------
 # Downloads ATLAS Open Data ROOT files and extracts particle arrays.
 parsing_task_config:
+  enable_overlap_removal: true
+  overlap_removal:
+    mu_jet_use_track_condition: true   # default
   # ===PATHS===
   output_path:    *parsed_data_path
   file_urls_path: *metadata_cache_path
@@ -94,10 +97,6 @@ parsing_task_config:
   count_retries_failed_files: 3
   fetching_metadata_timeout: 60
   max_files_to_process: 100              # data files only because parse_mc is false
-  enable_jet_tagging: true              # when true, split Jets into BJets/LJets. Must give thresholds for btagging discriminants!
-  jet_btagging_thresholds:
-    btagDeepFlavB: 0.5
-    DL1d: 2.51
 
   # ===ROOT TREES===
   possible_data_tree_names:
@@ -124,6 +123,11 @@ parsing_task_config:
     bjets:     { pt_min: 30000.0, eta_max: 2.5 }
     photons:   { pt_min: 25000.0, eta_max: 2.37 }
     taus:      { pt_min: 20000.0, eta_max: 2.5 }
+
+  enable_jet_tagging: true              # when true, split Jets into BJets/LJets. Must give thresholds for btagging discriminants!
+  jet_btagging_thresholds:
+    btagDeepFlavB: 0.5
+    DL1d: 2.51
 
 # --- 2. Mass Calculation -----------------------------------------------------
 # Computes invariant masses for every valid particle combination per final state.
@@ -158,7 +162,7 @@ post_processing_task_config:
 
   # ===PROCESSING===
   peak_detection_bin_width_gev: 10.0 
-  z_peak_cutoff: 115.0   # GeV; drop dilepton masses below this to cut the Z peak (0 disables)
+  z_peak_cutoff: 110.0   # GeV; drop dilepton masses below this to cut the Z peak (0 disables)
   max_mass_cutoff: 10000.0   # GeV (10 TeV); drop masses above this in every channel (0 disables)
 
 # --- 4. Histogram Creation ---------------------------------------------------
@@ -177,3 +181,5 @@ histogram_creation_task_config:
   exclude_outliers: true # was designed to remove high-mass outliers from very broad distributions, but it doesn't work properly during merging
   use_bumpnet_naming: true               # mass_<combo>_cat_<final_state> format
   apply_peak_removal_at_histogram_level: false
+  also_save_pre_postproc: false
+  pre_postproc_filename: "atlas_btag_test_bumpnet_nopostproc.root"
