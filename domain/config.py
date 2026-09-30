@@ -61,8 +61,8 @@ class ParsingConfig:
     # Optional selection (from YAML): applied after reading each file, before chunking
     particle_counts: Optional[dict] = None
     kinematic_cuts: Optional[dict] = None
-    # Physics objects persisted after event selection.  The parser still reads
-    # all recognized physics objects so excluded objects can veto an event.
+    # Physics objects persisted and considered during event selection.
+    # Excluded objects are ignored rather than vetoing an event.
     objects_to_store: tuple[str, ...] = (
         "Electrons", "Muons", "Jets", "BJets", "Photons", "Taus"
     )

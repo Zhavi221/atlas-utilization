@@ -22,7 +22,7 @@ from services.parsing.threaded_processor import ThreadedFileProcessor, ParsingSt
 from domain.statistics import ParsingStatistics
 from domain.events import EventBatch
 from services.parsing.event_selection import (
-    apply_parsing_event_selection, apply_trigger_selection, retain_objects_for_storage,
+    apply_parsing_event_selection, apply_trigger_selection,
 )
 from services.parsing.schemas import normalize_release_year
 from utils.batching import get_batch_slice_by_year
@@ -153,6 +153,7 @@ class ParsingHandler(StateHandler):
             return context, next_state
         
         trigger_cfg = getattr(context.config, "trigger_config", None) or {}
+        enable_trigger_matching = trigger_cfg.get("enabled", False)
 
         start_time = datetime.now()
         stats_collector = ParsingStatisticsCollector()
@@ -213,13 +214,14 @@ class ParsingHandler(StateHandler):
                 batch_size=40_000,
                 enable_jet_tagging=parsing_config.enable_jet_tagging,
                 jet_btagging_thresholds=parsing_config.jet_btagging_thresholds,
+                enable_trigger_matching=enable_trigger_matching,
                 on_success=on_success,
                 on_error=on_error
             ):
 
                 # Apply single-lepton trigger matching if enabled,
                 # and always strip _triggerMatch before kinematic cuts
-                if trigger_cfg.get("enabled", False):
+                if enable_trigger_matching:
                     filtered = apply_trigger_selection(
                         batch.events,
                         release_year=release_year,
@@ -252,18 +254,13 @@ class ParsingHandler(StateHandler):
                         processing_time_sec=batch.processing_time_sec,
                     )
 
-                # Always apply selection: objects excluded from mass calculation
-                # have an implicit 0..0 count range and must veto the event.
+                # Objects outside the mass-calculation allow-list are removed
+                # before selection, so they cannot veto an otherwise valid event.
                 filtered = apply_parsing_event_selection(
                     batch.events,
                     particle_counts=parsing_config.particle_counts,
                     kinematic_cuts=parsing_config.kinematic_cuts,
                     allowed_objects=parsing_config.objects_to_store,
-                )
-                # Discard excluded collections only after their kinematic and
-                # count-based veto has been applied.
-                filtered = retain_objects_for_storage(
-                    filtered, parsing_config.objects_to_store
                 )
                 batch = EventBatch(
                     events=filtered,
