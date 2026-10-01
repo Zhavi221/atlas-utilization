@@ -153,7 +153,7 @@ class PostProcessingConfig:
     # Processing parameters
     peak_detection_bin_width_gev: float = 10.0
 
-    z_peak_cutoff: float = 115.0
+    z_peak_cutoff: float = 110.0
     max_mass_cutoff: float = 10_000.0
 
     def __post_init__(self):
@@ -346,7 +346,7 @@ class PipelineConfig:
                 input_dir=post_dict["input_dir"],
                 output_dir=post_dict["output_dir"],
                 peak_detection_bin_width_gev=post_dict.get("peak_detection_bin_width_gev", 10.0),
-                z_peak_cutoff=post_dict.get("z_peak_cutoff", 115.0),
+                z_peak_cutoff=post_dict.get("z_peak_cutoff", 110.0),
                 max_mass_cutoff=post_dict.get("max_mass_cutoff", 10_000.0),
             )
         
