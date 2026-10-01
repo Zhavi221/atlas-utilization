@@ -209,7 +209,9 @@ def _sliding_cone_mask(leptons: ak.Array, jets: ak.Array, cfg: dict) -> ak.Array
 
 
 def _has_particles(collection: Optional[ak.Array]) -> bool:
-    return collection is not None and len(collection.fields) > 0
+    return (collection is not None
+            and len(collection.fields) > 0
+            and int(ak.sum(ak.num(collection))) > 0)
 
 def apply_overlap_removal(
     events: ak.Array,
