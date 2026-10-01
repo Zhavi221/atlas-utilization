@@ -267,18 +267,19 @@ def apply_overlap_removal(
     if _has_particles(taus) and _has_particles(electrons):
         taus = taus[~_overlap_mask(taus, electrons, cfg["tau_electron_dr"])]
 
-    updated = {field: events[field] for field in events.fields}
+    result = events
     if electrons is not None:
-        updated["Electrons"] = electrons
+        result = ak.with_field(result, electrons, "Electrons")
     if muons is not None:
-        updated["Muons"] = muons
-    updated["Jets"] = jets
+        result = ak.with_field(result, muons, "Muons")
+    if "NumTrkPt500" in jets.fields:
+        jets = ak.zip({f: jets[f] for f in jets.fields if f != "NumTrkPt500"})
+    result = ak.with_field(result, jets, "Jets")
     if photons is not None:
-        updated["Photons"] = photons
+        result = ak.with_field(result, photons, "Photons")
     if taus is not None:
-        updated["Taus"] = taus
-
-    return ak.zip(updated, depth_limit=1)
+        result = ak.with_field(result, taus, "Taus")
+    return result
 
 def apply_trigger_selection(
     events: ak.Array,

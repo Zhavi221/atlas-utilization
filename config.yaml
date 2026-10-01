@@ -40,7 +40,7 @@ names:
 # ===RUN METADATA=============================================================
 run_metadata:
   run_name: *run_name
-  base_output_dir: "/data"
+  base_output_dir: "../data"
   batch_job_index: null                  # set by submit.sh (--batch-job-index)
   total_batch_jobs: null                 # set by submit.sh (--total-batch-jobs)
 
@@ -57,7 +57,7 @@ tasks:
 # When enabled, events must have at least one offline-quality lepton
 # (surviving kinematic and isolation cuts) that is trigger-matched.
 trigger_config:
-  enabled: false
+  enabled: true
 
 # ===TESTING==================================================================
 testing_config:
