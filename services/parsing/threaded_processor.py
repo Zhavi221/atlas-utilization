@@ -94,7 +94,7 @@ class ThreadedFileProcessor:
                     file_url = futures[future]
                     
                     try:
-                        result = future.result(timeout=300)  # 5 minute timeout per file
+                        result = future.result(timeout=900)  # 5 minute timeout per file
                         
                         if result is not None:
                             events, processing_time, partial_error = result
@@ -137,41 +137,54 @@ class ThreadedFileProcessor:
         enable_trigger_matching: bool,
     ) -> tuple:
         """
-        Parse a single file (runs in thread).
-        
-        Args:
-            file_url: File URL to parse
-            tree_names: List of possible tree names
-            release_year: Release year
-            batch_size: Batch size for reading
-            
-        Returns:
-            Tuple of (events, processing_time, partial_error)
+        Parse a single file with retry + backoff on timeout errors.
+
+        Retries up to 3 times with increasing wait (30s, 60s, 120s),
+        then skips the file so one dead xrootd connection doesn't
+        stall the entire batch.
         """
         import time
-        start_time = time.time()
-        
-        partial_error = None
-        try:
-            events = self.file_parser.parse_file(
-                file_path=file_url,
-                tree_names=tree_names,
-                release_year=release_year,
-                batch_size=batch_size,
-                enable_jet_tagging=enable_jet_tagging,
-                jet_btagging_thresholds=jet_btagging_thresholds,
-                enable_trigger_matching=enable_trigger_matching,
-            )
-        except PartialFileReadError as error:
-            events = error.events
-            partial_error = error
 
-        processing_time = time.time() - start_time
+        max_retries = 3
+        backoff_seconds = [30, 60, 120]
 
-        if events is None:
-            raise RuntimeError("Parser returned no event data")
+        for attempt in range(max_retries + 1):
+            start_time = time.time()
+            partial_error = None
+            try:
+                events = self.file_parser.parse_file(
+                    file_path=file_url,
+                    tree_names=tree_names,
+                    release_year=release_year,
+                    batch_size=batch_size,
+                    enable_jet_tagging=enable_jet_tagging,
+                    jet_btagging_thresholds=jet_btagging_thresholds,
+                    enable_trigger_matching=enable_trigger_matching,
+                )
+            except PartialFileReadError as error:
+                events = error.events
+                partial_error = error
 
-        return (events, processing_time, partial_error)
+            processing_time = time.time() - start_time
+
+            if events is not None:
+                return (events, processing_time, partial_error)
+
+            # File returned None — likely a timeout or transient error.
+            if attempt < max_retries:
+                wait = backoff_seconds[attempt]
+                logging.warning(
+                    f"Retry {attempt + 1}/{max_retries} for {file_url} "
+                    f"after {wait}s backoff"
+                )
+                time.sleep(wait)
+            else:
+                logging.warning(
+                    f"Skipping {file_url} after {max_retries} retries"
+                )
+                raise RuntimeError(
+                    f"Parser returned no event data after {max_retries} retries"
+                )
     
     def _create_event_batch(
         self,
