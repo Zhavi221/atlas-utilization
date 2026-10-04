@@ -26,7 +26,7 @@ BASE_OBJECTS = {
     # overlap-removal track condition (arXiv:1606.03903, Table 2). Dropped
     # silently by _filter_accessible_branches on files/releases where it
     # isn't available.
-    "Jets": ["pt", "eta", "phi", "mass", "NumTrkPt500"],
+    "Jets": ["pt", "eta", "phi", "mass"], #, "NumTrkPt500"],
     "Photons": ["pt", "eta", "phi"],  # Photons typically don't have mass
     "Taus": ["pt", "eta", "phi", "mass"]
 }
