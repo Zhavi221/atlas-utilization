@@ -24,6 +24,9 @@ YAML_PARTICLE_KEYS: Dict[str, str] = {
     "taus": "Taus",
 }
 
+LIGHT_JET_FIELD = "Jets"
+MAX_NON_JET_OBJECTS = 4
+
 
 def canonical_particle_field_name(key: str) -> str:
     return YAML_PARTICLE_KEYS.get(key.lower(), key)
@@ -61,10 +64,19 @@ def apply_parsing_event_selection(
     events: ak.Array,
     particle_counts: Optional[Dict[str, Any]] = None,
     kinematic_cuts: Optional[Dict[str, Any]] = None,
+    allowed_objects: Optional[tuple[str, ...]] = None,
 ) -> ak.Array:
     """
-    Kinematic cuts are applied per particle type first, then event-level count ranges.
+    Retain configured objects, apply per-object kinematic cuts, then apply
+    event-level count ranges.  Events may contain unconfigured objects; those
+    collections are discarded and do not participate in event selection.
+
+    At most four retained non-light-jet objects are allowed per event.  Light
+    jets are deliberately excluded from this total and have no upper bound.
     """
+    if allowed_objects is not None:
+        events = retain_objects_for_storage(events, allowed_objects)
+
     if kinematic_cuts:
         by_obj: Dict[str, Dict[str, Any]] = {}
         for key, val in kinematic_cuts.items():
@@ -78,7 +90,18 @@ def apply_parsing_event_selection(
         mapped: Dict[str, Any] = {}
         for key, val in particle_counts.items():
             cname = canonical_particle_field_name(key)
-            mapped[cname] = val
+            if cname == LIGHT_JET_FIELD and isinstance(val, dict):
+                # Additional light jets must not reject an otherwise valid
+                # final state.  Keep an optional lower bound, but remove any
+                # configured upper bound.
+                mapped[cname] = {**val, "max": float("inf")}
+            else:
+                mapped[cname] = val
+
+    else:
+        mapped = {}
+
+    if mapped:
         events = physics_calcs.filter_events_by_particle_counts(
             events,
             mapped,
@@ -86,7 +109,33 @@ def apply_parsing_event_selection(
             is_particle_counts_range=True,
         )
 
-    return events
+    return _filter_events_by_non_jet_object_total(events)
+
+
+def _filter_events_by_non_jet_object_total(events: ak.Array) -> ak.Array:
+    """Reject events with more than four retained non-light-jet objects."""
+    non_jet_fields = [field for field in events.fields if field != LIGHT_JET_FIELD]
+    if not non_jet_fields:
+        return events
+
+    total = ak.zeros_like(ak.num(events[non_jet_fields[0]]), dtype=np.int64)
+    for field in non_jet_fields:
+        total = total + ak.num(events[field])
+    return events[total <= MAX_NON_JET_OBJECTS]
+
+
+def retain_objects_for_storage(
+    events: ak.Array, objects_to_store: tuple[str, ...]
+) -> ak.Array:
+    """Drop non-persisted physics collections before event selection."""
+    return ak.zip(
+        {
+            field: events[field]
+            for field in events.fields
+            if field in objects_to_store
+        },
+        depth_limit=1,
+    )
 
 
 def apply_trigger_selection(
