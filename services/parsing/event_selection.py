@@ -89,25 +89,31 @@ def apply_parsing_event_selection(
     return events
 
 
+
 DEFAULT_OVERLAP_REMOVAL_CUTS: Dict[str, Any] = {
-    # Step 1: e-jet
+    # Steps 1-2: e-mu (proxy for shared-track; PHYSLITE lacks track/calo info)
+    "e_mu_dr": 0.1,
+    # Step 3: e-jet
     "e_jet_dr": 0.2,
-    # Step 2: mu-jet
+    # Step 5: mu-jet
     "mu_jet_dr": 0.2,
     "mu_jet_use_track_condition": True,
     "mu_jet_track_field": "NumTrkPt500",
-    "mu_jet_track_min": 3,        # jet kept as "real" (not removed) if n_track >= this...
-    "mu_jet_pt_ratio_max": 0.7,   # ...or pT_mu / pT_jet <= this
-    # Step 3: lepton-jet sliding cone (pT must be in GeV for this formula;
+    "mu_jet_track_min": 3,
+    "mu_jet_pt_ratio_max": 0.7,
+    # Steps 4,6: lepton vs jet (fixed cone, replaces sliding cone)
+    #lepton-jet sliding cone (pT must be in GeV for this formula;
     # this pipeline stores pT in MeV, hence the /1000 conversion below)
     "lepton_jet_dr_fixed": 0.4,
     "lepton_jet_dr_pt_offset": 0.04,
     "lepton_jet_dr_pt_coeff_gev": 10.0,
-    # Step 4/5/6
+    "lepton_near_jet_dr": 0.4,
+    # Steps unchanged from before
     "photon_jet_dr": 0.2,
     "photon_electron_dr": 0.1,
     "tau_electron_dr": 0.1,
 }
+
 
 def _delta_r_np(eta1, phi1, eta2, phi2):
     """NumPy ΔR between [n_a] and [n_b] arrays, returns [n_a, n_b]."""
@@ -179,7 +185,7 @@ def _overlap_mask_with_veto(
         mo += nm
     return ak.Array(result)
 
-
+#for now we are not using this but keep it
 def _sliding_cone_mask(leptons: ak.Array, jets: ak.Array, cfg: dict) -> ak.Array:
     """Lepton-jet overlap with pT-dependent sliding cone."""
     l_counts = ak.to_numpy(ak.num(leptons))
@@ -234,11 +240,19 @@ def apply_overlap_removal(
     photons = events["Photons"] if "Photons" in events.fields else None
     taus = events["Taus"] if "Taus" in events.fields else None
 
-    # 1. e-jet: drop the jet
+    # 0. e-mu: drop muon (proxy for shared-track, Table 4.1 steps 1-2)
+    if _has_particles(electrons) and _has_particles(muons):
+        muons = muons[~_overlap_mask(muons, electrons, cfg["e_mu_dr"])]
+
+    # 1. e-jet: drop the jet (step 3)
     if _has_particles(electrons) and _has_particles(jets):
         jets = jets[~_overlap_mask(jets, electrons, cfg["e_jet_dr"])]
 
-    # 2. mu-jet: drop the jet, unless it looks like a genuine jet
+    # 2. electron vs jet: drop the electron (step 4, fixed dR<0.4)
+    if _has_particles(electrons) and _has_particles(jets):
+        electrons = electrons[~_overlap_mask(electrons, jets, cfg["lepton_near_jet_dr"])]
+
+    # 3. mu-jet: drop the jet (step 5)
     if _has_particles(muons) and _has_particles(jets):
         jets = jets[~_overlap_mask_with_veto(
             jets, muons, cfg["mu_jet_dr"],
@@ -249,21 +263,19 @@ def apply_overlap_removal(
             logger=logger,
         )]
 
-    # 3. lepton-jet: sliding cone, drop the lepton
-    if _has_particles(electrons) and _has_particles(jets):
-        electrons = electrons[~_sliding_cone_mask(electrons, jets, cfg)]
+    # 4. muon vs jet: drop the muon (step 6, fixed dR<0.4)
     if _has_particles(muons) and _has_particles(jets):
-        muons = muons[~_sliding_cone_mask(muons, jets, cfg)]
+        muons = muons[~_overlap_mask(muons, jets, cfg["lepton_near_jet_dr"])]
 
-    # 4. photon-jet: drop the jet
+    # 5. photon-jet: drop the jet (unchanged)
     if _has_particles(photons) and _has_particles(jets):
         jets = jets[~_overlap_mask(jets, photons, cfg["photon_jet_dr"])]
 
-    # 5. photon-electron: drop the photon
+    # 6. photon-electron: drop the photon (unchanged)
     if _has_particles(photons) and _has_particles(electrons):
         photons = photons[~_overlap_mask(photons, electrons, cfg["photon_electron_dr"])]
 
-    # 6. tau-electron: drop the tau
+    # 7. tau-electron: drop the tau (unchanged)
     if _has_particles(taus) and _has_particles(electrons):
         taus = taus[~_overlap_mask(taus, electrons, cfg["tau_electron_dr"])]
 
