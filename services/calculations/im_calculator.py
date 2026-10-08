@@ -14,6 +14,11 @@ from services.calculations.combinatorics import get_count, get_start
 
 
 class IMCalculator:
+    FINAL_STATE_OBJECTS = (
+        ("Electrons", "e"), ("Muons", "m"), ("Jets", "j"),
+        ("Photons", "g"), ("Taus", "t"), ("BJets", "b"),
+    )
+
     def __init__(self, events: ak.Array, min_events_per_fs: int,
                  min_k: int, max_k: int, min_n: int, max_n: int):
         self.events = events
@@ -61,28 +66,36 @@ class IMCalculator:
             num_events = len(self.events)
             zero_array = ak.Array([0] * num_events) if num_events > 0 else ak.Array([])
 
-            e = ak.to_numpy(getattr(particle_counts, "Electrons", zero_array))
-            m = ak.to_numpy(getattr(particle_counts, "Muons", zero_array))
-            j = ak.to_numpy(getattr(particle_counts, "Jets", zero_array))
-            g = ak.to_numpy(getattr(particle_counts, "Photons", zero_array))
-            t = ak.to_numpy(getattr(particle_counts, "Taus", zero_array))
-            b = ak.to_numpy(getattr(particle_counts, "BJets", zero_array))
+            present_types = [
+                (name, letter, ak.to_numpy(getattr(particle_counts, name, zero_array)))
+                for name, letter in self.FINAL_STATE_OBJECTS
+                if name in self.events.fields
+            ]
 
             all_events_fs = [
-                f"{e}e_{m}m_{j}j_{g}g_{t}t_{b}b"
+                "_".join(
+                    f"{count}{letter}"
+                    for (_name, letter, _values), count in zip(present_types, counts)
+                )
                 # This is used to create a mask later on, so we must keep this the same length as the event list.
-                if self._is_valid_fs([e, m, j, g, t, b]) else ""
-                for e, m, j, g, t, b in zip(e, m, j, g, t, b)
+                if self._is_valid_fs(counts, present_types) else ""
+                for counts in zip(*[values for _name, _letter, values in present_types])
             ]
             self._all_events_fs = ak.Array(all_events_fs)
         return self._all_events_fs
 
-    def _is_valid_fs(self, particle_counts) -> bool:
-        total_types = [p for p in particle_counts if p > 0]
+    def _is_valid_fs(self, particle_counts, present_types) -> bool:
+        total_types = [
+            (name, count)
+            for (name, _letter, _values), count in zip(present_types, particle_counts)
+            if count > 0
+        ]
         if len(total_types) < self.min_n or len(total_types) > self.max_n:
             return False
-        for p in total_types:
-            if p < self.min_k or p > self.max_k:
+        for particle_type, count in total_types:
+            if count < self.min_k:
+                return False
+            if particle_type != "Jets" and count > self.max_k:
                 return False
         return True
 
@@ -94,7 +107,7 @@ class IMCalculator:
         ]
 
         for fs, _count in fs_by_count_sorted:
-            yield self._limit_particles_in_fs(fs, threshold=4)
+            yield fs
 
     def final_state_counts(self) -> Counter:
         """Return valid final-state populations before invariant-mass work."""
@@ -113,8 +126,8 @@ class IMCalculator:
         for str_amount_particle in fs_particles:
             if len(str_amount_particle) < 2:
                 continue
-            amount_to_calc = str_amount_particle[0]
-            particle_letter = str_amount_particle[1]
+            amount_to_calc = str_amount_particle[:-1]
+            particle_letter = str_amount_particle[-1]
             if amount_to_calc.isdigit():
                 amount = int(amount_to_calc)
                 if amount > threshold:
@@ -135,8 +148,8 @@ class IMCalculator:
         for str_amount_particle in fs_particles:
             if len(str_amount_particle) < 2:
                 continue
-            amount_to_calc = str_amount_particle[0]
-            particle_letter = str_amount_particle[1]
+            amount_to_calc = str_amount_particle[:-1]
+            particle_letter = str_amount_particle[-1]
 
             if not amount_to_calc.isdigit():
                 continue

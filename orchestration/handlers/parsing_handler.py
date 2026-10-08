@@ -255,25 +255,27 @@ class ParsingHandler(StateHandler):
                         processing_time_sec=batch.processing_time_sec,
                     )
 
-                if parsing_config.kinematic_cuts or parsing_config.particle_counts:
-                    filtered = apply_parsing_event_selection(
-                        batch.events,
-                        particle_counts=parsing_config.particle_counts,
-                        kinematic_cuts=parsing_config.kinematic_cuts,
-                    )
-                    batch = EventBatch(
-                        events=filtered,
-                        file_id=batch.file_id,
-                        file_url=batch.file_url,
-                        release_year=batch.release_year,
-                        size_bytes=(
-                            filtered.layout.nbytes
-                            if hasattr(filtered, "layout")
-                            else batch.size_bytes
-                        ),
-                        event_count=len(filtered),
-                        processing_time_sec=batch.processing_time_sec,
-                    )
+                # Objects outside the mass-calculation allow-list are removed
+                # before selection, so they cannot veto an otherwise valid event.
+                filtered = apply_parsing_event_selection(
+                    batch.events,
+                    particle_counts=parsing_config.particle_counts,
+                    kinematic_cuts=parsing_config.kinematic_cuts,
+                    allowed_objects=parsing_config.objects_to_store,
+                )
+                batch = EventBatch(
+                    events=filtered,
+                    file_id=batch.file_id,
+                    file_url=batch.file_url,
+                    release_year=batch.release_year,
+                    size_bytes=(
+                        filtered.layout.nbytes
+                        if hasattr(filtered, "layout")
+                        else batch.size_bytes
+                    ),
+                    event_count=len(filtered),
+                    processing_time_sec=batch.processing_time_sec,
+                )
 
                 if parsing_config.enable_overlap_removal:
                     overlap_removed = apply_overlap_removal(
