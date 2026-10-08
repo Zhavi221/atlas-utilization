@@ -157,9 +157,8 @@ DEFAULT_OVERLAP_REMOVAL_CUTS: Dict[str, Any] = {
     "lepton_jet_dr_pt_offset": 0.04,
     "lepton_jet_dr_pt_coeff_gev": 10.0,
     "lepton_near_jet_dr": 0.4,
-    # Steps unchanged from before
-    "photon_jet_dr": 0.2,
-    "photon_electron_dr": 0.1,
+    "photon_lepton_dr": 0.4,
+    "photon_jet_dr": 0.4,
     "tau_electron_dr": 0.1,
 }
 
@@ -316,13 +315,15 @@ def apply_overlap_removal(
     if _has_particles(muons) and _has_particles(jets):
         muons = muons[~_overlap_mask(muons, jets, cfg["lepton_near_jet_dr"])]
 
-    # 5. photon-jet: drop the jet (unchanged)
+    # 5. photon vs electron and muon: drop the photon (step 7)
+    if _has_particles(photons) and _has_particles(electrons):
+        photons = photons[~_overlap_mask(photons, electrons, cfg["photon_lepton_dr"])]
+    if _has_particles(photons) and _has_particles(muons):
+        photons = photons[~_overlap_mask(photons, muons, cfg["photon_lepton_dr"])]
+
+    # 6. jet vs photon: drop the jet (step 8)
     if _has_particles(photons) and _has_particles(jets):
         jets = jets[~_overlap_mask(jets, photons, cfg["photon_jet_dr"])]
-
-    # 6. photon-electron: drop the photon (unchanged)
-    if _has_particles(photons) and _has_particles(electrons):
-        photons = photons[~_overlap_mask(photons, electrons, cfg["photon_electron_dr"])]
 
     # 7. tau-electron: drop the tau (unchanged)
     if _has_particles(taus) and _has_particles(electrons):
