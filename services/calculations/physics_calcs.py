@@ -94,8 +94,8 @@ def limit_particles_in_fs(final_state: str, threshold: int) -> str:
     for str_amount_particle in fs_particles:
         if len(str_amount_particle) < 2:
             continue
-        amount_to_calc = str_amount_particle[0]
-        particle_letter = str_amount_particle[1]
+        amount_to_calc = str_amount_particle[:-1]
+        particle_letter = str_amount_particle[-1]
         if amount_to_calc.isdigit():
             amount = int(amount_to_calc)
             if amount > threshold:
@@ -113,8 +113,8 @@ def is_finalstate_contain_combination(final_state: str, combination: Dict) -> bo
     for str_amount_particle in fs_particles:
         if len(str_amount_particle) < 2:
             continue
-        amount_to_calc = str_amount_particle[0]
-        particle_letter = str_amount_particle[1]
+        amount_to_calc = str_amount_particle[:-1]
+        particle_letter = str_amount_particle[-1]
         particle = consts.LETTER_PARTICLE_MAPPING.get(particle_letter)
 
         if particle is None or particle not in combination:
