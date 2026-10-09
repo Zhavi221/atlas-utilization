@@ -109,10 +109,10 @@ def apply_parsing_event_selection(
             is_particle_counts_range=True,
         )
 
-    return _filter_events_by_non_jet_object_total(events)
+    return events
 
 
-def _filter_events_by_non_jet_object_total(events: ak.Array) -> ak.Array:
+def filter_events_by_non_jet_object_total(events: ak.Array) -> ak.Array:
     """Reject events with more than four retained non-light-jet objects."""
     non_jet_fields = [field for field in events.fields if field != LIGHT_JET_FIELD]
     if not non_jet_fields:
@@ -272,19 +272,16 @@ def apply_overlap_removal(
     cuts: Optional[Dict[str, Any]] = None,
 ) -> ak.Array:
     """
-    ATLAS-style overlap removal, following Table 2 of arXiv:1606.03903.
+    ATLAS-style overlap removal, following Table 4.1.
     Assumes ``pt`` is in MeV, consistent with the rest of this pipeline.
     """
     logger = logging.getLogger(__name__)
-
-    if "Jets" not in events.fields:
-        return events
 
     cfg = {**DEFAULT_OVERLAP_REMOVAL_CUTS, **(cuts or {})}
 
     electrons = events["Electrons"] if "Electrons" in events.fields else None
     muons = events["Muons"] if "Muons" in events.fields else None
-    jets = events["Jets"]
+    jets = events["Jets"] if "Jets" in events.fields else None
     photons = events["Photons"] if "Photons" in events.fields else None
     taus = events["Taus"] if "Taus" in events.fields else None
 
@@ -325,7 +322,7 @@ def apply_overlap_removal(
     if _has_particles(photons) and _has_particles(jets):
         jets = jets[~_overlap_mask(jets, photons, cfg["photon_jet_dr"])]
 
-    # 7. tau-electron: drop the tau (unchanged)
+    # 7. tau-electron: drop the tau
     if _has_particles(taus) and _has_particles(electrons):
         taus = taus[~_overlap_mask(taus, electrons, cfg["tau_electron_dr"])]
 
@@ -334,9 +331,10 @@ def apply_overlap_removal(
         result = ak.with_field(result, electrons, "Electrons")
     if muons is not None:
         result = ak.with_field(result, muons, "Muons")
-    if "NumTrkPt500" in jets.fields:
-        jets = ak.zip({f: jets[f] for f in jets.fields if f != "NumTrkPt500"})
-    result = ak.with_field(result, jets, "Jets")
+    if jets is not None:
+        if "NumTrkPt500" in jets.fields:
+            jets = ak.zip({f: jets[f] for f in jets.fields if f != "NumTrkPt500"})
+        result = ak.with_field(result, jets, "Jets")
     if photons is not None:
         result = ak.with_field(result, photons, "Photons")
     if taus is not None:
