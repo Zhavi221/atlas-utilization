@@ -135,8 +135,8 @@ def get_all_trigger_branches() -> list[str]:
 
 # Per-event MC generator weight branches, keyed by normalized release year.
 # PHYSLITE stores a vector of weights per event (index 0 is the nominal one);
-# the legacy ntuples store one float per event.  Data files won't have these
-# branches — the parser handles their absence gracefully.
+# the legacy ntuples store one float per event.  PHYSLITE data files carry
+# these branches too (weight 1, channel number 0).
 MC_EVENT_WEIGHT_BRANCHES = {
     "2024r-pp": "EventInfoAuxDyn.mcEventWeights",
     "2020e-13tev": "EventInfoAuxDyn.mcEventWeights",
@@ -158,6 +158,21 @@ MC_CHANNEL_NUMBER_BRANCHES = {
     "2025r-evgen-13p6tev": "EventInfoAuxDyn.mcChannelNumber",
     "2025e-13tev-beta": "channelNumber",
     "2016e-8tev": "channelNumber",
+}
+
+# Per-event MC run number branches, keyed by normalized release year. In MC
+# the run number is fixed per production campaign (see MC_RUN_NUMBER_TO_CAMPAIGN),
+# which selects the target luminosity a dataset is normalized to.
+MC_RUN_NUMBER_BRANCHES = {
+    "2024r-pp": "EventInfoAuxDyn.runNumber",
+}
+
+# MC run number -> production campaign, matching the luminosity_by_campaign keys.
+MC_RUN_NUMBER_TO_CAMPAIGN = {
+    284500: "mc20a",
+    300000: "mc20d",
+    310000: "mc20e",
+    410000: "mc21a",
 }
 
 # Mapping from specific record IDs to their release year/schema identifier

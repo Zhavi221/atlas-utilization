@@ -17,11 +17,12 @@ import numpy as np
 MC_EVENT_INFO_FIELD = "_mcEventInfo"
 MC_EVENT_WEIGHT_FIELD = "_mcEventWeight"      # nominal per-event generator weight
 MC_CHANNEL_NUMBER_FIELD = "_mcChannelNumber"  # dataset number (DSID) of the event's sample
+MC_RUN_NUMBER_FIELD = "_mcRunNumber"          # MC run number, fixed per production campaign
 NON_PARTICLE_FIELDS = frozenset({MC_EVENT_INFO_FIELD})
 
 # Values assumed for events whose file lacks the MC info branches: an
-# unweighted event (w_gen = 1) from an unknown dataset (DSID 0).
-_MC_EVENT_INFO_DEFAULTS = {MC_EVENT_WEIGHT_FIELD: 1.0, MC_CHANNEL_NUMBER_FIELD: 0}
+# unweighted event (w_gen = 1) from an unknown dataset (DSID 0) and campaign (run 0).
+_MC_EVENT_INFO_DEFAULTS = {MC_EVENT_WEIGHT_FIELD: 1.0, MC_CHANNEL_NUMBER_FIELD: 0, MC_RUN_NUMBER_FIELD: 0}
 
 
 def particle_fields(events: ak.Array) -> list[str]:

@@ -113,6 +113,7 @@ def check_end_to_end_synthetic():
         import logging
         from domain.events import (
             EventBatch, EventChunk, MC_EVENT_INFO_FIELD, MC_EVENT_WEIGHT_FIELD, MC_CHANNEL_NUMBER_FIELD,
+            MC_RUN_NUMBER_FIELD,
         )
         from orchestration.handlers.mass_calculation_handler import MassCalculationHandler
         from services.calculations.im_calculator import IMCalculator
@@ -130,6 +131,7 @@ def check_end_to_end_synthetic():
         phi = rng.uniform(-np.pi, np.pi, size=(n, 2))
         gen_w = rng.choice([1.0, -1.0], size=n) * rng.uniform(0.5, 1.5, size=n)
         dsids = np.where(np.arange(n) < n // 2, 700320, 410470).astype(np.int64)
+        runs = np.where(dsids == 700320, 284500, 310000).astype(np.int64)  # mc20a / mc20e
         events = ak.zip({
             "Electrons": ak.from_regular(ak.zip({
                 "pt": ak.Array(pt), "eta": ak.Array(eta), "phi": ak.Array(phi),
@@ -138,6 +140,7 @@ def check_end_to_end_synthetic():
             MC_EVENT_INFO_FIELD: ak.zip({
                 MC_EVENT_WEIGHT_FIELD: ak.Array(gen_w),
                 MC_CHANNEL_NUMBER_FIELD: ak.Array(dsids),
+                MC_RUN_NUMBER_FIELD: ak.Array(runs),
             }),
         }, depth_limit=1)
 
@@ -154,6 +157,24 @@ def check_end_to_end_synthetic():
             assert MC_EVENT_INFO_FIELD in arrays.fields, arrays.fields
             np.testing.assert_allclose(ak.to_numpy(arrays[MC_EVENT_INFO_FIELD][MC_EVENT_WEIGHT_FIELD]), gen_w)
             np.testing.assert_array_equal(ak.to_numpy(arrays[MC_EVENT_INFO_FIELD][MC_CHANNEL_NUMBER_FIELD]), dsids)
+            np.testing.assert_array_equal(ak.to_numpy(arrays[MC_EVENT_INFO_FIELD][MC_RUN_NUMBER_FIELD]), runs)
+
+            # --- each dataset's campaign comes from its events' MC run number
+            campaign_of = MassCalculationHandler._campaign_of
+            info = arrays[MC_EVENT_INFO_FIELD]
+            assert campaign_of(info, 700320) == "mc20a" and campaign_of(info, 410470) == "mc20e"
+            def info_of(chan, run):
+                return ak.zip({MC_CHANNEL_NUMBER_FIELD: ak.Array(chan), MC_RUN_NUMBER_FIELD: ak.Array(run)})
+            for bad in (
+                info_of([1, 1], [284500, 310000]),  # mixed campaigns
+                info_of([1], [123456]),  # unknown run number
+                ak.zip({MC_CHANNEL_NUMBER_FIELD: ak.Array([1])}),  # no run number column
+            ):
+                try:
+                    campaign_of(bad, 1)
+                except RuntimeError:
+                    continue
+                raise AssertionError(f"_campaign_of accepted {bad.tolist()}")
 
             # --- mass calculation with per-DSID normalization folded in
             norm = {700320: 0.25, 410470: 4.0}

@@ -20,6 +20,8 @@ import numpy as np
 from domain.events import (
     MC_EVENT_INFO_FIELD,
     MC_EVENT_WEIGHT_FIELD,
+    MC_CHANNEL_NUMBER_FIELD,
+    MC_RUN_NUMBER_FIELD,
     dsids_in_events,
 )
 from orchestration.context import PipelineContext
@@ -267,17 +269,42 @@ class MassCalculationHandler(StateHandler):
                         raise RuntimeError(message)
                     self.logger.warning(message)
                     continue
-                if mc_cfg.luminosity_by_campaign and md.campaign is None:
-                    self.logger.warning(
-                        "luminosity_by_campaign is configured but the metadata for DSID "
-                        f"{dsid} carries no campaign; using target_luminosity_fb."
-                    )
-                luminosity = mc_cfg.get_luminosity(md.campaign)
+                campaign = None
+                if mc_cfg.luminosity_by_campaign:
+                    campaign = self._campaign_of(mc_info, dsid)
+                    if campaign not in mc_cfg.luminosity_by_campaign:
+                        raise RuntimeError(
+                            f"luminosity_by_campaign has no entry for campaign {campaign!r} "
+                            f"of DSID {dsid} in {root_file_path.name}."
+                        )
+                luminosity = mc_cfg.get_luminosity(campaign)
                 norm_by_dsid[dsid] = compute_normalization(md, luminosity)
                 self.logger.info(
-                    f"DSID {dsid} ({md.physics_short}): w_norm={norm_by_dsid[dsid]:.6g} "
-                    f"at L={luminosity} fb^-1"
+                    f"DSID {dsid} ({md.physics_short}"
+                    f"{f', campaign {campaign}' if campaign else ''}): "
+                    f"w_norm={norm_by_dsid[dsid]:.6g} at L={luminosity} fb^-1"
                 )
+
+    @staticmethod
+    def _campaign_of(mc_info: ak.Array, dsid: int) -> str:
+        """
+        MC production campaign of dataset ``dsid``, from its events' run number.
+
+        Raises:
+            RuntimeError: when the events carry no run number, a run number is
+                not a known campaign, or the dataset's events span several campaigns.
+        """
+        if MC_RUN_NUMBER_FIELD not in mc_info.fields:
+            raise RuntimeError(f"DSID {dsid}: events carry no MC run number to tell its campaign.")
+        channels = ak.to_numpy(mc_info[MC_CHANNEL_NUMBER_FIELD])
+        runs = [int(r) for r in np.unique(ak.to_numpy(mc_info[MC_RUN_NUMBER_FIELD])[channels == dsid])]
+        unknown = [r for r in runs if r not in schemas.MC_RUN_NUMBER_TO_CAMPAIGN]
+        if unknown:
+            raise RuntimeError(f"DSID {dsid}: MC run number(s) {unknown} match no known campaign.")
+        campaigns = sorted({schemas.MC_RUN_NUMBER_TO_CAMPAIGN[r] for r in runs})
+        if len(campaigns) != 1:
+            raise RuntimeError(f"DSID {dsid}: events span several campaigns {campaigns}.")
+        return campaigns[0]
 
     def _release_of(self, root_file_path: Path, context: PipelineContext) -> str:
         """

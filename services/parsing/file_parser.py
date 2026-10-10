@@ -18,6 +18,7 @@ from domain.events import (
     MC_EVENT_INFO_FIELD,
     MC_EVENT_WEIGHT_FIELD,
     MC_CHANNEL_NUMBER_FIELD,
+    MC_RUN_NUMBER_FIELD,
 )
 
 
@@ -298,16 +299,17 @@ class FileParser:
         release_year: str
     ) -> dict[str, dict[str, str]]:
         """
-        Locate the per-event MC generator weight and dataset number branches.
+        Locate the per-event MC generator weight, dataset number and run number branches.
 
         They are event-level scalars rather than particle collections, so they
-        are grouped under the reserved ``MC_EVENT_INFO_FIELD`` key.
-        Data files carry neither branch and get an empty mapping.
+        are grouped under the reserved ``MC_EVENT_INFO_FIELD`` key. Files
+        without any of them get an empty mapping.
         """
         normalized_year = schemas.normalize_release_year(release_year)
         candidates = {
             schemas.MC_EVENT_WEIGHT_BRANCHES.get(normalized_year): MC_EVENT_WEIGHT_FIELD,
             schemas.MC_CHANNEL_NUMBER_BRANCHES.get(normalized_year): MC_CHANNEL_NUMBER_FIELD,
+            schemas.MC_RUN_NUMBER_BRANCHES.get(normalized_year): MC_RUN_NUMBER_FIELD,
         }
         present = {
             branch: quantity for branch, quantity in candidates.items()
@@ -643,7 +645,7 @@ class FileParser:
                 if values.ndim > 1:
                     values = values[:, 0]  # nominal weight
                 values = ak.values_astype(values, np.float64)
-            elif quantity == MC_CHANNEL_NUMBER_FIELD:
+            elif quantity in (MC_CHANNEL_NUMBER_FIELD, MC_RUN_NUMBER_FIELD):
                 values = ak.values_astype(values, np.int64)
             fields[quantity] = values
         return ak.zip(fields)

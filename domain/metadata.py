@@ -55,7 +55,6 @@ class MCDatasetMetadata:
     k_factor: float = 1.0             # higher-order correction; 1.0 when not provided
     gen_filt_eff: float = 1.0         # generator filter efficiency; 1.0 when not provided
     physics_short: Optional[str] = None  # human-readable sample label
-    campaign: Optional[str] = None       # MC campaign (e.g. mc16a) when the source exposes it
 
     def __post_init__(self):
         """Validate MC dataset metadata."""
