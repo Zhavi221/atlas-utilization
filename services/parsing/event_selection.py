@@ -109,10 +109,10 @@ def apply_parsing_event_selection(
             is_particle_counts_range=True,
         )
 
-    return _filter_events_by_non_jet_object_total(events)
+    return events
 
 
-def _filter_events_by_non_jet_object_total(events: ak.Array) -> ak.Array:
+def filter_events_by_non_jet_object_total(events: ak.Array) -> ak.Array:
     """Reject events with more than four retained non-light-jet objects."""
     non_jet_fields = [field for field in events.fields if field != LIGHT_JET_FIELD]
     if not non_jet_fields:
@@ -137,6 +137,161 @@ def retain_objects_for_storage(
         depth_limit=1,
     )
 
+
+
+DEFAULT_OVERLAP_REMOVAL_CUTS: Dict[str, Any] = {
+    # Steps 1-2: e-mu (proxy for shared-track; PHYSLITE lacks track/calo info)
+    "e_mu_dr": 0.1,
+    # Step 3: e-jet
+    "e_jet_dr": 0.2,
+    # Step 5: mu-jet
+    "mu_jet_dr": 0.2,
+    "mu_jet_use_track_condition": True,
+    "mu_jet_track_field": "NumTrkPt500",
+    "mu_jet_track_min": 3,
+    "mu_jet_pt_ratio_max": 0.7,
+    # Steps 4,6: lepton vs jet (fixed cone, replaces sliding cone)
+    #lepton-jet sliding cone (pT must be in GeV for this formula;
+    # this pipeline stores pT in MeV, hence the /1000 conversion below)
+    "lepton_jet_dr_fixed": 0.4,
+    "lepton_jet_dr_pt_offset": 0.04,
+    "lepton_jet_dr_pt_coeff_gev": 10.0,
+    "lepton_near_jet_dr": 0.4,
+    "photon_lepton_dr": 0.4,
+    "photon_jet_dr": 0.4,
+    "tau_electron_dr": 0.1,
+}
+
+
+def _pairs(a: ak.Array, b: ak.Array) -> tuple[ak.Array, ak.Array]:
+    """Every (a_i, b_j) pair per event, each side shaped [event][a_i][b_j]."""
+    return ak.unzip(ak.cartesian([a, b], axis=1, nested=True))
+
+
+def _delta_r(a_side: ak.Array, b_side: ak.Array) -> ak.Array:
+    """Element-wise ΔR between two equally shaped arrays of eta/phi records."""
+    deta = a_side.eta - b_side.eta
+    dphi = (a_side.phi - b_side.phi + np.pi) % (2 * np.pi) - np.pi
+    return np.sqrt(deta ** 2 + dphi ** 2)
+
+
+def _overlap_mask(a: ak.Array, b: ak.Array, threshold: float) -> ak.Array:
+    """Per-object [event][a_i] bool: True if any b_j within *threshold*."""
+    a_side, b_side = _pairs(a, b)
+    return ak.any(_delta_r(a_side, b_side) < threshold, axis=2)
+
+
+def _overlap_mask_with_veto(
+    jets: ak.Array, muons: ak.Array, dr_threshold: float,
+    track_field: str, track_min: int, pt_ratio_max: float,
+    use_track: bool, logger,
+) -> ak.Array:
+    """mu-jet overlap mask with optional track/pT-ratio veto."""
+    has_track = use_track and track_field in jets.fields
+    if use_track and not has_track:
+        logger.warning(
+            "Overlap removal: Jets field '%s' not available; "
+            "mu-jet step falls back to ΔR-only (no track/pT-ratio veto).",
+            track_field,
+        )
+    jet_side, muon_side = _pairs(jets, muons)
+    close = _delta_r(jet_side, muon_side) < dr_threshold
+    if has_track:
+        ratio = muon_side.pt / jet_side.pt
+        looks_real = (jet_side[track_field] >= track_min) | (ratio <= pt_ratio_max)
+        close = close & ~looks_real
+    return ak.any(close, axis=2)
+
+#for now we are not using this but keep it
+def _sliding_cone_mask(leptons: ak.Array, jets: ak.Array, cfg: dict) -> ak.Array:
+    """Lepton-jet overlap with pT-dependent sliding cone."""
+    lepton_side, jet_side = _pairs(leptons, jets)
+    pt_gev = lepton_side.pt / 1000.0
+    cone = np.minimum(
+        cfg["lepton_jet_dr_fixed"],
+        cfg["lepton_jet_dr_pt_offset"] + cfg["lepton_jet_dr_pt_coeff_gev"] / pt_gev,
+    )
+    return ak.any(_delta_r(lepton_side, jet_side) < cone, axis=2)
+
+
+def _has_particles(collection: Optional[ak.Array]) -> bool:
+    return (collection is not None
+            and len(collection.fields) > 0
+            and int(ak.sum(ak.num(collection))) > 0)
+
+def apply_overlap_removal(
+    events: ak.Array,
+    cuts: Optional[Dict[str, Any]] = None,
+) -> ak.Array:
+    """
+    ATLAS-style overlap removal, following Table 4.1.
+    Assumes ``pt`` is in MeV, consistent with the rest of this pipeline.
+    """
+    logger = logging.getLogger(__name__)
+
+    cfg = {**DEFAULT_OVERLAP_REMOVAL_CUTS, **(cuts or {})}
+
+    electrons = events["Electrons"] if "Electrons" in events.fields else None
+    muons = events["Muons"] if "Muons" in events.fields else None
+    jets = events["Jets"] if "Jets" in events.fields else None
+    photons = events["Photons"] if "Photons" in events.fields else None
+    taus = events["Taus"] if "Taus" in events.fields else None
+
+    # 0. e-mu: drop muon (proxy for shared-track, Table 4.1 steps 1-2)
+    if _has_particles(electrons) and _has_particles(muons):
+        muons = muons[~_overlap_mask(muons, electrons, cfg["e_mu_dr"])]
+
+    # 1. e-jet: drop the jet (step 3)
+    if _has_particles(electrons) and _has_particles(jets):
+        jets = jets[~_overlap_mask(jets, electrons, cfg["e_jet_dr"])]
+
+    # 2. electron vs jet: drop the electron (step 4, fixed dR<0.4)
+    if _has_particles(electrons) and _has_particles(jets):
+        electrons = electrons[~_overlap_mask(electrons, jets, cfg["lepton_near_jet_dr"])]
+
+    # 3. mu-jet: drop the jet (step 5)
+    if _has_particles(muons) and _has_particles(jets):
+        jets = jets[~_overlap_mask_with_veto(
+            jets, muons, cfg["mu_jet_dr"],
+            track_field=cfg["mu_jet_track_field"],
+            track_min=cfg["mu_jet_track_min"],
+            pt_ratio_max=cfg["mu_jet_pt_ratio_max"],
+            use_track=cfg["mu_jet_use_track_condition"],
+            logger=logger,
+        )]
+
+    # 4. muon vs jet: drop the muon (step 6, fixed dR<0.4)
+    if _has_particles(muons) and _has_particles(jets):
+        muons = muons[~_overlap_mask(muons, jets, cfg["lepton_near_jet_dr"])]
+
+    # 5. photon vs electron and muon: drop the photon (step 7)
+    if _has_particles(photons) and _has_particles(electrons):
+        photons = photons[~_overlap_mask(photons, electrons, cfg["photon_lepton_dr"])]
+    if _has_particles(photons) and _has_particles(muons):
+        photons = photons[~_overlap_mask(photons, muons, cfg["photon_lepton_dr"])]
+
+    # 6. jet vs photon: drop the jet (step 8)
+    if _has_particles(photons) and _has_particles(jets):
+        jets = jets[~_overlap_mask(jets, photons, cfg["photon_jet_dr"])]
+
+    # 7. tau-electron: drop the tau
+    if _has_particles(taus) and _has_particles(electrons):
+        taus = taus[~_overlap_mask(taus, electrons, cfg["tau_electron_dr"])]
+
+    result = events
+    if electrons is not None:
+        result = ak.with_field(result, electrons, "Electrons")
+    if muons is not None:
+        result = ak.with_field(result, muons, "Muons")
+    if jets is not None:
+        if "NumTrkPt500" in jets.fields:
+            jets = ak.zip({f: jets[f] for f in jets.fields if f != "NumTrkPt500"})
+        result = ak.with_field(result, jets, "Jets")
+    if photons is not None:
+        result = ak.with_field(result, photons, "Photons")
+    if taus is not None:
+        result = ak.with_field(result, taus, "Taus")
+    return result
 
 def apply_trigger_selection(
     events: ak.Array,
