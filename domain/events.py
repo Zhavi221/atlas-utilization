@@ -40,13 +40,6 @@ def dsids_in_events(events: ak.Array) -> np.ndarray:
     return channels[channels > 0]  # 0 marks events from files without the branch
 
 
-def dsid_of_events(events: ak.Array) -> Optional[int]:
-    """The single DSID of ``events``, or None when unknown or mixed."""
-    dsids = dsids_in_events(events)
-    if len(dsids) == 1:
-        return int(dsids[0])
-    return None
-
 
 def _empty_particle_collection(collection: ak.Array, event_count: int) -> ak.Array:
     """Build a typed jagged record collection containing no particles."""
@@ -130,8 +123,7 @@ class EventBatch:
     event_count: int
     processing_time_sec: float
     file_url: str = ""
-    dsid: Optional[int] = None  # MC dataset number, when the batch is single-DSID
-
+    
     def __post_init__(self):
         """Validate the event batch."""
         if self.event_count < 0:
@@ -156,8 +148,7 @@ class EventChunk:
     size_bytes: int
     event_count: int
     file_ids: tuple[int, ...]  # Use tuple for immutability
-    dsid: Optional[int] = None  # MC dataset number when the chunk is single-DSID
-
+    
     def __post_init__(self):
         """Validate the event chunk."""
         if self.chunk_index < 0:
@@ -179,8 +170,7 @@ class EventChunk:
         cls,
         batches: list[EventBatch],
         chunk_index: int,
-        release_year: str,
-        dsid: Optional[int] = None
+        release_year: str
     ) -> 'EventChunk':
         """
         Create an EventChunk from multiple EventBatches.
@@ -189,7 +179,6 @@ class EventChunk:
             batches: List of event batches to combine
             chunk_index: Index of this chunk in the sequence
             release_year: Release year for this chunk
-            dsid: MC dataset number, when all batches share one DSID
             
         Returns:
             EventChunk with concatenated events
@@ -211,6 +200,5 @@ class EventChunk:
             release_year=release_year,
             size_bytes=total_size,
             event_count=total_events,
-            file_ids=file_ids,
-            dsid=dsid
+            file_ids=file_ids
         )

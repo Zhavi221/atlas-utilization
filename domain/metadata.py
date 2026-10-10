@@ -54,9 +54,7 @@ class MCDatasetMetadata:
     sum_of_weights: float             # sum of per-event generator weights (normalization denominator)
     k_factor: float = 1.0             # higher-order correction; 1.0 when not provided
     gen_filt_eff: float = 1.0         # generator filter efficiency; 1.0 when not provided
-    n_events: Optional[int] = None    # raw generated event count (cross-check only)
     physics_short: Optional[str] = None  # human-readable sample label
-    generator: Optional[str] = None      # generator name (hints at weighted/negative events)
     campaign: Optional[str] = None       # MC campaign (e.g. mc16a) when the source exposes it
 
     def __post_init__(self):

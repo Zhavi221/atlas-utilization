@@ -38,7 +38,7 @@ def compute_normalization(
 
     This is the weight every generated event would receive if each event had
     a generator weight of exactly 1. For weighted samples, multiply this by
-    the per-event generator weight (see :func:`compute_event_weight`).
+    the per-event generator weight.
 
     Args:
         metadata: MC dataset metadata (cross section, k-factor, filter
@@ -60,24 +60,3 @@ def compute_normalization(
     )
     return expected_yield / metadata.sum_of_weights
 
-
-def compute_event_weight(
-    metadata: MCDatasetMetadata,
-    target_luminosity_fb: float,
-    mc_event_weight: float = 1.0,
-) -> float:
-    """
-    Compute the weight for a single simulated event.
-
-    Args:
-        metadata: MC dataset metadata for the event's dataset (DSID).
-        target_luminosity_fb: Target integrated luminosity in fb^-1.
-        mc_event_weight: Per-event generator weight (``mcEventWeight``). Defaults
-            to 1.0 for unit-weight (leading-order) samples. Because
-            ``sum_of_weights`` is the sum of exactly these per-event weights,
-            the two must always be used together.
-
-    Returns:
-        The event's weight, scaling it to the target luminosity.
-    """
-    return compute_normalization(metadata, target_luminosity_fb) * mc_event_weight

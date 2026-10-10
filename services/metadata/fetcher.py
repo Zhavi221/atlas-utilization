@@ -398,66 +398,15 @@ class MetadataFetcher:
         # k-factor and filter efficiency default to 1.0 when absent (no correction).
         k_factor = self._to_float(raw.get("kFactor"))
         gen_filt_eff = self._to_float(raw.get("genFiltEff"))
-        n_events = self._to_int(raw.get("nEvents"))
-        dataset_number = self._to_int(raw.get("dataset_number")) or int(dataset_id)
 
         return MCDatasetMetadata(
-            dataset_number=dataset_number,
+            dataset_number=int(dataset_id),
             cross_section_pb=cross_section_pb,
             sum_of_weights=sum_of_weights,
             k_factor=k_factor if k_factor is not None else 1.0,
             gen_filt_eff=gen_filt_eff if gen_filt_eff is not None else 1.0,
-            n_events=n_events,
             physics_short=raw.get("physics_short"),
-            generator=raw.get("generator"),
         )
-
-    def fetch_mc_metadata_for_datasets(
-        self,
-        dataset_ids,
-        require_metadata: bool = False,
-        release: Optional[str] = None,
-    ) -> dict:
-        """
-        Fetch MC metadata for many datasets (DSIDs).
-
-        Args:
-            dataset_ids: Iterable of dataset numbers (DSIDs).
-            require_metadata: When True, raise if any dataset lacks the required
-                metadata to normalize it (cross_section_pb, sumOfWeights).
-                When False, such datasets are skipped and simply omitted.
-            release: Open Data release the datasets belong to (see
-                :meth:`fetch_mc_metadata`).
-
-        Returns:
-            Dict mapping dataset_number (int) -> MCDatasetMetadata for every
-            dataset that resolved successfully.
-
-        Raises:
-            ValueError: If require_metadata is True and one or more datasets
-                could not be resolved.
-        """
-        resolved = {}
-        missing = []
-
-        for dataset_id in dataset_ids:
-            md = self.fetch_mc_metadata(dataset_id, release=release)
-            if md is None:
-                missing.append(dataset_id)
-            else:
-                resolved[md.dataset_number] = md
-
-        if missing and require_metadata:
-            raise ValueError(
-                f"require_metadata is enabled but {len(missing)} dataset(s) lack "
-                f"required normalization metadata: {missing}"
-            )
-        if missing:
-            logging.warning(
-                f"Skipping {len(missing)} dataset(s) without required metadata: {missing}"
-            )
-
-        return resolved
 
     @staticmethod
     def _to_float(value) -> Optional[float]:
@@ -466,16 +415,6 @@ class MetadataFetcher:
             return None
         try:
             return float(value)
-        except (TypeError, ValueError):
-            return None
-
-    @staticmethod
-    def _to_int(value) -> Optional[int]:
-        """Coerce a metadata value to int, returning None if not possible."""
-        if value is None or value == "":
-            return None
-        try:
-            return int(float(value))
         except (TypeError, ValueError):
             return None
 

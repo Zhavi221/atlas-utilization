@@ -40,26 +40,25 @@ def check_pure_logic():
     try:
         import awkward as ak
         from domain.events import (
-            MC_EVENT_INFO_FIELD, MC_CHANNEL_NUMBER_FIELD, MC_EVENT_WEIGHT_FIELD, dsid_of_events,
+            MC_EVENT_INFO_FIELD, MC_CHANNEL_NUMBER_FIELD, MC_EVENT_WEIGHT_FIELD, dsids_in_events,
         )
         from domain.metadata import MCDatasetMetadata
-        from services.calculations.mc_weights import compute_event_weight, compute_normalization
+        from services.calculations.mc_weights import compute_normalization
 
         # DSID comes only from the events' mcChannelNumber
         def events(info):
             return ak.Array({"Jets": [[{"pt": 1.0}]] * len(next(iter(info.values()))),
                              MC_EVENT_INFO_FIELD: ak.zip(info)})
-        assert dsid_of_events(events({MC_CHANNEL_NUMBER_FIELD: [410470, 410470]})) == 410470
-        assert dsid_of_events(events({MC_CHANNEL_NUMBER_FIELD: [410470, 700320]})) is None  # mixed
-        assert dsid_of_events(events({MC_EVENT_WEIGHT_FIELD: [1.0, 1.0]})) is None  # no branch
-        assert dsid_of_events(ak.Array({"Jets": [[{"pt": 1.0}]]})) is None  # data
+        assert list(dsids_in_events(events({MC_CHANNEL_NUMBER_FIELD: [410470, 410470]}))) == [410470]
+        assert list(dsids_in_events(events({MC_CHANNEL_NUMBER_FIELD: [410470, 700320]}))) == [410470, 700320]
+        assert len(dsids_in_events(events({MC_EVENT_WEIGHT_FIELD: [1.0, 1.0]}))) == 0  # no branch
+        assert len(dsids_in_events(ak.Array({"Jets": [[{"pt": 1.0}]]}))) == 0  # data
 
         # weight math
         md = MCDatasetMetadata(dataset_number=410470, cross_section_pb=729.77,
                                sum_of_weights=1.104e10, k_factor=1.13975, gen_filt_eff=1.0)
         expected = 729.77 * 1000 * 1.13975 * 1.0 * 140.1 / 1.104e10
         assert math.isclose(compute_normalization(md, 140.1), expected, rel_tol=1e-12)
-        assert math.isclose(compute_event_weight(md, 140.1, -0.5), -0.5 * expected, rel_tol=1e-12)
 
         _record(section, "PASS", f"w_norm={expected:.6g}")
     except ModuleNotFoundError as e:
@@ -89,74 +88,19 @@ def check_live_metadata(dsid, luminosity):
 
         w = compute_normalization(md, luminosity)
         print(f"      cross_section_pb={md.cross_section_pb}  kFactor={md.k_factor}  "
-              f"genFiltEff={md.gen_filt_eff}  sumOfWeights={md.sum_of_weights:g}  nEvents={md.n_events}")
-        print(f"      generator={md.generator}  physics_short={md.physics_short}")
+              f"genFiltEff={md.gen_filt_eff}  sumOfWeights={md.sum_of_weights:g}")
+        print(f"      physics_short={md.physics_short}")
         print(f"      -> w_norm at L={luminosity} fb^-1: {w:.6g}")
-        if md.n_events:
-            ratio = md.sum_of_weights / md.n_events
-            kind = "LO / unit-weight" if math.isclose(ratio, 1.0, rel_tol=0.02) else "weighted (NLO-like)"
-            print(f"      sumOfWeights/nEvents = {ratio:.4g}  -> {kind}")
         _record(section, "PASS", f"w_norm={w:.6g}")
     except Exception as e:
         _record(section, "FAIL", f"{type(e).__name__}: {e}")
 
 
 # --------------------------------------------------------------------------- #
-# 3. Accumulator per-DSID chunking with real awkward arrays
-# --------------------------------------------------------------------------- #
-def check_accumulator_real_awkward():
-    section = "3. EventAccumulator per-DSID chunking"
-    try:
-        import awkward as ak
-    except Exception as e:
-        _record(section, "SKIP", f"awkward not available ({e})")
-        return
-    try:
-        from domain.events import EventBatch
-        from services.parsing.event_accumulator import EventAccumulator
-
-        def batch(dsid, nev, fid):
-            events = ak.Array([{"Jets": [{"pt": float(i)}]} for i in range(nev)])
-            return EventBatch(events=events, file_id=fid, release_year="2024r-pp",
-                              size_bytes=nev * 100, event_count=nev,
-                              processing_time_sec=0.1, file_url=f"file{fid}.root", dsid=dsid)
-
-        acc = EventAccumulator(chunk_threshold_bytes=10**9, split_by_dataset=True)
-        files = [(410470, 3), (410470, 2), (700320, 4)]
-        chunks = []
-        for i, (dsid, nev) in enumerate(files):
-            c = acc.add_batch(batch(dsid, nev, i))
-            if c:
-                chunks.append(c)
-        f = acc.flush()
-        if f:
-            chunks.append(f)
-
-        total_in = sum(n for _, n in files)
-        total_out = sum(len(c.events) for c in chunks)
-        dsids = [c.dsid for c in chunks]
-
-        assert len(chunks) == 2, f"expected 2 single-DSID chunks, got {len(chunks)}"
-        assert dsids == [410470, 700320], f"chunk DSIDs wrong: {dsids}"
-        assert total_out == total_in, f"event loss: {total_out} != {total_in}"
-
-        # Disabled: size-only chunking, no DSID label
-        acc = EventAccumulator(chunk_threshold_bytes=10**9, split_by_dataset=False)
-        for i, (dsid, nev) in enumerate(files):
-            assert acc.add_batch(batch(dsid, nev, i)) is None
-        only = acc.flush()
-        assert len(only.events) == total_in and only.dsid is None
-
-        _record(section, "PASS", f"chunks={len(chunks)} dsids={dsids} events {total_out}/{total_in} conserved")
-    except Exception as e:
-        _record(section, "FAIL", f"{type(e).__name__}: {e}")
-
-
-# --------------------------------------------------------------------------- #
-# 4. Parsed-file round trip + mass calc + post-processing + weighted fill
+# 3. Parsed-file round trip + mass calc + post-processing + weighted fill
 # --------------------------------------------------------------------------- #
 def check_end_to_end_synthetic():
-    section = "4. Synthetic chunk -> ROOT -> mass calc -> post-processing -> weighted histograms"
+    section = "3. Synthetic chunk -> ROOT -> mass calc -> post-processing -> weighted histograms"
     try:
         import awkward as ak
         import numpy as np
@@ -200,7 +144,7 @@ def check_end_to_end_synthetic():
         with tempfile.TemporaryDirectory() as tmp:
             # --- parsed-file round trip, as ParsingHandler writes it
             batch = EventBatch(events=events, file_id=1, release_year="2024r-pp_mc", size_bytes=1,
-                               event_count=n, processing_time_sec=0.0, file_url="x", dsid=None)
+                               event_count=n, processing_time_sec=0.0, file_url="x")
             chunk = EventChunk.from_batches([batch], 0, "2024r-pp_mc")
             parsed = os.path.join(tmp, "parsed_2024r-pp_mc_chunk0.root")
             with uproot.recreate(parsed) as f:
@@ -291,10 +235,10 @@ def check_end_to_end_synthetic():
 
 
 # --------------------------------------------------------------------------- #
-# 5. Masses and their _mcw weights are flushed together, whatever the threshold
+# 4. Masses and their _mcw weights are flushed together, whatever the threshold
 # --------------------------------------------------------------------------- #
 def check_flush_alignment():
-    section = "5. IM / _mcw chunks stay aligned across threshold flushes"
+    section = "4. IM / _mcw chunks stay aligned across threshold flushes"
     try:
         import logging
         import awkward as ak
@@ -339,10 +283,10 @@ def check_flush_alignment():
 
 
 # --------------------------------------------------------------------------- #
-# 6. The config file must not enable MC weighting with parse_mc: false
+# 5. The config file must not enable MC weighting with parse_mc: false
 # --------------------------------------------------------------------------- #
 def check_config_requires_parse_mc():
-    section = "6. Config file rejects MC weighting without parse_mc"
+    section = "5. Config file rejects MC weighting without parse_mc"
     try:
         import copy
         import yaml
@@ -394,7 +338,6 @@ def main(argv=None):
         check_live_metadata(args.dsid, args.luminosity)
     else:
         _record(f"2. Live ATLAS metadata fetch (DSID {args.dsid})", "SKIP", "--skip-network")
-    check_accumulator_real_awkward()
     check_end_to_end_synthetic()
     check_flush_alignment()
     check_config_requires_parse_mc()

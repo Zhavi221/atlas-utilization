@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterator, Optional, Callable
 from tqdm import tqdm
 
-from domain.events import EventBatch, dsid_of_events
+from domain.events import EventBatch
 from .file_parser import FileParser, PartialFileReadError
 
 
@@ -219,8 +219,7 @@ class ThreadedFileProcessor:
             release_year=release_year,
             size_bytes=size_bytes,
             event_count=event_count,
-            processing_time_sec=processing_time,
-            dsid=dsid_of_events(events),
+            processing_time_sec=processing_time
         )
     
     def _create_progress_bar(self, total: int):

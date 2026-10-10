@@ -20,25 +20,21 @@ import numpy as np
 from domain.events import (
     MC_EVENT_INFO_FIELD,
     MC_EVENT_WEIGHT_FIELD,
-    MC_CHANNEL_NUMBER_FIELD,
     dsids_in_events,
 )
 from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
 from services.parsing import schemas
+from services.parsing.file_parser import FileParser
 from services.storage.sqlite_shards import (
     SqliteArrayShardWriter,
 )
 
 
-class MCWeightingError(RuntimeError):
-    """A simulated sample cannot be normalized correctly; the run must not continue silently."""
-
-
-# Parsed chunk filenames: parsed_<release>[_batchN][_dsidN]_(chunkN|final).root
+# Parsed chunk filenames: parsed_<release>[_batchN]_(chunkN|final).root
 _PARSED_FILENAME_RE = re.compile(
-    r"^parsed_(?P<release>.+?)(?:_batch\d+)?(?:_dsid\d+)?_(?:chunk\d+|final)\.root$"
+    r"^parsed_(?P<release>.+?)(?:_batch\d+)?_(?:chunk\d+|final)\.root$"
 )
 
 
@@ -157,8 +153,8 @@ class MassCalculationHandler(StateHandler):
                     )
                     if created:
                         total_created_chunks += len(created)
-                except MCWeightingError:
-                    raise  # a mis-normalized sample must abort the run, not be skipped
+                except RuntimeError:
+                    raise  # incl. require_metadata failures: a mis-normalized sample must abort the run
                 except Exception as exc:
                     self.logger.error(
                         f"Error processing {root_file_path.name}: {exc}",
@@ -209,7 +205,7 @@ class MassCalculationHandler(StateHandler):
         it is never inferred from file names. Inert when weighting is off.
 
         Raises:
-            MCWeightingError: when ``require_metadata`` is set and the file
+            RuntimeError: when ``require_metadata`` is set and the file
                 cannot be normalized correctly (no generator weights, no
                 dataset number, or a dataset without the required metadata).
         """
@@ -237,7 +233,7 @@ class MassCalculationHandler(StateHandler):
                 f"for release {release}); w_gen = 1 is only correct for unit-weight samples."
             )
             if mc_cfg.require_metadata:
-                raise MCWeightingError(message)
+                raise RuntimeError(message)
             self.logger.warning(message)
 
         dsids = [int(d) for d in dsids_in_events(particle_arrays)]
@@ -248,7 +244,7 @@ class MassCalculationHandler(StateHandler):
                 f"for release {release}); w_norm=1 for its events."
             )
             if mc_cfg.require_metadata:
-                raise MCWeightingError(message)
+                raise RuntimeError(message)
             self.logger.warning(message)
             return
 
@@ -257,20 +253,19 @@ class MassCalculationHandler(StateHandler):
             from services.metadata.fetcher import MetadataFetcher
             from services.calculations.mc_weights import compute_normalization
 
-            try:
-                metadata_by_dsid = MetadataFetcher().fetch_mc_metadata_for_datasets(
-                    missing, require_metadata=mc_cfg.require_metadata, release=release
-                )
-            except ValueError as exc:
-                raise MCWeightingError(str(exc)) from exc
+            fetcher = MetadataFetcher()
             for dsid in missing:
-                md = metadata_by_dsid.get(dsid)
+                md = fetcher.fetch_mc_metadata(dsid, release=release)
                 if md is None:
                     # Not cached: a later file may succeed (transient fetch failure).
-                    self.logger.warning(
-                        f"No metadata for DSID {dsid} in release {release}; "
-                        f"w_norm=1 for its events in {root_file_path.name}."
+                    message = (
+                        f"No normalization metadata (cross_section_pb, sumOfWeights) for "
+                        f"DSID {dsid} in release {release}; w_norm=1 for its events in "
+                        f"{root_file_path.name}."
                     )
+                    if mc_cfg.require_metadata:
+                        raise RuntimeError(message)
+                    self.logger.warning(message)
                     continue
                 if mc_cfg.luminosity_by_campaign and md.campaign is None:
                     self.logger.warning(
@@ -471,21 +466,12 @@ class MassCalculationHandler(StateHandler):
                 particle_dict[ptype] = ak.zip(sub_branches)
 
         # Event-level MC info (absent on data files)
-        release = schemas.normalize_release_year("2024r-pp")
-        mc_info = {}
-        weight_branch = schemas.MC_EVENT_WEIGHT_BRANCHES.get(release)
-        if weight_branch in tree:
-            weights = tree[weight_branch].array(library="ak")
-            if weights.ndim > 1:
-                weights = weights[:, 0]  # nominal weight
-            mc_info[MC_EVENT_WEIGHT_FIELD] = ak.values_astype(weights, np.float64)
-        channel_branch = schemas.MC_CHANNEL_NUMBER_BRANCHES.get(release)
-        if channel_branch in tree:
-            mc_info[MC_CHANNEL_NUMBER_FIELD] = ak.values_astype(
-                tree[channel_branch].array(library="ak"), np.int64
+        mc_branches = FileParser._mc_event_info_branches(set(tree.keys()), "2024r-pp")
+        if mc_branches:
+            mapping = mc_branches[MC_EVENT_INFO_FIELD]
+            particle_dict[MC_EVENT_INFO_FIELD] = FileParser._zip_mc_event_info(
+                tree.arrays(list(mapping), library="ak"), mapping
             )
-        if mc_info:
-            particle_dict[MC_EVENT_INFO_FIELD] = ak.zip(mc_info)
 
         return ak.Array(particle_dict)
 

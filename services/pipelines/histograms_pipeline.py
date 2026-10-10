@@ -364,13 +364,6 @@ def _group_signatures_by_bumpnet(signatures: List[str]) -> Dict[str, List[str]]:
     return dict(groups)
 
 
-def _iter_signature_chunks(signature: str, db_paths: List[str]):
-    for db_path in db_paths:
-        for arr in iter_arrays_for_signature(db_path, signature):
-            if len(arr) > 0:
-                yield arr
-
-
 def _iter_weighted_signature_chunks(signature: str, db_paths: List[str], logger: logging.Logger):
     """
     Yield ``(masses, weights)`` per stored chunk of ``signature``.
