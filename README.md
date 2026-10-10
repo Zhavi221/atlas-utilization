@@ -58,7 +58,7 @@ mc_weighting_config:
   require_metadata: true   # fail if a dataset lacks cross section / sumOfWeights
 ```
 
-When enabled, the parser stores each event's generator weight and dataset number (`mcChannelNumber`) next to the particle arrays, chunks are closed at dataset boundaries (the DSID is stamped into the parsed filename), mass calculation writes a per-event weight array (`<signature>_mcw`) alongside every invariant-mass array, post-processing applies identical cuts to both, and histograms are filled with `Fill(mass, weight)` with `Sumw2()` enabled so bin errors are weighted. When disabled (the default) the pipeline output is identical to an unweighted run; data files never carry the weight branches and are unaffected either way. `python -m testing.smoke_test_mc_weighting` exercises the feature end-to-end on synthetic events.
+When enabled, the parser stores each event's generator weight and dataset number (`mcChannelNumber`) next to the particle arrays, chunks are closed at dataset boundaries (the DSID is stamped into the parsed filename), mass calculation writes a per-event weight array (`<signature>_mcw`) alongside every invariant-mass array, post-processing applies identical cuts to both, and histograms are filled with `Fill(mass, weight)` with `Sumw2()` enabled so bin errors are weighted. When disabled (the default) the pipeline output is identical to an unweighted run; data files never carry the weight branches and are unaffected either way.
 
 ## Output structure
 

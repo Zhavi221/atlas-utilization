@@ -75,13 +75,14 @@ testing_config:
 mc_weighting_config:
   enabled: false                         # apply MC weights to simulated samples
   target_luminosity_fb: 1.0              # default/fallback target luminosity in fb^-1
-  # Optional per-campaign luminosity, used when a dataset's metadata exposes its
-  # MC campaign. ATLAS Open Data metadata currently does not, so this stays
-  # unused (with a warning) and target_luminosity_fb applies. Example Run-2 values:
+  # Optional per-campaign luminosity. Each dataset's campaign is read from its
+  # events' MC run number (284500 = mc20a, 300000 = mc20d, 310000 = mc20e,
+  # 410000 = mc21a). When set, a dataset whose campaign cannot be determined
+  # or is not listed is an error. Example Run-2 values:
   # luminosity_by_campaign:
-  #   mc16a: 36.2
-  #   mc16d: 44.3
-  #   mc16e: 58.5
+  #   mc20a: 36.2
+  #   mc20d: 44.3
+  #   mc20e: 58.5
   luminosity_by_campaign: null
   require_metadata: true                 # hard-error when a sample cannot be normalized correctly: a dataset
                                          # lacking cross_section_pb / sumOfWeights, or MC events without a
