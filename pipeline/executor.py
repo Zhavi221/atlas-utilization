@@ -39,6 +39,7 @@ from services.parsing.file_parser import FileParser
 from services.parsing.event_accumulator import EventAccumulator
 from services.parsing.threaded_processor import ThreadedFileProcessor
 from services.analysis.statistics_plotter import StatisticsPlotter
+from services.pipelines.im_pipeline import MC_WEIGHT_SUFFIX
 from services.storage.sqlite_shards import get_total_entries
 
 
@@ -517,6 +518,8 @@ class PipelineExecutor:
                                     f"Invalid mass calculation timing in {sf}: {timing_row[0]!r}"
                                 )
 
+                # Per-event MC weight rows mirror their IM rows; not physics entries.
+                rows = [r for r in rows if not r[0].endswith(MC_WEIGHT_SUFFIX)]
                 total_signatures += len(rows)
                 for signature, entries in rows:
                     entries = int(entries or 0)
@@ -660,6 +663,7 @@ class PipelineExecutor:
                         GROUP BY signature
                         """
                     ).fetchall()
+                rows = [r for r in rows if not r[0].endswith(MC_WEIGHT_SUFFIX)]
                 total_signatures += len(rows)
                 for signature, entries in rows:
                     entries = int(entries or 0)

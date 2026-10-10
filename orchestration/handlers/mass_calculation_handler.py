@@ -7,6 +7,7 @@ mass calculations using the combinatorics and IM calculator modules.
 
 import os
 import logging
+import re
 import time
 from collections import Counter
 from pathlib import Path
@@ -16,11 +17,26 @@ import uproot
 import awkward as ak
 import numpy as np
 
+from domain.events import (
+    MC_EVENT_INFO_FIELD,
+    MC_EVENT_WEIGHT_FIELD,
+    MC_CHANNEL_NUMBER_FIELD,
+    MC_RUN_NUMBER_FIELD,
+    dsids_in_events,
+)
 from orchestration.context import PipelineContext
 from orchestration.states import PipelineState
 from .base import StateHandler
+from services.parsing import schemas
+from services.parsing.file_parser import FileParser
 from services.storage.sqlite_shards import (
     SqliteArrayShardWriter,
+)
+
+
+# Parsed chunk filenames: parsed_<release>[_batchN]_(chunkN|final).root
+_PARSED_FILENAME_RE = re.compile(
+    r"^parsed_(?P<release>.+?)(?:_batch\d+)?_(?:chunk\d+|final)\.root$"
 )
 
 
@@ -70,12 +86,21 @@ class MassCalculationHandler(StateHandler):
             os.remove(shard_path)
         sqlite_writer = SqliteArrayShardWriter(shard_path)
 
+        # MC weighting is opt-in: when disabled no per-event weights are
+        # emitted at all, even if the parsed files carry MC info. When enabled,
+        # per-dataset normalization factors (w_norm) are resolved lazily per
+        # DSID as files are read and folded into each event's weight.
+        mc_cfg = context.config.mc_weighting_config
         config_dict = {
             "field_to_slice_by": mc.field_to_slice_by,
             "fs_chunk_threshold_bytes": mc.fs_chunk_threshold_bytes,
             "output_mode": "sqlite",
             "sqlite_writer": sqlite_writer,
+            "mc_weighting_enabled": bool(mc_cfg and mc_cfg.enabled),
+            "mc_norm_by_dsid": {},
         }
+        # {release: {dsid: w_norm}} — metadata is scoped per Open Data release.
+        self._mc_norm_by_release: Dict[str, Dict[int, float]] = {}
 
         # ── Discover parsed ROOT files ──
         parsed_dir = Path(mc.input_dir)
@@ -126,9 +151,12 @@ class MassCalculationHandler(StateHandler):
                         IMCalculator,
                         process_final_state,
                         eligible_final_states,
+                        context,
                     )
                     if created:
                         total_created_chunks += len(created)
+                except RuntimeError:
+                    raise  # incl. require_metadata failures: a mis-normalized sample must abort the run
                 except Exception as exc:
                     self.logger.error(
                         f"Error processing {root_file_path.name}: {exc}",
@@ -162,6 +190,147 @@ class MassCalculationHandler(StateHandler):
     # ------------------------------------------------------------------ #
     # helpers
     # ------------------------------------------------------------------ #
+
+    def _resolve_mc_normalization(
+        self,
+        root_file_path: Path,
+        particle_arrays: ak.Array,
+        config_dict: dict,
+        context: PipelineContext,
+    ) -> None:
+        """
+        Point ``config_dict["mc_norm_by_dsid"]`` at this file's release map and
+        make sure it covers every dataset in the file, fetching metadata once
+        per newly seen (release, DSID).
+
+        The dataset number is read from the events' own ``mcChannelNumber``;
+        it is never inferred from file names. Inert when weighting is off.
+
+        Raises:
+            RuntimeError: when ``require_metadata`` is set and the file
+                cannot be normalized correctly (no generator weights, no
+                dataset number, or a dataset without the required metadata).
+        """
+        mc_cfg = context.config.mc_weighting_config
+        if not config_dict.get("mc_weighting_enabled"):
+            return
+        if MC_EVENT_INFO_FIELD not in particle_arrays.fields:
+            self.logger.warning(
+                f"MC weighting enabled but {root_file_path.name} carries no MC event "
+                "info; its events will be unweighted."
+            )
+            return
+
+        release = self._release_of(root_file_path, context)
+        norm_by_dsid = self._mc_norm_by_release.setdefault(release, {})
+        config_dict["mc_norm_by_dsid"] = norm_by_dsid
+
+        mc_info = particle_arrays[MC_EVENT_INFO_FIELD]
+        if MC_EVENT_WEIGHT_FIELD not in mc_info.fields:
+            # sumOfWeights sums the real generator weights; filling with
+            # w_gen = 1 would mis-normalize any sample that is not unit-weight.
+            message = (
+                f"{root_file_path.name} has no per-event generator weights "
+                f"(expected branch {schemas.MC_EVENT_WEIGHT_BRANCHES.get(release)!r} "
+                f"for release {release}); w_gen = 1 is only correct for unit-weight samples."
+            )
+            if mc_cfg.require_metadata:
+                raise RuntimeError(message)
+            self.logger.warning(message)
+
+        dsids = [int(d) for d in dsids_in_events(particle_arrays)]
+        if not dsids:
+            message = (
+                f"MC weighting enabled but {root_file_path.name} carries no dataset "
+                f"number (expected branch {schemas.MC_CHANNEL_NUMBER_BRANCHES.get(release)!r} "
+                f"for release {release}); w_norm=1 for its events."
+            )
+            if mc_cfg.require_metadata:
+                raise RuntimeError(message)
+            self.logger.warning(message)
+            return
+
+        missing = sorted(d for d in dsids if d not in norm_by_dsid)
+        if missing:
+            from services.metadata.fetcher import MetadataFetcher
+            from services.calculations.mc_weights import compute_normalization
+
+            fetcher = MetadataFetcher()
+            for dsid in missing:
+                md = fetcher.fetch_mc_metadata(dsid, release=release)
+                if md is None:
+                    # Not cached: a later file may succeed (transient fetch failure).
+                    message = (
+                        f"No normalization metadata (cross_section_pb, sumOfWeights) for "
+                        f"DSID {dsid} in release {release}; w_norm=1 for its events in "
+                        f"{root_file_path.name}."
+                    )
+                    if mc_cfg.require_metadata:
+                        raise RuntimeError(message)
+                    self.logger.warning(message)
+                    continue
+                campaign = None
+                if mc_cfg.luminosity_by_campaign:
+                    campaign = self._campaign_of(mc_info, dsid)
+                    if campaign not in mc_cfg.luminosity_by_campaign:
+                        raise RuntimeError(
+                            f"luminosity_by_campaign has no entry for campaign {campaign!r} "
+                            f"of DSID {dsid} in {root_file_path.name}."
+                        )
+                luminosity = mc_cfg.get_luminosity(campaign)
+                norm_by_dsid[dsid] = compute_normalization(md, luminosity)
+                self.logger.info(
+                    f"DSID {dsid} ({md.physics_short}"
+                    f"{f', campaign {campaign}' if campaign else ''}): "
+                    f"w_norm={norm_by_dsid[dsid]:.6g} at L={luminosity} fb^-1"
+                )
+
+    @staticmethod
+    def _campaign_of(mc_info: ak.Array, dsid: int) -> str:
+        """
+        MC production campaign of dataset ``dsid``, from its events' run number.
+
+        Raises:
+            RuntimeError: when the events carry no run number, a run number is
+                not a known campaign, or the dataset's events span several campaigns.
+        """
+        if MC_RUN_NUMBER_FIELD not in mc_info.fields:
+            raise RuntimeError(f"DSID {dsid}: events carry no MC run number to tell its campaign.")
+        channels = ak.to_numpy(mc_info[MC_CHANNEL_NUMBER_FIELD])
+        runs = [int(r) for r in np.unique(ak.to_numpy(mc_info[MC_RUN_NUMBER_FIELD])[channels == dsid])]
+        unknown = [r for r in runs if r not in schemas.MC_RUN_NUMBER_TO_CAMPAIGN]
+        if unknown:
+            raise RuntimeError(f"DSID {dsid}: MC run number(s) {unknown} match no known campaign.")
+        campaigns = sorted({schemas.MC_RUN_NUMBER_TO_CAMPAIGN[r] for r in runs})
+        if len(campaigns) != 1:
+            raise RuntimeError(f"DSID {dsid}: events span several campaigns {campaigns}.")
+        return campaigns[0]
+
+    def _release_of(self, root_file_path: Path, context: PipelineContext) -> str:
+        """
+        Open Data release of a parsed file, for release-scoped metadata lookups.
+
+        Read from the ``parsed_<release>_...`` filename; raw (unparsed) inputs
+        fall back to the single configured release, else to whatever release
+        atlasopenmagic currently has active.
+        """
+        match = _PARSED_FILENAME_RE.match(root_file_path.name)
+        if match:
+            return schemas.normalize_release_year(match.group("release"))
+        pc = context.config.parsing_config
+        configured = [
+            schemas.normalize_release_year(r) for r in (pc.release_years if pc else [])
+            if not r.startswith("record_")
+        ]
+        if len(set(configured)) == 1:
+            return configured[0]
+        import atlasopenmagic as atom
+        release = atom.get_current_release()
+        self.logger.warning(
+            f"Cannot tell the release of {root_file_path.name}; using atlasopenmagic's "
+            f"active release {release!r} for MC metadata."
+        )
+        return release
 
     def _find_eligible_final_states(
         self,
@@ -281,6 +450,15 @@ class MassCalculationHandler(StateHandler):
             if sub_branches:
                 particle_dict[ptype] = ak.zip(sub_branches)
 
+        # Event-level MC info is written as flat branches with no counter.
+        mc_info = {
+            bn[len(MC_EVENT_INFO_FIELD) + 1:]: tree[bn].array(library="ak")
+            for bn in branch_names
+            if bn.startswith(f"{MC_EVENT_INFO_FIELD}_")
+        }
+        if mc_info:
+            particle_dict[MC_EVENT_INFO_FIELD] = ak.zip(mc_info)
+
         return ak.Array(particle_dict)
 
     # Branch mapping for raw ATLAS Open Data files (2024r release)
@@ -314,6 +492,14 @@ class MassCalculationHandler(StateHandler):
             if sub_branches:
                 particle_dict[ptype] = ak.zip(sub_branches)
 
+        # Event-level MC info (absent on data files)
+        mc_branches = FileParser._mc_event_info_branches(set(tree.keys()), "2024r-pp")
+        if mc_branches:
+            mapping = mc_branches[MC_EVENT_INFO_FIELD]
+            particle_dict[MC_EVENT_INFO_FIELD] = FileParser._zip_mc_event_info(
+                tree.arrays(list(mapping), library="ak"), mapping
+            )
+
         return ak.Array(particle_dict)
 
     def _load_particle_arrays(
@@ -343,6 +529,7 @@ class MassCalculationHandler(StateHandler):
         IMCalculator,
         process_final_state,
         eligible_final_states: Optional[Set[str]] = None,
+        context: Optional[PipelineContext] = None,
     ) -> List[str]:
         """Read one parsed ROOT file and compute invariant masses."""
         self.logger.info(f"Reading parsed file: {root_file_path.name}")
@@ -357,6 +544,9 @@ class MassCalculationHandler(StateHandler):
         if num_events == 0:
             self.logger.info(f"{root_file_path.name}: empty – skipping")
             return []
+
+        if context is not None:
+            self._resolve_mc_normalization(root_file_path, particle_arrays, config_dict, context)
 
         self.logger.info(
             f"{root_file_path.name}: {num_events:,} events loaded "

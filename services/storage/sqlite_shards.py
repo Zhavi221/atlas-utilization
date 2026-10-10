@@ -173,7 +173,9 @@ def prune_final_states_below_min_events(
     if min_events <= 1 or not db_paths:
         return []
 
-    pattern = re.compile(r"(_FS_[0-9a-z_]+)_IM_([0-9a-z]+)$")
+    # ``_mcw`` rows are the per-event MC weights of a combination; they are
+    # removed with their final state but never counted as events.
+    pattern = re.compile(r"(_FS_[0-9a-z_]+)_IM_([0-9a-z]+)(_mcw)?$")
     legacy_totals_by_channel: dict[tuple[str, str], int] = {}
     explicit_populations: dict[str, int] = {}
     signatures_by_db_and_fs: dict[tuple[str, str], list[str]] = {}
@@ -211,8 +213,8 @@ def prune_final_states_below_min_events(
             match = pattern.search(signature)
             if not match:
                 continue
-            final_state, combination = match.groups()
-            if final_state not in counted_final_states:
+            final_state, combination, is_weight = match.groups()
+            if final_state not in counted_final_states and not is_weight:
                 key = (final_state, combination)
                 legacy_totals_by_channel[key] = (
                     legacy_totals_by_channel.get(key, 0) + int(entries)

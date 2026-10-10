@@ -11,6 +11,7 @@ import vector
 import gc
 from typing import Dict, Iterator, Tuple, Optional
 
+from domain.events import MC_EVENT_INFO_FIELD, particle_fields
 from services.calculations import consts
 from services.calculations.combinatorics import get_count, get_start
 
@@ -30,7 +31,7 @@ def calc_inv_mass(particle_events: ak.Array) -> ak.Array:
 
 def concat_events(particle_events: ak.Array) -> list:
     all_vectors = []
-    for particle_type in particle_events.fields:
+    for particle_type in particle_fields(particle_events):
         particle_array = particle_events[particle_type]
         mass = get_particle_known_mass(particle_type, particle_array)
         momentum_vector = vector.zip({
@@ -58,10 +59,15 @@ def extract_object_types(fields: list) -> set:
     return particle_types
 
 
+def count_particles(events: ak.Array) -> ak.Array:
+    """Per-event multiplicity of every particle collection (event-level fields excluded)."""
+    return ak.num(ak.zip({f: events[f] for f in particle_fields(events)}, depth_limit=1))
+
+
 def group_by_final_state(events: ak.Array) -> Iterator[Tuple[str, ak.Array]]:
     num_events = len(events)
     zero_array = ak.Array([0] * num_events) if num_events > 0 else ak.Array([])
-    particle_counts = ak.num(events)
+    particle_counts = count_particles(events)
 
     object_types = (
         ("Electrons", "e"), ("Muons", "m"), ("Jets", "j"),
@@ -147,7 +153,7 @@ def filter_events_by_particle_counts(
     if len(events) == 0:
         return events
 
-    combined_mask = ak.ones_like(ak.num(events[events.fields[0]]), dtype=bool)
+    combined_mask = ak.ones_like(ak.num(events[particle_fields(events)[0]]), dtype=bool)
 
     for obj, value in particle_counts.items():
         if obj not in events.fields:
@@ -197,6 +203,9 @@ def filter_events_by_particle_counts(
 
         if len(fields_to_keep) == 0:
             return ak.Array([])
+        # Event-level MC info rides along with whichever particles are kept.
+        if MC_EVENT_INFO_FIELD in filtered_events.fields:
+            fields_to_keep[MC_EVENT_INFO_FIELD] = filtered_events[MC_EVENT_INFO_FIELD]
         filtered_events = ak.zip(fields_to_keep, depth_limit=1)
 
     return ak.to_packed(filtered_events)
@@ -266,10 +275,13 @@ def filter_events_by_kinematics(
     if _kinematic_cuts_is_per_object(kinematic_cuts):
         cuts_by_obj = kinematic_cuts
     else:
-        cuts_by_obj = {obj: kinematic_cuts for obj in events.fields}
+        cuts_by_obj = {obj: kinematic_cuts for obj in particle_fields(events)}
 
     filtered_events = {}
-    for obj in events.fields:
+    # Event-level MC info is not a particle collection; it passes through as is.
+    if MC_EVENT_INFO_FIELD in events.fields:
+        filtered_events[MC_EVENT_INFO_FIELD] = events[MC_EVENT_INFO_FIELD]
+    for obj in particle_fields(events):
         particles = events[obj]
         cuts = cuts_by_obj.get(obj)
         if cuts is None:

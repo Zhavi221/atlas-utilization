@@ -14,6 +14,12 @@ from typing import Optional
 from services.parsing import schemas
 from services.parsing.root_io import open_root_file
 from services import consts
+from domain.events import (
+    MC_EVENT_INFO_FIELD,
+    MC_EVENT_WEIGHT_FIELD,
+    MC_CHANNEL_NUMBER_FIELD,
+    MC_RUN_NUMBER_FIELD,
+)
 
 
 class PartialFileReadError(RuntimeError):
@@ -284,8 +290,35 @@ class FileParser:
             if schemas.RANDOM_RUN_NUMBER_BRANCH in tree_branches:
                 obj_branches["_runNumber"] = {schemas.RANDOM_RUN_NUMBER_BRANCH: "_runNumber"}
 
+        obj_branches.update(FileParser._mc_event_info_branches(tree_branches, release_year))
         return obj_branches
 
+    @staticmethod
+    def _mc_event_info_branches(
+        tree_branches: set[str],
+        release_year: str
+    ) -> dict[str, dict[str, str]]:
+        """
+        Locate the per-event MC generator weight, dataset number and run number branches.
+
+        They are event-level scalars rather than particle collections, so they
+        are grouped under the reserved ``MC_EVENT_INFO_FIELD`` key. Files
+        without any of them get an empty mapping.
+        """
+        normalized_year = schemas.normalize_release_year(release_year)
+        candidates = {
+            schemas.MC_EVENT_WEIGHT_BRANCHES.get(normalized_year): MC_EVENT_WEIGHT_FIELD,
+            schemas.MC_CHANNEL_NUMBER_BRANCHES.get(normalized_year): MC_CHANNEL_NUMBER_FIELD,
+            schemas.MC_RUN_NUMBER_BRANCHES.get(normalized_year): MC_RUN_NUMBER_FIELD,
+        }
+        present = {
+            branch: quantity for branch, quantity in candidates.items()
+            if branch and branch in tree_branches
+        }
+        if not present:
+            return {}
+        return {MC_EVENT_INFO_FIELD: present}
+    
     @staticmethod
     def _prepare_obj_branch_name(
         obj_name: str,
@@ -499,7 +532,7 @@ class FileParser:
                 bp: qty for bp, qty in branch_mapping.items()
                 if bp in accessible_set
             }
-            if obj_name in ("DirectObjects", "_triggerMatch", "_runNumber"):
+            if obj_name in ("DirectObjects", "_triggerMatch", "_runNumber", MC_EVENT_INFO_FIELD):
                 # These are not particle types — skip the inv-mass field check.
                 if accessible_branches:
                     accessible_obj_branches[obj_name] = accessible_branches
@@ -581,6 +614,10 @@ class FileParser:
                         result[obj_name] = ak.zip(trig_fields)
                 elif obj_name == "_runNumber":
                     result[obj_name] = concatenated[schemas.RANDOM_RUN_NUMBER_BRANCH]
+                elif obj_name == MC_EVENT_INFO_FIELD:
+                    result[obj_name] = FileParser._zip_mc_event_info(
+                        concatenated, obj_branches[obj_name]
+                    )
                 else:
                     result[obj_name] = ak.zip({
                         quantity: concatenated[full_branch]
@@ -588,6 +625,30 @@ class FileParser:
                     })
         
         return result, read_error
+
+    @staticmethod
+    def _zip_mc_event_info(
+        arrays: ak.Array,
+        branch_mapping: dict[str, str]
+    ) -> ak.Array:
+        """
+        Build the flat per-event MC info record (one scalar per event).
+
+        PHYSLITE stores ``mcEventWeights`` as a vector per event, of which
+        index 0 is the nominal weight; legacy ntuples store a single float.
+        Values are widened so they round-trip unchanged through ROOT/uproot.
+        """
+        fields = {}
+        for full_branch, quantity in branch_mapping.items():
+            values = arrays[full_branch]
+            if quantity == MC_EVENT_WEIGHT_FIELD:
+                if values.ndim > 1:
+                    values = values[:, 0]  # nominal weight
+                values = ak.values_astype(values, np.float64)
+            elif quantity in (MC_CHANNEL_NUMBER_FIELD, MC_RUN_NUMBER_FIELD):
+                values = ak.values_astype(values, np.int64)
+            fields[quantity] = values
+        return ak.zip(fields)
     
     @staticmethod
     def _auto_detect_branches(

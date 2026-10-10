@@ -15,6 +15,7 @@ import re
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 
+from services.pipelines.im_pipeline import MC_WEIGHT_SUFFIX
 from services.storage.sqlite_shards import (
     SqliteArrayShardWriter,
     iter_arrays_for_signature,
@@ -44,29 +45,34 @@ def _dilepton_flavor(signature: str) -> bool:
     return any(letters.count(flavor) >= 2 for flavor in _DILEPTON_LETTERS)
 
 
-def _apply_z_peak_cut(
+def _z_peak_mask(
     arr: np.ndarray, signature: str, z_peak_cutoff: float, logger: logging.Logger
 ) -> np.ndarray:
     """
-    Drop masses below ``z_peak_cutoff`` GeV for channels containing same-flavour dileptons.
+    Mask keeping masses at or above ``z_peak_cutoff`` GeV for channels containing
+    same-flavour dileptons.
 
-    The array is returned untouched for every other
-    channel and when the cut is disabled (cutoff <= 0).
+    Everything is kept for every other channel and when the cut is disabled
+    (cutoff <= 0).
     """
-    if z_peak_cutoff <= 0:
-        return arr
+    if z_peak_cutoff <= 0 or not _dilepton_flavor(signature):
+        return np.ones(len(arr), dtype=bool)
 
-    if not _dilepton_flavor(signature):
-        return arr
-
-    kept = arr[arr >= z_peak_cutoff]
-    removed = len(arr) - len(kept)
+    keep = arr >= z_peak_cutoff
+    removed = len(arr) - int(np.count_nonzero(keep))
     if removed:
         logger.debug(
             f"{signature}: Z-peak cut removed {removed} dilepton values "
             f"below {z_peak_cutoff:.1f} GeV"
         )
-    return kept
+    return keep
+
+
+def _apply_z_peak_cut(
+    arr: np.ndarray, signature: str, z_peak_cutoff: float, logger: logging.Logger
+) -> np.ndarray:
+    """Drop masses below ``z_peak_cutoff`` GeV for same-flavour dilepton channels."""
+    return arr[_z_peak_mask(arr, signature, z_peak_cutoff, logger)]
 
 
 def process_im_arrays(config: Dict, file_list: Optional[List[str]] = None) -> List[str]:
@@ -208,21 +214,24 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
     processed = 0
     try:
         for fs_im_key in sorted(fs_im_groups.keys()):
+            # Per-event MC weight arrays are processed as siblings of their
+            # physics signature below, never as signatures in their own right.
+            if fs_im_key.endswith(MC_WEIGHT_SUFFIX):
+                continue
+
             chunk_sigs = fs_im_groups[fs_im_key]
             chunks = []
+            weight_chunks = []
             for sig in chunk_sigs:
                 for filename in sqlite_files:
                     db_path = os.path.join(input_dir, filename)
-                    chunks.extend(iter_arrays_for_signature(db_path, sig))
-    # written = 0
-    # COMMIT_EVERY = 1000  # commit every 1000 signatures to keep WAL small
-    # processed = 0
-    # try:
-    #     for signature in sorted(signatures):
-    #         chunks = []
-    #         for filename in sqlite_files:
-    #             db_path = os.path.join(input_dir, filename)
-    #             chunks.extend(iter_arrays_for_signature(db_path, signature))
+                    sig_chunks = list(iter_arrays_for_signature(db_path, sig))
+                    chunks.extend(sig_chunks)
+                    # Gather the parallel weights in the SAME order so that
+                    # mass[i] and weight[i] stay aligned through every step.
+                    weight_chunks.extend(
+                        iter_arrays_for_signature(db_path, sig + MC_WEIGHT_SUFFIX)
+                    )
             if not chunks:
                 continue
 
@@ -230,24 +239,51 @@ def _process_im_sqlite(config: Dict, sqlite_files: List[str], logger: logging.Lo
             if len(arr) == 0:
                 continue
 
-            # Remove the Z resonance before peak detection
-            arr = _apply_z_peak_cut(arr, fs_im_key, z_peak_cutoff, logger)
-            arr = arr[arr <= max_mass_cutoff] if max_mass_cutoff > 0 else arr
+            warr = None
+            if weight_chunks:
+                warr = np.concatenate(weight_chunks) if len(weight_chunks) > 1 else weight_chunks[0]
+                if len(warr) != len(arr):
+                    logger.warning(
+                        f"{fs_im_key}: {len(warr)} MC weights for {len(arr)} masses; "
+                        "alignment lost, writing it unweighted"
+                    )
+                    warr = None
+
+            # Every step is a boolean mask on the mass array, applied to the
+            # weights as well so both stay aligned.
+            keep = _z_peak_mask(arr, fs_im_key, z_peak_cutoff, logger)
+            if max_mass_cutoff > 0:
+                keep &= arr <= max_mass_cutoff
+            arr = arr[keep]
+            if warr is not None:
+                warr = warr[keep]
             if len(arr) == 0:
                 continue
 
-            peak_mass = _find_rightmost_highest_peak(arr, bin_width, logger)
-            filtered = arr if peak_mass is None else arr[arr >= peak_mass]
-            if len(filtered) == 0:
+            # The peak is located on the weighted spectrum when weights exist:
+            # that is the distribution BumpNet will see, and for sliced samples
+            # the raw-count maximum sits where the tiny-weight slice piles up.
+            peak_mass = _find_rightmost_highest_peak(arr, bin_width, logger, weights=warr)
+            if peak_mass is not None:
+                keep = arr >= peak_mass
+                arr = arr[keep]
+                if warr is not None:
+                    warr = warr[keep]
+            if len(arr) == 0:
                 continue
 
-            main_array, outliers_array = _split_by_first_empty_bin(filtered, bin_width, logger)
+            main_mask = _main_array_mask(arr, bin_width, logger)
+            main_array, outliers_array = arr[main_mask], arr[~main_mask]
             if len(main_array) > 0:
                 writer.append_array(f"{fs_im_key}_main", main_array)
                 written += 1
+                if warr is not None:
+                    writer.append_array(f"{fs_im_key}_main{MC_WEIGHT_SUFFIX}", warr[main_mask])
             if len(outliers_array) > 0:
                 writer.append_array(f"{fs_im_key}_outliers", outliers_array)
                 written += 1
+                if warr is not None:
+                    writer.append_array(f"{fs_im_key}_outliers{MC_WEIGHT_SUFFIX}", warr[~main_mask])
 
             processed += 1                          # ← new
             if processed % COMMIT_EVERY == 0:       # ← new
@@ -332,13 +368,14 @@ def _aligned_bin_edges(im_array: np.ndarray, bin_width: float) -> np.ndarray:
 
 
 def _find_rightmost_highest_peak(
-    im_array: np.ndarray, bin_width: float, logger: logging.Logger
+    im_array: np.ndarray, bin_width: float, logger: logging.Logger,
+    weights: Optional[np.ndarray] = None,
 ) -> Optional[float]:
     if len(im_array) == 0:
         return None
 
     bin_edges = _aligned_bin_edges(im_array, bin_width)
-    counts, _ = np.histogram(im_array, bins=bin_edges)
+    counts, _ = np.histogram(im_array, bins=bin_edges, weights=weights)
     if len(counts) == 0:
         return None
 
@@ -357,16 +394,22 @@ def _find_rightmost_highest_peak(
     return peak_mass
 
 
-def _split_by_first_empty_bin(
+def _main_array_mask(
     im_array: np.ndarray, bin_width: float, logger: logging.Logger
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> np.ndarray:
+    """
+    Mask selecting the main array: everything below the first empty bin.
+
+    Exposed as a mask (rather than the two split arrays) so the SAME split can
+    be applied to a parallel per-event weight array.
+    """
     if len(im_array) == 0:
-        return np.array([]), np.array([])
+        return np.zeros(0, dtype=bool)
 
     bin_edges = _aligned_bin_edges(im_array, bin_width)
     counts, _ = np.histogram(im_array, bins=bin_edges)
     if len(counts) == 0:
-        return im_array, np.array([])
+        return np.ones(len(im_array), dtype=bool)
 
     first_empty_bin_idx = None
     for i in range(len(counts)):
@@ -376,17 +419,23 @@ def _split_by_first_empty_bin(
 
     if first_empty_bin_idx is None or first_empty_bin_idx <= 1:
         logger.debug("No empty bin found or at position 1, keeping all data in main array")
-        return im_array, np.array([])
+        return np.ones(len(im_array), dtype=bool)
 
     split_mass = bin_edges[first_empty_bin_idx]
-    main_array = im_array[im_array < split_mass]
-    outliers_array = im_array[im_array >= split_mass]
+    main_mask = im_array < split_mass
 
     logger.debug(
         f"Split at bin {first_empty_bin_idx} (mass = {split_mass:.2f} GeV): "
-        f"main={len(main_array)}, outliers={len(outliers_array)}"
+        f"main={int(np.count_nonzero(main_mask))}, outliers={int(np.count_nonzero(~main_mask))}"
     )
-    return main_array, outliers_array
+    return main_mask
+
+
+def _split_by_first_empty_bin(
+    im_array: np.ndarray, bin_width: float, logger: logging.Logger
+) -> Tuple[np.ndarray, np.ndarray]:
+    main_mask = _main_array_mask(im_array, bin_width, logger)
+    return im_array[main_mask], im_array[~main_mask]
 
 
 def _get_batch_files(files: List[str], batch_index: int, total_batches: int) -> List[str]:
