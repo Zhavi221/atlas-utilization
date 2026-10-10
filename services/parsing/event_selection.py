@@ -163,33 +163,22 @@ DEFAULT_OVERLAP_REMOVAL_CUTS: Dict[str, Any] = {
 }
 
 
-def _delta_r_np(eta1, phi1, eta2, phi2):
-    """NumPy ΔR between [n_a] and [n_b] arrays, returns [n_a, n_b]."""
-    deta = eta1[:, None] - eta2[None, :]
-    dphi = (phi1[:, None] - phi2[None, :] + np.pi) % (2 * np.pi) - np.pi
+def _pairs(a: ak.Array, b: ak.Array) -> tuple[ak.Array, ak.Array]:
+    """Every (a_i, b_j) pair per event, each side shaped [event][a_i][b_j]."""
+    return ak.unzip(ak.cartesian([a, b], axis=1, nested=True))
+
+
+def _delta_r(a_side: ak.Array, b_side: ak.Array) -> ak.Array:
+    """Element-wise ΔR between two equally shaped arrays of eta/phi records."""
+    deta = a_side.eta - b_side.eta
+    dphi = (a_side.phi - b_side.phi + np.pi) % (2 * np.pi) - np.pi
     return np.sqrt(deta ** 2 + dphi ** 2)
 
 
 def _overlap_mask(a: ak.Array, b: ak.Array, threshold: float) -> ak.Array:
     """Per-object [event][a_i] bool: True if any b_j within *threshold*."""
-    a_counts = ak.to_numpy(ak.num(a))
-    b_counts = ak.to_numpy(ak.num(b))
-    a_eta = np.asarray(ak.flatten(a.eta, axis=None))
-    a_phi = np.asarray(ak.flatten(a.phi, axis=None))
-    b_eta = np.asarray(ak.flatten(b.eta, axis=None))
-    b_phi = np.asarray(ak.flatten(b.phi, axis=None))
-    result = []
-    ao, bo = 0, 0
-    for na, nb in zip(a_counts, b_counts):
-        if na == 0 or nb == 0:
-            result.append([False] * na)
-        else:
-            dr = _delta_r_np(a_eta[ao:ao+na], a_phi[ao:ao+na],
-                             b_eta[bo:bo+nb], b_phi[bo:bo+nb])
-            result.append((dr < threshold).any(axis=1).tolist())
-        ao += na
-        bo += nb
-    return ak.Array(result)
+    a_side, b_side = _pairs(a, b)
+    return ak.any(_delta_r(a_side, b_side) < threshold, axis=2)
 
 
 def _overlap_mask_with_veto(
@@ -198,14 +187,6 @@ def _overlap_mask_with_veto(
     use_track: bool, logger,
 ) -> ak.Array:
     """mu-jet overlap mask with optional track/pT-ratio veto."""
-    j_counts = ak.to_numpy(ak.num(jets))
-    m_counts = ak.to_numpy(ak.num(muons))
-    j_eta = np.asarray(ak.flatten(jets.eta, axis=None))
-    j_phi = np.asarray(ak.flatten(jets.phi, axis=None))
-    j_pt  = np.asarray(ak.flatten(jets.pt, axis=None))
-    m_eta = np.asarray(ak.flatten(muons.eta, axis=None))
-    m_phi = np.asarray(ak.flatten(muons.phi, axis=None))
-    m_pt  = np.asarray(ak.flatten(muons.pt, axis=None))
     has_track = use_track and track_field in jets.fields
     if use_track and not has_track:
         logger.warning(
@@ -213,53 +194,24 @@ def _overlap_mask_with_veto(
             "mu-jet step falls back to ΔR-only (no track/pT-ratio veto).",
             track_field,
         )
-    j_ntrk = np.asarray(ak.flatten(jets[track_field], axis=None)) if has_track else None
-    result = []
-    jo, mo = 0, 0
-    for nj, nm in zip(j_counts, m_counts):
-        if nj == 0 or nm == 0:
-            result.append([False] * nj)
-        else:
-            dr = _delta_r_np(j_eta[jo:jo+nj], j_phi[jo:jo+nj],
-                             m_eta[mo:mo+nm], m_phi[mo:mo+nm])
-            close = dr < dr_threshold
-            if has_track:
-                nt = j_ntrk[jo:jo+nj]
-                ratio = m_pt[mo:mo+nm][None, :] / j_pt[jo:jo+nj][:, None]
-                looks_real = (nt[:, None] >= track_min) | (ratio <= pt_ratio_max)
-                close = close & ~looks_real
-            result.append(close.any(axis=1).tolist())
-        jo += nj
-        mo += nm
-    return ak.Array(result)
+    jet_side, muon_side = _pairs(jets, muons)
+    close = _delta_r(jet_side, muon_side) < dr_threshold
+    if has_track:
+        ratio = muon_side.pt / jet_side.pt
+        looks_real = (jet_side[track_field] >= track_min) | (ratio <= pt_ratio_max)
+        close = close & ~looks_real
+    return ak.any(close, axis=2)
 
 #for now we are not using this but keep it
 def _sliding_cone_mask(leptons: ak.Array, jets: ak.Array, cfg: dict) -> ak.Array:
     """Lepton-jet overlap with pT-dependent sliding cone."""
-    l_counts = ak.to_numpy(ak.num(leptons))
-    j_counts = ak.to_numpy(ak.num(jets))
-    l_eta = np.asarray(ak.flatten(leptons.eta, axis=None))
-    l_phi = np.asarray(ak.flatten(leptons.phi, axis=None))
-    l_pt  = np.asarray(ak.flatten(leptons.pt, axis=None))
-    j_eta = np.asarray(ak.flatten(jets.eta, axis=None))
-    j_phi = np.asarray(ak.flatten(jets.phi, axis=None))
-    result = []
-    lo, jo = 0, 0
-    for nl, nj in zip(l_counts, j_counts):
-        if nl == 0 or nj == 0:
-            result.append([False] * nl)
-        else:
-            dr = _delta_r_np(l_eta[lo:lo+nl], l_phi[lo:lo+nl],
-                             j_eta[jo:jo+nj], j_phi[jo:jo+nj])
-            pt_gev = l_pt[lo:lo+nl] / 1000.0
-            cone = np.minimum(
-                cfg["lepton_jet_dr_fixed"],
-                cfg["lepton_jet_dr_pt_offset"] + cfg["lepton_jet_dr_pt_coeff_gev"] / pt_gev,
-            )
-            result.append((dr < cone[:, None]).any(axis=1).tolist())
-        lo += nl
-        jo += nj
-    return ak.Array(result)
+    lepton_side, jet_side = _pairs(leptons, jets)
+    pt_gev = lepton_side.pt / 1000.0
+    cone = np.minimum(
+        cfg["lepton_jet_dr_fixed"],
+        cfg["lepton_jet_dr_pt_offset"] + cfg["lepton_jet_dr_pt_coeff_gev"] / pt_gev,
+    )
+    return ak.any(_delta_r(lepton_side, jet_side) < cone, axis=2)
 
 
 def _has_particles(collection: Optional[ak.Array]) -> bool:
