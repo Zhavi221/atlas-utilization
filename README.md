@@ -49,16 +49,26 @@ Simulated samples are generated with arbitrary statistics, so their histograms a
 w_event = w_gen(event) * (sigma[pb] * 1000 * kFactor * genFiltEff * L[fb^-1]) / sumOfWeights
 ```
 
-`sigma`, `kFactor`, `genFiltEff` and `sumOfWeights` are per-dataset (DSID) values fetched from the ATLAS Open Data metadata; `w_gen` is the per-event generator weight (`mcEventWeights[0]` in PHYSLITE; ±1 or larger for NLO samples); only `L` is chosen in the config. Enable it with the `mc_weighting_config` block:
+`sigma`, `kFactor`, `genFiltEff` and `sumOfWeights` are per-dataset (DSID) values fetched from the ATLAS Open Data metadata; `w_gen` is the per-event generator weight (`mcEventWeights[0]` in PHYSLITE; ±1 or larger for NLO samples); only `L` is chosen in the config. Enable it with the `mc_weighting_config` block (requires `parsing_task_config.parse_mc: true`):
 
 ```yaml
 mc_weighting_config:
   enabled: true
   target_luminosity_fb: 140.1
-  require_metadata: true   # fail if a dataset lacks cross section / sumOfWeights
+  luminosity_by_campaign:  # optional: L per MC campaign instead of target_luminosity_fb
+    mc20a: 36.2
+  require_metadata: true   # fail if a sample cannot be normalized
 ```
 
-When enabled, the parser stores each event's generator weight and dataset number (`mcChannelNumber`) next to the particle arrays, chunks are closed at dataset boundaries (the DSID is stamped into the parsed filename), mass calculation writes a per-event weight array (`<signature>_mcw`) alongside every invariant-mass array, post-processing applies identical cuts to both, and histograms are filled with `Fill(mass, weight)` with `Sumw2()` enabled so bin errors are weighted. When disabled (the default) the pipeline output is identical to an unweighted run; data files never carry the weight branches and are unaffected either way.
+How it works:
+
+- **Parsing** stores three per-event columns next to the particle arrays, under `_mcEventInfo`: the generator weight, the dataset number (`mcChannelNumber`) and the MC run number. They are read whether or not weighting is enabled. PHYSLITE data files carry the same branches (weight 1, dataset number 0), so weighting is meant for MC-only runs.
+- **Mass calculation** fetches the metadata once per DSID, computes the dataset normalization, and writes a per-event weight array (`<signature>_mcw`) alongside every invariant-mass array.
+- **Luminosity per campaign:** with `luminosity_by_campaign` set, each DSID's campaign is read from its events' MC run number (284500 = mc20a, 300000 = mc20d, 310000 = mc20e, 410000 = mc21a). A run number that maps to no campaign, a DSID spanning several campaigns, or a campaign missing from the map is an error.
+- **Post-processing** applies identical cuts to masses and weights. Known-peak detection runs on the *weighted* spectrum, so enabling weighting can change which masses are kept, not only their weights.
+- **Histograms** are filled with `Fill(mass, weight)` into `TH1D` with `Sumw2()`, so bin errors are weighted.
+
+When disabled (the default), the pipeline output is identical to an unweighted run.
 
 ## Output structure
 
@@ -189,7 +199,8 @@ python main.py --dry-run
 | `histogram_creation_task_config` | `bin_width_gev` | Histogram bin width in GeV |
 | `post_processing_task_config` | `peak_detection_bin_width_gev` | Bin width used during known-peak detection |
 | `mc_weighting_config` | `enabled` | Weight simulated events to `target_luminosity_fb` (default `false`) |
-| `mc_weighting_config` | `target_luminosity_fb` | Target integrated luminosity in fb⁻¹ (`luminosity_by_campaign` overrides it per MC campaign, read from each dataset's MC run number) |
+| `mc_weighting_config` | `target_luminosity_fb` | Target integrated luminosity in fb⁻¹ |
+| `mc_weighting_config` | `luminosity_by_campaign` | Optional `{campaign: L}` map (e.g. `mc20a: 36.2`) overriding `target_luminosity_fb`. Each dataset's campaign is read from its MC run number; an unknown or unlisted campaign is an error |
 | `mc_weighting_config` | `require_metadata` | Abort when a sample cannot be normalized (missing `cross_section_pb` / `sumOfWeights`, generator weights or dataset number); otherwise such events stay unweighted with a warning |
 
 All paths (`output_path`, `input_dir`, `output_dir`, etc.) are defined once in the `paths:` block at the top of `config.yaml` and reused via YAML anchors. At runtime, **relative** paths are overridden to point inside the timestamped run directory. To point a specific stage at an external directory, set its path to an **absolute** path in `config.yaml` — absolute paths are preserved as-is.
