@@ -182,7 +182,7 @@ def check_end_to_end_synthetic():
             writer = SqliteArrayShardWriter(os.path.join(im_dir, "im_batch_1.sqlite"))
             calc = IMCalculator(arrays, min_events_per_fs=1, min_k=1, max_k=4, min_n=1, max_n=4)
             fs_list = list(calc.group_by_final_state())
-            assert fs_list == ["2e_0m_0j_0g_0t_0b"], fs_list
+            assert fs_list == ["2e"], fs_list  # only the object types present are named
             fs_events = calc.get_events_for_final_state(fs_list[0])
             config = {"field_to_slice_by": "pt", "fs_chunk_threshold_bytes": 10**9,
                       "output_mode": "sqlite", "sqlite_writer": writer,

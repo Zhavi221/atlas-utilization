@@ -12,6 +12,7 @@ import awkward as ak
 import logging
 import numpy as np
 
+from domain.events import MC_EVENT_INFO_FIELD, particle_fields
 from services.calculations import physics_calcs
 from services.parsing import schemas
 
@@ -114,7 +115,7 @@ def apply_parsing_event_selection(
 
 def _filter_events_by_non_jet_object_total(events: ak.Array) -> ak.Array:
     """Reject events with more than four retained non-light-jet objects."""
-    non_jet_fields = [field for field in events.fields if field != LIGHT_JET_FIELD]
+    non_jet_fields = [field for field in particle_fields(events) if field != LIGHT_JET_FIELD]
     if not non_jet_fields:
         return events
 
@@ -127,12 +128,15 @@ def _filter_events_by_non_jet_object_total(events: ak.Array) -> ak.Array:
 def retain_objects_for_storage(
     events: ak.Array, objects_to_store: tuple[str, ...]
 ) -> ak.Array:
-    """Drop non-persisted physics collections before event selection."""
+    """Drop non-persisted physics collections before event selection.
+
+    Event-level MC info is not a physics collection and is always kept.
+    """
     return ak.zip(
         {
             field: events[field]
             for field in events.fields
-            if field in objects_to_store
+            if field in objects_to_store or field == MC_EVENT_INFO_FIELD
         },
         depth_limit=1,
     )
