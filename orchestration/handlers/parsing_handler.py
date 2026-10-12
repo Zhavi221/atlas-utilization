@@ -22,9 +22,12 @@ from services.parsing.threaded_processor import ThreadedFileProcessor, ParsingSt
 from domain.statistics import ParsingStatistics
 from domain.events import EventBatch
 from services.parsing.event_selection import (
-    apply_parsing_event_selection, apply_trigger_selection,
+    apply_parsing_event_selection,
+    apply_trigger_selection,
+    apply_overlap_removal,
+    retain_objects_for_storage,
+    filter_events_by_non_jet_object_total,
 )
-from services.parsing.schemas import normalize_release_year
 from utils.batching import get_batch_slice_by_year
 
 
@@ -254,13 +257,12 @@ class ParsingHandler(StateHandler):
                         processing_time_sec=batch.processing_time_sec,
                     )
 
-                # Objects outside the mass-calculation allow-list are removed
-                # before selection, so they cannot veto an otherwise valid event.
+                # 1. Object-level kinematic cuts (keep all objects for overlap removal)
                 filtered = apply_parsing_event_selection(
                     batch.events,
-                    particle_counts=parsing_config.particle_counts,
+                    particle_counts=None,
                     kinematic_cuts=parsing_config.kinematic_cuts,
-                    allowed_objects=parsing_config.objects_to_store,
+                    allowed_objects=None,
                 )
                 batch = EventBatch(
                     events=filtered,
@@ -275,7 +277,54 @@ class ParsingHandler(StateHandler):
                     event_count=len(filtered),
                     processing_time_sec=batch.processing_time_sec,
                 )
+
+                # 2. Overlap removal (needs all objects )
+                if parsing_config.enable_overlap_removal:
+                    overlap_removed = apply_overlap_removal(
+                        batch.events,
+                        cuts=parsing_config.overlap_removal,
+                    )
+                    batch = EventBatch(
+                        events=overlap_removed,
+                        file_id=batch.file_id,
+                        file_url=batch.file_url,
+                        release_year=batch.release_year,
+                        size_bytes=(
+                            overlap_removed.layout.nbytes
+                            if hasattr(overlap_removed, "layout")
+                            else batch.size_bytes
+                        ),
+                        event_count=len(overlap_removed),
+                        processing_time_sec=batch.processing_time_sec,
+                    )
+
+                # 3. Filter objects, apply particle counts, and non-jet cap
+                filtered = retain_objects_for_storage(
+                    batch.events, parsing_config.objects_to_store,
+                )
+                if parsing_config.particle_counts:
+                    filtered = apply_parsing_event_selection(
+                        filtered,
+                        particle_counts=parsing_config.particle_counts,
+                        kinematic_cuts=None,
+                        allowed_objects=None,
+                    )
+                filtered = filter_events_by_non_jet_object_total(filtered)
+                batch = EventBatch(
+                    events=filtered,
+                    file_id=batch.file_id,
+                    file_url=batch.file_url,
+                    release_year=batch.release_year,
+                    size_bytes=(
+                        filtered.layout.nbytes
+                        if hasattr(filtered, "layout")
+                        else batch.size_bytes
+                    ),
+                    event_count=len(filtered),
+                    processing_time_sec=batch.processing_time_sec,
+                )
                 # Accumulate batch into chunks
+
                 chunk = self.accumulator.add_batch(batch)
                 
                 if chunk:

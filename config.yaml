@@ -57,7 +57,7 @@ tasks:
 # When enabled, events must have at least one offline-quality lepton
 # (surviving kinematic and isolation cuts) that is trigger-matched.
 trigger_config:
-  enabled: false
+  enabled: true
 
 # ===TESTING==================================================================
 testing_config:
@@ -74,6 +74,13 @@ testing_config:
 # --- 1. Parsing --------------------------------------------------------------
 # Downloads ATLAS Open Data ROOT files and extracts particle arrays.
 parsing_task_config:
+  # Default thresholds
+  enable_overlap_removal: true
+  # Or override one threshold
+  # overlap_removal:
+  #   e_mu_dr: 0.05      # tighter than default 0.1
+  #   e_jet_dr: 0.3      # wider than default 0.2
+
   # ===PATHS===
   output_path:    *parsed_data_path
   file_urls_path: *metadata_cache_path
