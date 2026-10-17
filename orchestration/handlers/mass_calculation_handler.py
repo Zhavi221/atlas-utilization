@@ -101,6 +101,8 @@ class MassCalculationHandler(StateHandler):
         }
         # {release: {dsid: w_norm}} — metadata is scoped per Open Data release.
         self._mc_norm_by_release: Dict[str, Dict[int, float]] = {}
+        # {release: {dsid: campaign}} — the campaign each cached w_norm was computed for.
+        self._mc_campaign_by_release: Dict[str, Dict[int, str]] = {}
 
         # ── Discover parsed ROOT files ──
         parsed_dir = Path(mc.input_dir)
@@ -243,6 +245,18 @@ class MassCalculationHandler(StateHandler):
                 f"for release {release})."
             )
 
+        # Check if there's a cross-campaign DSID collision 
+        campaign_by_dsid = self._mc_campaign_by_release.setdefault(release, {})
+        if mc_cfg.luminosity_by_campaign:
+            for dsid in dsids:
+                campaign = self._campaign_of(mc_info, dsid)
+                seen = campaign_by_dsid.setdefault(dsid, campaign)
+                if seen != campaign:
+                    raise RuntimeError(
+                        f"DSID {dsid} is in campaign {campaign!r} in {root_file_path.name} "
+                        f"but was {seen!r} in an earlier file."
+                    )
+
         missing = sorted(d for d in dsids if d not in norm_by_dsid)
         if missing:
             from services.metadata.fetcher import MetadataFetcher
@@ -256,14 +270,12 @@ class MassCalculationHandler(StateHandler):
                         f"No normalization metadata (cross_section_pb, sumOfWeights) for "
                         f"DSID {dsid} in release {release} ({root_file_path.name})."
                     )
-                campaign = None
-                if mc_cfg.luminosity_by_campaign:
-                    campaign = self._campaign_of(mc_info, dsid)
-                    if campaign not in mc_cfg.luminosity_by_campaign:
-                        raise RuntimeError(
-                            f"luminosity_by_campaign has no entry for campaign {campaign!r} "
-                            f"of DSID {dsid} in {root_file_path.name}."
-                        )
+                campaign = campaign_by_dsid.get(dsid)
+                if mc_cfg.luminosity_by_campaign and campaign not in mc_cfg.luminosity_by_campaign:
+                    raise RuntimeError(
+                        f"luminosity_by_campaign has no entry for campaign {campaign!r} "
+                        f"of DSID {dsid} in {root_file_path.name}."
+                    )
                 luminosity = mc_cfg.get_luminosity(campaign)
                 norm_by_dsid[dsid] = compute_normalization(md, luminosity)
                 self.logger.info(
