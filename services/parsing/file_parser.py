@@ -55,6 +55,7 @@ class FileParser:
         enable_jet_tagging: bool = False,
         jet_btagging_thresholds: Optional[dict[str, float]] = None,
         enable_trigger_matching: bool = False,
+        enable_mc_weights: bool = False,
     ) -> Optional[ak.Array]:
         """
         Parse a single ROOT file and return events.
@@ -64,6 +65,8 @@ class FileParser:
             tree_names: List of possible tree names to search for
             release_year: Release year identifier (e.g., "2024r-pp")
             batch_size: Number of entries to process per batch
+            enable_mc_weights: Keep the per-event MC info (generator weight,
+                dataset and run number); dropped when MC weighting is off
             
         Returns:
             Awkward array of events with particle objects, or None if parsing failed
@@ -79,6 +82,7 @@ class FileParser:
                     enable_jet_tagging,
                     jet_btagging_thresholds,
                     enable_trigger_matching,
+                    enable_mc_weights,
                 )
         except (PartialFileReadError, SkipFileError):
             raise
@@ -96,6 +100,7 @@ class FileParser:
         enable_jet_tagging: bool,
         jet_btagging_thresholds: Optional[dict[str, float]],
         enable_trigger_matching: bool,
+        enable_mc_weights: bool,
     ) -> Optional[ak.Array]:
         """Parse an already-opened ROOT file."""
         tree_name = FileParser._get_data_tree_name(root_file.keys(), tree_names)
@@ -126,7 +131,8 @@ class FileParser:
             all_branches,
             obj_branches,
             n_entries,
-            batch_size
+            batch_size,
+            enable_mc_weights,
         )
         obj_events = FileParser._split_combined_leptons(obj_events, release_year)
         if enable_jet_tagging:
@@ -553,7 +559,8 @@ class FileParser:
         all_branches: set[str],
         obj_branches: dict[str, dict[str, str]],
         n_entries: int,
-        batch_size: int
+        batch_size: int,
+        enable_mc_weights: bool,
     ) -> tuple[dict[str, ak.Array], Optional[Exception]]:
         obj_events_by_quantities = {
             obj_name: [] for obj_name in obj_branches.keys()
@@ -619,9 +626,10 @@ class FileParser:
                 elif obj_name == "_runNumber":
                     result[obj_name] = concatenated[schemas.RANDOM_RUN_NUMBER_BRANCH]
                 elif obj_name == MC_EVENT_INFO_FIELD:
-                    result[obj_name] = FileParser._zip_mc_event_info(
-                        concatenated, obj_branches[obj_name]
-                    )
+                    if enable_mc_weights:
+                        result[obj_name] = FileParser._zip_mc_event_info(
+                            concatenated, obj_branches[obj_name]
+                        )
                 else:
                     result[obj_name] = ak.zip({
                         quantity: concatenated[full_branch]
