@@ -156,7 +156,7 @@ class MassCalculationHandler(StateHandler):
                     if created:
                         total_created_chunks += len(created)
                 except RuntimeError:
-                    raise  # incl. require_metadata failures: a mis-normalized sample must abort the run
+                    raise  # incl. MC normalization failures: a mis-normalized sample must abort the run
                 except Exception as exc:
                     self.logger.error(
                         f"Error processing {root_file_path.name}: {exc}",
@@ -207,9 +207,9 @@ class MassCalculationHandler(StateHandler):
         it is never inferred from file names. Inert when weighting is off.
 
         Raises:
-            RuntimeError: when ``require_metadata`` is set and the file
-                cannot be normalized correctly (no generator weights, no
-                dataset number, or a dataset without the required metadata).
+            RuntimeError: when the file cannot be normalized correctly (no
+                generator weights, no dataset number, or a dataset without the
+                required metadata).
         """
         mc_cfg = context.config.mc_weighting_config
         if not config_dict.get("mc_weighting_enabled"):
@@ -229,26 +229,19 @@ class MassCalculationHandler(StateHandler):
         if MC_EVENT_WEIGHT_FIELD not in mc_info.fields:
             # sumOfWeights sums the real generator weights; filling with
             # w_gen = 1 would mis-normalize any sample that is not unit-weight.
-            message = (
+            raise RuntimeError(
                 f"{root_file_path.name} has no per-event generator weights "
                 f"(expected branch {schemas.MC_EVENT_WEIGHT_BRANCHES.get(release)!r} "
-                f"for release {release}); w_gen = 1 is only correct for unit-weight samples."
+                f"for release {release})."
             )
-            if mc_cfg.require_metadata:
-                raise RuntimeError(message)
-            self.logger.warning(message)
 
         dsids = [int(d) for d in dsids_in_events(particle_arrays)]
         if not dsids:
-            message = (
+            raise RuntimeError(
                 f"MC weighting enabled but {root_file_path.name} carries no dataset "
                 f"number (expected branch {schemas.MC_CHANNEL_NUMBER_BRANCHES.get(release)!r} "
-                f"for release {release}); w_norm=1 for its events."
+                f"for release {release})."
             )
-            if mc_cfg.require_metadata:
-                raise RuntimeError(message)
-            self.logger.warning(message)
-            return
 
         missing = sorted(d for d in dsids if d not in norm_by_dsid)
         if missing:
@@ -259,16 +252,10 @@ class MassCalculationHandler(StateHandler):
             for dsid in missing:
                 md = fetcher.fetch_mc_metadata(dsid, release=release)
                 if md is None:
-                    # Not cached: a later file may succeed (transient fetch failure).
-                    message = (
+                    raise RuntimeError(
                         f"No normalization metadata (cross_section_pb, sumOfWeights) for "
-                        f"DSID {dsid} in release {release}; w_norm=1 for its events in "
-                        f"{root_file_path.name}."
+                        f"DSID {dsid} in release {release} ({root_file_path.name})."
                     )
-                    if mc_cfg.require_metadata:
-                        raise RuntimeError(message)
-                    self.logger.warning(message)
-                    continue
                 campaign = None
                 if mc_cfg.luminosity_by_campaign:
                     campaign = self._campaign_of(mc_info, dsid)

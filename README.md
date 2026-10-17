@@ -55,9 +55,9 @@ w_event = w_gen(event) * (sigma[pb] * 1000 * kFactor * genFiltEff * L[fb^-1]) / 
 mc_weighting_config:
   enabled: true
   target_luminosity_fb: 140.1
-  luminosity_by_campaign:  # optional: L per MC campaign instead of target_luminosity_fb
-    mc20a: 36.2
-  require_metadata: true   # fail if a sample cannot be normalized
+  # or, instead of target_luminosity_fb (setting both is an error):
+  # luminosity_by_campaign:
+  #   mc20a: 36.2
 ```
 
 How it works:
@@ -199,9 +199,8 @@ python main.py --dry-run
 | `histogram_creation_task_config` | `bin_width_gev` | Histogram bin width in GeV |
 | `post_processing_task_config` | `peak_detection_bin_width_gev` | Bin width used during known-peak detection |
 | `mc_weighting_config` | `enabled` | Weight simulated events to `target_luminosity_fb` (default `false`) |
-| `mc_weighting_config` | `target_luminosity_fb` | Target integrated luminosity in fb⁻¹ |
-| `mc_weighting_config` | `luminosity_by_campaign` | Optional `{campaign: L}` map (e.g. `mc20a: 36.2`) overriding `target_luminosity_fb`. Each dataset's campaign is read from its MC run number; an unknown or unlisted campaign is an error |
-| `mc_weighting_config` | `require_metadata` | Abort when a sample cannot be normalized (missing `cross_section_pb` / `sumOfWeights`, generator weights or dataset number); otherwise such events stay unweighted with a warning |
+| `mc_weighting_config` | `target_luminosity_fb` | Target integrated luminosity in fb⁻¹. When `enabled`, set exactly one of this and `luminosity_by_campaign` |
+| `mc_weighting_config` | `luminosity_by_campaign` | Optional `{campaign: L}` map (e.g. `mc20a: 36.2`) used instead of `target_luminosity_fb`; setting both, or neither while `enabled`, is an error. Each dataset's campaign is read from its MC run number; an unknown or unlisted campaign is an error |
 
 All paths (`output_path`, `input_dir`, `output_dir`, etc.) are defined once in the `paths:` block at the top of `config.yaml` and reused via YAML anchors. At runtime, **relative** paths are overridden to point inside the timestamped run directory. To point a specific stage at an external directory, set its path to an **absolute** path in `config.yaml` — absolute paths are preserved as-is.
 

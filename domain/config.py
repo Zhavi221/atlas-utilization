@@ -234,9 +234,7 @@ class MCWeightingConfig:
 
     Holds the analysis-level constants that are NOT part of the per-dataset
     metadata: the target integrated luminosity the simulated samples are
-    normalized to (which can vary by MC campaign), and whether to enforce
-    that every dataset actually has the metadata needed to normalize it. The
-    physics inputs (cross section, k-factor, filter efficiency, sum of
+    normalized to (which can vary by MC campaign). The physics inputs (cross section, k-factor, filter efficiency, sum of
     weights) come from the dataset metadata, not here.
     """
 
@@ -247,11 +245,6 @@ class MCWeightingConfig:
     # Per-campaign luminosity, e.g. {"mc20a": 36.2, "mc20d": 44.3, "mc20e": 58.5}.
     # Mutually exclusive with target_luminosity_fb.
     luminosity_by_campaign: Optional[dict] = None
-    # When True, a dataset missing REQUIRED metadata (cross_section_pb, sumOfWeights)
-    # is a hard error rather than being silently skipped/unweighted. Missing
-    # kFactor / genFiltEff are NOT errors — they default to 1.0 (no correction),
-    # which is physically valid (e.g. already-NLO or unfiltered samples).
-    require_metadata: bool = False
 
     def __post_init__(self):
         """Validate MC weighting configuration."""
@@ -469,7 +462,6 @@ class PipelineConfig:
                 enabled=mc_dict.get("enabled", False),
                 target_luminosity_fb=mc_dict.get("target_luminosity_fb"),
                 luminosity_by_campaign=mc_dict.get("luminosity_by_campaign"),
-                require_metadata=mc_dict.get("require_metadata", False),
             )
             # MC weighting normalizes simulated samples only.
             if mc_weighting_config.enabled and not (config_dict.get("parsing_task_config") or {}).get("parse_mc", False):
