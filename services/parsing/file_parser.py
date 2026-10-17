@@ -35,6 +35,10 @@ class PartialFileReadError(RuntimeError):
         )
 
 
+class SkipFileError(RuntimeError):
+    """The file is unusable as a whole; skip it without retrying."""
+
+
 class FileParser:
     """
     Service for parsing individual ROOT files.
@@ -76,7 +80,7 @@ class FileParser:
                     jet_btagging_thresholds,
                     enable_trigger_matching,
                 )
-        except PartialFileReadError:
+        except (PartialFileReadError, SkipFileError):
             raise
         except Exception as e:
             logging.warning(f"Failed to parse file {file_path}: {e}")
@@ -643,6 +647,11 @@ class FileParser:
             values = arrays[full_branch]
             if quantity == MC_EVENT_WEIGHT_FIELD:
                 if values.ndim > 1:
+                    n_empty = int(ak.sum(ak.num(values) == 0))
+                    if n_empty:
+                        raise SkipFileError(
+                            f"{n_empty} events have an empty generator-weight vector, skipping file"
+                        )
                     values = values[:, 0]  # nominal weight
                 values = ak.values_astype(values, np.float64)
             elif quantity in (MC_CHANNEL_NUMBER_FIELD, MC_RUN_NUMBER_FIELD):
