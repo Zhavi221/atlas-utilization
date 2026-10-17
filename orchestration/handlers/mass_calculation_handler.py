@@ -199,7 +199,7 @@ class MassCalculationHandler(StateHandler):
         particle_arrays: ak.Array,
         config_dict: dict,
         context: PipelineContext,
-    ) -> None:
+    ) -> bool:
         """
         Point ``config_dict["mc_norm_by_dsid"]`` at this file's release map and
         make sure it covers every dataset in the file, fetching metadata once
@@ -208,6 +208,9 @@ class MassCalculationHandler(StateHandler):
         The dataset number is read from the events' own ``mcChannelNumber``;
         it is never inferred from file names. Inert when weighting is off.
 
+        Returns:
+            False when the file carries no MC event info and must be skipped.
+
         Raises:
             RuntimeError: when the file cannot be normalized correctly (no
                 generator weights, no dataset number, or a dataset without the
@@ -215,13 +218,13 @@ class MassCalculationHandler(StateHandler):
         """
         mc_cfg = context.config.mc_weighting_config
         if not config_dict.get("mc_weighting_enabled"):
-            return
+            return True
         if MC_EVENT_INFO_FIELD not in particle_arrays.fields:
             self.logger.warning(
                 f"MC weighting enabled but {root_file_path.name} carries no MC event "
-                "info; its events will be unweighted."
+                "info; skipping file."
             )
-            return
+            return False
 
         release = self._release_of(root_file_path, context)
         norm_by_dsid = self._mc_norm_by_release.setdefault(release, {})
@@ -283,6 +286,7 @@ class MassCalculationHandler(StateHandler):
                     f"{f', campaign {campaign}' if campaign else ''}): "
                     f"w_norm={norm_by_dsid[dsid]:.6g} at L={luminosity} fb^-1"
                 )
+        return True
 
     @staticmethod
     def _campaign_of(mc_info: ak.Array, dsid: int) -> str:
@@ -544,8 +548,10 @@ class MassCalculationHandler(StateHandler):
             self.logger.info(f"{root_file_path.name}: empty – skipping")
             return []
 
-        if context is not None:
-            self._resolve_mc_normalization(root_file_path, particle_arrays, config_dict, context)
+        if context is not None and not self._resolve_mc_normalization(
+            root_file_path, particle_arrays, config_dict, context
+        ):
+            return []
 
         self.logger.info(
             f"{root_file_path.name}: {num_events:,} events loaded "
