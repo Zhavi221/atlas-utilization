@@ -62,7 +62,7 @@ mc_weighting_config:
 
 How it works:
 
-- **Parsing** stores three per-event columns next to the particle arrays, under `_mcEventInfo`: the generator weight, the dataset number (`mcChannelNumber`) and the MC run number. They are read whether or not weighting is enabled. PHYSLITE data files carry the same branches (weight 1, dataset number 0), so weighting is meant for MC-only runs.
+- **Parsing** stores three per-event columns next to the particle arrays, under `_mcEventInfo`: the generator weight, the dataset number (`mcChannelNumber`) and the MC run number. They are kept only when weighting is enabled. PHYSLITE data files carry the same branches (weight 1, dataset number 0), so weighting is meant for MC-only runs.
 - **Mass calculation** fetches the metadata once per DSID, computes the dataset normalization, and writes a per-event weight array (`<signature>_mcw`) alongside every invariant-mass array.
 - **Luminosity per campaign:** with `luminosity_by_campaign` set, each DSID's campaign is read from its events' MC run number (284500 = mc20a, 300000 = mc20d, 310000 = mc20e, 410000 = mc21a). A run number that maps to no campaign, a DSID spanning several campaigns, or a campaign missing from the map is an error.
 - **Post-processing** applies identical cuts to masses and weights. Known-peak detection runs on the *weighted* spectrum, so enabling weighting can change which masses are kept, not only their weights.
