@@ -241,8 +241,11 @@ class MCWeightingConfig:
     """
 
     enabled: bool = False
-    target_luminosity_fb: float = 1.0  # default/fallback target luminosity in fb^-1
-    # Optional per-campaign override, e.g. {"mc16a": 36.2, "mc16d": 44.3, "mc16e": 58.5}.
+    # Target luminosity in fb^-1. When enabled, exactly one of this and
+    # luminosity_by_campaign must be set.
+    target_luminosity_fb: Optional[float] = None
+    # Per-campaign luminosity, e.g. {"mc20a": 36.2, "mc20d": 44.3, "mc20e": 58.5}.
+    # Mutually exclusive with target_luminosity_fb.
     luminosity_by_campaign: Optional[dict] = None
     # When True, a dataset missing REQUIRED metadata (cross_section_pb, sumOfWeights)
     # is a hard error rather than being silently skipped/unweighted. Missing
@@ -252,7 +255,17 @@ class MCWeightingConfig:
 
     def __post_init__(self):
         """Validate MC weighting configuration."""
-        if self.target_luminosity_fb < 0:
+        if self.luminosity_by_campaign:
+            if self.target_luminosity_fb is not None:
+                raise ValueError(
+                    "target_luminosity_fb and luminosity_by_campaign are mutually exclusive; set only one"
+                )
+        elif self.enabled and self.target_luminosity_fb is None:
+            raise ValueError(
+                "MC weighting is enabled but neither target_luminosity_fb nor "
+                "luminosity_by_campaign is set"
+            )
+        if self.target_luminosity_fb is not None and self.target_luminosity_fb < 0:
             raise ValueError(
                 f"target_luminosity_fb must be non-negative, got {self.target_luminosity_fb}"
             )
@@ -267,11 +280,16 @@ class MCWeightingConfig:
         """
         Resolve the target luminosity for a given MC campaign.
 
-        Falls back to ``target_luminosity_fb`` when the campaign is unknown or
-        no per-campaign map is configured.
+        Uses ``luminosity_by_campaign`` when configured, else ``target_luminosity_fb``.
+
+        Raises:
+            ValueError: when ``luminosity_by_campaign`` is configured and has no
+                entry for ``campaign``.
         """
-        if campaign and self.luminosity_by_campaign:
-            return self.luminosity_by_campaign.get(campaign, self.target_luminosity_fb)
+        if self.luminosity_by_campaign:
+            if campaign not in self.luminosity_by_campaign:
+                raise ValueError(f"luminosity_by_campaign has no entry for campaign {campaign!r}")
+            return self.luminosity_by_campaign[campaign]
         return self.target_luminosity_fb
 
 
@@ -449,7 +467,7 @@ class PipelineConfig:
         if mc_dict:
             mc_weighting_config = MCWeightingConfig(
                 enabled=mc_dict.get("enabled", False),
-                target_luminosity_fb=mc_dict.get("target_luminosity_fb", 1.0),
+                target_luminosity_fb=mc_dict.get("target_luminosity_fb"),
                 luminosity_by_campaign=mc_dict.get("luminosity_by_campaign"),
                 require_metadata=mc_dict.get("require_metadata", False),
             )
