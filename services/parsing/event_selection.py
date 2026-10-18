@@ -223,7 +223,7 @@ def _has_particles(collection: Optional[ak.Array]) -> bool:
 def _merge_jets(ljets, bjets):
     """Concatenate light jets and b-jets, tagging each with _is_bjet."""
     if not _has_particles(ljets) and not _has_particles(bjets):
-        return ljets
+        return None
     if _has_particles(ljets) and _has_particles(bjets):
         common = [f for f in ljets.fields if f in bjets.fields]
         lj_tagged = ak.zip({f: ljets[f] for f in common} | {"_is_bjet": ak.zeros_like(ljets.pt, dtype=bool)})
