@@ -51,6 +51,7 @@ class ThreadedFileProcessor:
         enable_jet_tagging: bool = False,
         jet_btagging_thresholds: Optional[dict[str, float]] = None,
         enable_trigger_matching: bool = False,
+        enable_mc_weights: bool = False,
         on_success: Optional[Callable[[str, int, float], None]] = None,
         on_error: Optional[Callable[[str, Exception], None]] = None
     ) -> Iterator[EventBatch]:
@@ -62,6 +63,7 @@ class ThreadedFileProcessor:
             tree_names: List of possible tree names
             release_year: Release year for schema lookup
             batch_size: Batch size for reading large files
+            enable_mc_weights: Keep the per-event MC info in parsed events
             on_success: Optional callback(file_url, event_count, time_sec) on success
             on_error: Optional callback(file_url, exception) on error
             
@@ -82,6 +84,7 @@ class ThreadedFileProcessor:
                     enable_jet_tagging,
                     jet_btagging_thresholds,
                     enable_trigger_matching,
+                    enable_mc_weights,
                 ): file_url
                 for file_url in file_urls
             }
@@ -135,6 +138,7 @@ class ThreadedFileProcessor:
         enable_jet_tagging: bool,
         jet_btagging_thresholds: Optional[dict[str, float]],
         enable_trigger_matching: bool,
+        enable_mc_weights: bool,
     ) -> tuple:
         """
         Parse a single file with retry + backoff on timeout errors.
@@ -160,6 +164,7 @@ class ThreadedFileProcessor:
                     enable_jet_tagging=enable_jet_tagging,
                     jet_btagging_thresholds=jet_btagging_thresholds,
                     enable_trigger_matching=enable_trigger_matching,
+                    enable_mc_weights=enable_mc_weights,
                 )
             except PartialFileReadError as error:
                 events = error.events
