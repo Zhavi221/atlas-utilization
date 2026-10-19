@@ -16,7 +16,7 @@ from typing import Optional
 import atlasopenmagic as atom
 
 from services import consts
-from domain.metadata import ReleaseMetadata
+from domain.metadata import ReleaseMetadata, MCDatasetMetadata
 
 # Matches the dataset namespace component in ATLAS Open Data URLs.
 # The digit+underscore suffix (e.g. mc20_, data16_) is specific enough
@@ -354,6 +354,70 @@ class MetadataFetcher:
 
         return separated
     
+    def fetch_mc_metadata(self, dataset_id, release: Optional[str] = None) -> Optional[MCDatasetMetadata]:
+        """
+        Fetch Monte-Carlo metadata for a single dataset (DSID).
+
+        Uses atlasopenmagic ``get_metadata`` which returns all metadata fields
+        for the dataset. Fields missing from the source (e.g. kFactor,
+        genFiltEff on some samples) fall back to physics-safe defaults (1.0).
+
+        Args:
+            dataset_id: The dataset number (DSID), as int or str.
+            release: Open Data release the dataset belongs to (e.g.
+                ``2024r-pp``). atlasopenmagic scopes metadata to its active
+                release, so this must match the files being weighted; when
+                omitted the currently active release is used.
+
+        Returns:
+            MCDatasetMetadata for the dataset, or None if metadata could not be
+            fetched or lacks the fields required to normalize the sample.
+        """
+        try:
+            if release and atom.get_current_release() != release:
+                atom.set_release(release)
+            raw = atom.get_metadata(str(dataset_id))
+        except Exception as e:
+            logging.warning(f"Could not fetch MC metadata for dataset {dataset_id}: {e}")
+            return None
+
+        if not raw:
+            logging.warning(f"No MC metadata returned for dataset {dataset_id}")
+            return None
+
+        cross_section_pb = self._to_float(raw.get("cross_section_pb"))
+        sum_of_weights = self._to_float(raw.get("sumOfWeights"))
+
+        if cross_section_pb is None or sum_of_weights is None or sum_of_weights == 0:
+            logging.warning(
+                f"Dataset {dataset_id} missing required normalization fields "
+                f"(cross_section_pb={cross_section_pb}, sumOfWeights={sum_of_weights}); skipping"
+            )
+            return None
+
+        # k-factor and filter efficiency default to 1.0 when absent (no correction).
+        k_factor = self._to_float(raw.get("kFactor"))
+        gen_filt_eff = self._to_float(raw.get("genFiltEff"))
+
+        return MCDatasetMetadata(
+            dataset_number=int(dataset_id),
+            cross_section_pb=cross_section_pb,
+            sum_of_weights=sum_of_weights,
+            k_factor=k_factor if k_factor is not None else 1.0,
+            gen_filt_eff=gen_filt_eff if gen_filt_eff is not None else 1.0,
+            physics_short=raw.get("physics_short"),
+        )
+
+    @staticmethod
+    def _to_float(value) -> Optional[float]:
+        """Coerce a metadata value to float, returning None if not possible."""
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
     def to_release_metadata(
         self,
         release_files: dict[str, list[str]]

@@ -218,6 +218,8 @@ class ParsingHandler(StateHandler):
                 enable_jet_tagging=parsing_config.enable_jet_tagging,
                 jet_btagging_thresholds=parsing_config.jet_btagging_thresholds,
                 enable_trigger_matching=enable_trigger_matching,
+                enable_mc_weights=bool(context.config.mc_weighting_config
+                                       and context.config.mc_weighting_config.enabled),
                 on_success=on_success,
                 on_error=on_error
             ):

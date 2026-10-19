@@ -67,6 +67,26 @@ testing_config:
   limit_files_per_year: null             # limit per release-year (for testing)
   limit_combinations: null               # limit IM combinations  (for testing)
 
+# ===MC EVENT WEIGHTING=======================================================
+# Normalizes simulated (MC) samples to a target integrated luminosity via:
+#   w = (cross_section_pb * 1000 * kFactor * genFiltEff * L) / sumOfWeights
+# Cross section, k-factor, filter efficiency and sum-of-weights come from the
+# per-dataset ATLAS metadata; only the target luminosity L is set here.
+mc_weighting_config:
+  enabled: false                         # apply MC weights to simulated samples
+  # When enabled, set exactly one of target_luminosity_fb / luminosity_by_campaign
+  # (both or neither is an error).
+  target_luminosity_fb: 1.0              # single target luminosity in fb^-1 for every dataset
+  # Per-campaign luminosity instead of target_luminosity_fb.
+  # Each dataset's campaign is read from its events' MC run number
+  # (284500 = mc20a, 300000 = mc20d, 310000 = mc20e, 410000 = mc21a). A dataset
+  # whose campaign cannot be determined or is not listed is an error. Example Run-2 values:
+  # luminosity_by_campaign:
+  #   mc20a: 36.2
+  #   mc20d: 44.3
+  #   mc20e: 58.5
+  luminosity_by_campaign: null
+
 # ============================================================================
 # STAGE CONFIGURATIONS
 # ============================================================================

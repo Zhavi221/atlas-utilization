@@ -234,6 +234,65 @@ class HistogramCreationConfig:
 
 
 @dataclass(frozen=True)
+class MCWeightingConfig:
+    """
+    Configuration for Monte-Carlo event weighting.
+
+    Holds the analysis-level constants that are NOT part of the per-dataset
+    metadata: the target integrated luminosity the simulated samples are
+    normalized to (which can vary by MC campaign). The physics inputs (cross section, k-factor, filter efficiency, sum of
+    weights) come from the dataset metadata, not here.
+    """
+
+    enabled: bool = False
+    # Target luminosity in fb^-1. When enabled, exactly one of this and
+    # luminosity_by_campaign must be set.
+    target_luminosity_fb: Optional[float] = None
+    # Per-campaign luminosity, e.g. {"mc20a": 36.2, "mc20d": 44.3, "mc20e": 58.5}.
+    # Mutually exclusive with target_luminosity_fb.
+    luminosity_by_campaign: Optional[dict] = None
+
+    def __post_init__(self):
+        """Validate MC weighting configuration."""
+        if self.luminosity_by_campaign:
+            if self.target_luminosity_fb is not None:
+                raise ValueError(
+                    "target_luminosity_fb and luminosity_by_campaign are mutually exclusive; set only one"
+                )
+        elif self.enabled and self.target_luminosity_fb is None:
+            raise ValueError(
+                "MC weighting is enabled but neither target_luminosity_fb nor "
+                "luminosity_by_campaign is set"
+            )
+        if self.target_luminosity_fb is not None and self.target_luminosity_fb < 0:
+            raise ValueError(
+                f"target_luminosity_fb must be non-negative, got {self.target_luminosity_fb}"
+            )
+        if self.luminosity_by_campaign:
+            for campaign, lumi in self.luminosity_by_campaign.items():
+                if lumi < 0:
+                    raise ValueError(
+                        f"luminosity for campaign '{campaign}' must be non-negative, got {lumi}"
+                    )
+
+    def get_luminosity(self, campaign: Optional[str] = None) -> float:
+        """
+        Resolve the target luminosity for a given MC campaign.
+
+        Uses ``luminosity_by_campaign`` when configured, else ``target_luminosity_fb``.
+
+        Raises:
+            ValueError: when ``luminosity_by_campaign`` is configured and has no
+                entry for ``campaign``.
+        """
+        if self.luminosity_by_campaign:
+            if campaign not in self.luminosity_by_campaign:
+                raise ValueError(f"luminosity_by_campaign has no entry for campaign {campaign!r}")
+            return self.luminosity_by_campaign[campaign]
+        return self.target_luminosity_fb
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     """
     Complete pipeline configuration.
@@ -249,8 +308,10 @@ class PipelineConfig:
     mass_calculation_config: Optional[MassCalculationConfig] = None
     post_processing_config: Optional[PostProcessingConfig] = None
     histogram_creation_config: Optional[HistogramCreationConfig] = None
-        # Trigger matching configuration
+
+    # Cross-cutting configuration
     trigger_config: Optional[dict] = None
+    mc_weighting_config: Optional[MCWeightingConfig] = None
     
     # Run metadata
     run_name: str = "pipeline_run"
@@ -401,6 +462,19 @@ class PipelineConfig:
                 pre_postproc_filename=hist_dict.get("pre_postproc_filename"),
             )
         
+        # Parse MC weighting config (optional cross-cutting section)
+        mc_weighting_config = None
+        mc_dict = config_dict.get("mc_weighting_config")
+        if mc_dict:
+            mc_weighting_config = MCWeightingConfig(
+                enabled=mc_dict.get("enabled", False),
+                target_luminosity_fb=mc_dict.get("target_luminosity_fb"),
+                luminosity_by_campaign=mc_dict.get("luminosity_by_campaign"),
+            )
+            # MC weighting normalizes simulated samples only.
+            if mc_weighting_config.enabled and not (config_dict.get("parsing_task_config") or {}).get("parse_mc", False):
+                raise ValueError("mc_weighting_config.enabled requires parsing_task_config.parse_mc: true")
+
         # Parse run metadata
         run_metadata = config_dict.get("run_metadata", {})
         
@@ -411,6 +485,7 @@ class PipelineConfig:
             post_processing_config=post_processing_config,
             histogram_creation_config=histogram_creation_config,
             trigger_config=config_dict.get("trigger_config"),
+            mc_weighting_config=mc_weighting_config,
             run_name=run_metadata.get("run_name", "pipeline_run"),
             batch_job_index=run_metadata.get("batch_job_index"),
             total_batch_jobs=run_metadata.get("total_batch_jobs"),
