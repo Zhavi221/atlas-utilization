@@ -219,6 +219,29 @@ def _has_particles(collection: Optional[ak.Array]) -> bool:
             and len(collection.fields) > 0
             and int(ak.sum(ak.num(collection))) > 0)
 
+
+def _merge_jets(ljets, bjets):
+    """Concatenate light jets and b-jets, tagging each with _is_bjet."""
+    if not _has_particles(ljets) and not _has_particles(bjets):
+        return None
+    if _has_particles(ljets) and _has_particles(bjets):
+        common = [f for f in ljets.fields if f in bjets.fields]
+        lj_tagged = ak.zip({f: ljets[f] for f in common} | {"_is_bjet": ak.zeros_like(ljets.pt, dtype=bool)})
+        bj_tagged = ak.zip({f: bjets[f] for f in common} | {"_is_bjet": ak.ones_like(bjets.pt, dtype=bool)})
+        return ak.concatenate([lj_tagged, bj_tagged], axis=1)
+    if _has_particles(ljets):
+        return ak.zip({f: ljets[f] for f in ljets.fields} | {"_is_bjet": ak.zeros_like(ljets.pt, dtype=bool)})
+    return ak.zip({f: bjets[f] for f in bjets.fields} | {"_is_bjet": ak.ones_like(bjets.pt, dtype=bool)})
+
+
+def _split_jets(jets):
+    """Split merged jets back into (light, b-jets) using _is_bjet tag."""
+    is_b = jets["_is_bjet"]
+    keep = [f for f in jets.fields if not f.startswith("_is_bjet")]
+    clean = ak.zip({f: jets[f] for f in keep})
+    return clean[~is_b], clean[is_b]
+
+
 def apply_overlap_removal(
     events: ak.Array,
     cuts: Optional[Dict[str, Any]] = None,
@@ -233,7 +256,9 @@ def apply_overlap_removal(
 
     electrons = events["Electrons"] if "Electrons" in events.fields else None
     muons = events["Muons"] if "Muons" in events.fields else None
-    jets = events["Jets"] if "Jets" in events.fields else None
+    ljets = events["Jets"] if "Jets" in events.fields else None
+    bjets = events["BJets"] if "BJets" in events.fields else None
+    jets = _merge_jets(ljets, bjets)
     photons = events["Photons"] if "Photons" in events.fields else None
     taus = events["Taus"] if "Taus" in events.fields else None
 
@@ -286,7 +311,11 @@ def apply_overlap_removal(
     if jets is not None:
         if "NumTrkPt500" in jets.fields:
             jets = ak.zip({f: jets[f] for f in jets.fields if f != "NumTrkPt500"})
-        result = ak.with_field(result, jets, "Jets")
+        surviving_ljets, surviving_bjets = _split_jets(jets)
+        if ljets is not None:
+            result = ak.with_field(result, surviving_ljets, "Jets")
+        if bjets is not None:
+            result = ak.with_field(result, surviving_bjets, "BJets")
     if photons is not None:
         result = ak.with_field(result, photons, "Photons")
     if taus is not None:
