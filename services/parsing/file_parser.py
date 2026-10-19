@@ -607,22 +607,23 @@ class FileParser:
                 concatenated = ak.concatenate(chunks)
                 if obj_name == "_triggerMatch":
                     # Trigger branches are ``var * var * ElementLink``.
-                    # We collapse each to a single per-event boolean:
-                    # True if ANY particle in the event has a non-empty match
-                    # for that chain.  The result is a record of booleans keyed
-                    # by the original branch name.
+                    # raw[i] holds one entry per matched combination in event i;
+                    # raw[i][j] links the offline particle(s) of combination j,
+                    # and each link's ``m_persIndex`` is that particle's index in
+                    # its AnalysisElectrons / AnalysisMuons container.  We keep
+                    # the matched indices per event, so the selection can tell
+                    # which lepton was matched.  The result is a record of
+                    # index lists keyed by the original branch name.
                     trig_fields = {}
                     for full_branch in obj_branches[obj_name].keys():
                         if full_branch not in concatenated.fields:
                             continue
                         raw = concatenated[full_branch]
-                        # raw[i] holds one entry per matched combination in event i;
-                        # raw[i][j] links the offline particle(s) of combination j.
-                        # The event matched if any combination is non-empty.
-                        per_particle_matched = ak.num(raw, axis=2) > 0
-                        trig_fields[full_branch] = ak.any(per_particle_matched, axis=1)
+                        trig_fields[full_branch] = ak.values_astype(
+                            ak.flatten(raw.m_persIndex, axis=2), np.int64
+                        )
                     if trig_fields:
-                        result[obj_name] = ak.zip(trig_fields)
+                        result[obj_name] = ak.zip(trig_fields, depth_limit=1)
                 elif obj_name == "_runNumber":
                     result[obj_name] = concatenated[schemas.RANDOM_RUN_NUMBER_BRANCH]
                 elif obj_name == MC_EVENT_INFO_FIELD:
