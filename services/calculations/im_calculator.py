@@ -74,11 +74,12 @@ class IMCalculator:
             ]
 
             all_events_fs = [
-                "_".join(
-                    f"{count}{letter}"
-                    for (_name, letter, _values), count in zip(present_types, counts)
+                self._limit_particles_in_fs(
+                    "_".join(
+                        f"{count}{letter}"
+                        for (_name, letter, _values), count in zip(present_types, counts)
+                    )
                 )
-                # This is used to create a mask later on, so we must keep this the same length as the event list.
                 if self._is_valid_fs(counts, present_types) else ""
                 for counts in zip(*[values for _name, _letter, values in present_types])
             ]
