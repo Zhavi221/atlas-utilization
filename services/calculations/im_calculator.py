@@ -123,18 +123,7 @@ class IMCalculator:
 
     @staticmethod
     def _limit_particles_in_fs(final_state: str, threshold: int = 4) -> str:
-        fs_particles = final_state.split('_')
-        for str_amount_particle in fs_particles:
-            if len(str_amount_particle) < 2:
-                continue
-            amount_to_calc = str_amount_particle[:-1]
-            particle_letter = str_amount_particle[-1]
-            if amount_to_calc.isdigit():
-                amount = int(amount_to_calc)
-                if amount > threshold:
-                    final_state = final_state.replace(
-                        f"{amount}{particle_letter}", f"{threshold}{particle_letter}")
-        return final_state
+        return physics_calcs.limit_particles_in_fs(final_state, threshold)
 
     @staticmethod
     def does_final_state_contain_combination(final_state: str, combination: Dict) -> bool:

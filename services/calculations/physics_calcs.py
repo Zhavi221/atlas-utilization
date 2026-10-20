@@ -96,18 +96,40 @@ def group_by_final_state(events: ak.Array) -> Iterator[Tuple[str, ak.Array]]:
 
 
 def limit_particles_in_fs(final_state: str, threshold: int) -> str:
+    JET_LETTER = "j"
     fs_particles = final_state.split('_')
-    for str_amount_particle in fs_particles:
-        if len(str_amount_particle) < 2:
+
+    # First pass: sum non-jet counts
+    non_jet_total = 0
+    for token in fs_particles:
+        if len(token) < 2:
             continue
-        amount_to_calc = str_amount_particle[:-1]
-        particle_letter = str_amount_particle[-1]
-        if amount_to_calc.isdigit():
-            amount = int(amount_to_calc)
-            if amount > threshold:
-                final_state = final_state.replace(
-                    f"{amount}{particle_letter}", f"{threshold}{particle_letter}")
-    return final_state
+        amount_str = token[:-1]
+        letter = token[-1]
+        if amount_str.isdigit() and letter != JET_LETTER:
+            non_jet_total += int(amount_str)
+
+    jet_slots = max(threshold - non_jet_total, 0)
+
+    # Second pass: rebuild with capped jet count
+    parts = []
+    for token in fs_particles:
+        if len(token) < 2:
+            parts.append(token)
+            continue
+        amount_str = token[:-1]
+        letter = token[-1]
+        if not amount_str.isdigit():
+            parts.append(token)
+            continue
+        amount = int(amount_str)
+        if letter == JET_LETTER:
+            parts.append(f"{min(amount, jet_slots)}{letter}")
+        elif amount > threshold:
+            parts.append(f"{threshold}{letter}")
+        else:
+            parts.append(token)
+    return "_".join(parts)
 
 
 def is_finalstate_contain_combination(final_state: str, combination: Dict) -> bool:
