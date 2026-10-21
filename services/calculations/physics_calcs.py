@@ -325,18 +325,26 @@ def filter_events_by_kinematics(
             phi_vals = ak.values_astype(particles.phi, float)
             mask = mask & (phi_vals >= cuts["phi"]["min"]) & (phi_vals <= cuts["phi"]["max"])
 
-        if obj == "Electrons" and cuts.get("rel_isolation_max") is not None:
-            iso_name = consts.ELECTRON_REL_ISOLATION_FIELD
-            if hasattr(particles, iso_name):
-                iso = getattr(particles, iso_name)
-                pt_vals = ak.values_astype(particles.pt, float)
-                iso_vals = ak.values_astype(iso, float)
-                rel = iso_vals / ak.where(pt_vals > 0, pt_vals, np.inf)
-                mask = mask & (rel < float(cuts["rel_isolation_max"]))
+        # --- isolation cut (electrons & muons) ---
+        if cuts.get("rel_isolation_max") is not None:
+            if obj == "Electrons":
+                iso_name = consts.ELECTRON_REL_ISOLATION_FIELD
+            elif obj == "Muons":
+                iso_name = consts.MUON_REL_ISOLATION_FIELD
             else:
-                raise ValueError(
-                    f"Electron rel_isolation_max requires missing field {iso_name!r}"
-                )
+                iso_name = None
+
+            if iso_name is not None:
+                if hasattr(particles, iso_name):
+                    iso = getattr(particles, iso_name)
+                    pt_vals = ak.values_astype(particles.pt, float)
+                    iso_vals = ak.values_astype(iso, float)
+                    rel = iso_vals / ak.where(pt_vals > 0, pt_vals, np.inf)
+                    mask = mask & (rel < float(cuts["rel_isolation_max"]))
+                else:
+                    raise ValueError(
+                        f"{obj} rel_isolation_max requires missing field {iso_name!r}"
+                    )
 
         # Boolean mask (not ak.mask) so dropped particles do not appear in lists
         filtered_events[obj] = particles[mask]

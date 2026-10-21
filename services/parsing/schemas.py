@@ -20,7 +20,7 @@ BASE_OBJECTS = {
         "mass",
         "ptvarcone30_Nonprompt_All_MaxWeightTTVALooseCone_pt1000",
     ],
-    "Muons": ["pt", "eta", "phi", "mass"],
+    "Muons": ["pt", "eta", "phi", "mass", "ptvarcone30_Nonprompt_All_MaxWeightTTVA_pt1000",],
     # NumTrkPt500: per-jet track multiplicity (tracks with pT>500MeV) at the
     # hard-scatter primary vertex. Optional -- used only by the mu-jet
     # overlap-removal track condition (arXiv:1606.03903, Table 2). Dropped
