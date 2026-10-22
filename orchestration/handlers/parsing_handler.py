@@ -24,6 +24,8 @@ from domain.events import EventBatch
 from services.parsing.event_selection import (
     apply_parsing_event_selection,
     apply_trigger_selection,
+    attach_lepton_trigger_matches,
+    apply_lepton_trigger_selection,
     apply_overlap_removal,
     retain_objects_for_storage,
     filter_events_by_non_jet_object_total,
@@ -157,6 +159,9 @@ class ParsingHandler(StateHandler):
         
         trigger_cfg = getattr(context.config, "trigger_config", None) or {}
         enable_trigger_matching = trigger_cfg.get("enabled", False)
+        # MC requires a selected lepton to be the trigger-matched one, so its
+        # event selection runs after the object selection (see below).
+        mc_trigger_matching = enable_trigger_matching and parsing_config.parse_mc
 
         start_time = datetime.now()
         stats_collector = ParsingStatisticsCollector()
@@ -225,8 +230,25 @@ class ParsingHandler(StateHandler):
             ):
 
                 # Apply single-lepton trigger matching if enabled,
-                # and always strip _triggerMatch before kinematic cuts
-                if enable_trigger_matching:
+                # and always strip _triggerMatch before kinematic cuts.
+                # MC: only mark the matched leptons here; the events are
+                # selected once the object selection is done.
+                if mc_trigger_matching:
+                    marked = attach_lepton_trigger_matches(
+                        batch.events,
+                        release_year=release_year,
+                        file_path=batch.file_url,
+                    )
+                    batch = EventBatch(
+                        events=marked,
+                        file_id=batch.file_id,
+                        file_url=batch.file_url,
+                        release_year=batch.release_year,
+                        size_bytes=batch.size_bytes,
+                        event_count=len(marked),
+                        processing_time_sec=batch.processing_time_sec,
+                    )
+                elif enable_trigger_matching:
                     filtered = apply_trigger_selection(
                         batch.events,
                         release_year=release_year,
@@ -304,6 +326,11 @@ class ParsingHandler(StateHandler):
                 filtered = retain_objects_for_storage(
                     batch.events, parsing_config.objects_to_store,
                 )
+                # MC trigger: a lepton that survived steps 1-3 must be matched
+                if mc_trigger_matching:
+                    filtered = apply_lepton_trigger_selection(
+                        filtered, file_path=batch.file_url,
+                    )
                 if parsing_config.particle_counts:
                     filtered = apply_parsing_event_selection(
                         filtered,
