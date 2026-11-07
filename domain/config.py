@@ -7,6 +7,8 @@ Validated configuration objects for the pipeline.
 from dataclasses import dataclass, field
 from typing import Optional
 
+from services.parsing.schemas import MC_SCALE_VARIATION_WEIGHT_NAMES
+
 
 @dataclass(frozen=True)
 class TaskConfig:
@@ -251,6 +253,9 @@ class MCWeightingConfig:
     # Per-campaign luminosity, e.g. {"mc20a": 36.2, "mc20d": 44.3, "mc20e": 58.5}.
     # Mutually exclusive with target_luminosity_fb.
     luminosity_by_campaign: Optional[dict] = None
+    # Generator weight used as the per-event weight: None for the nominal one,
+    # or a scale variation named in schemas.MC_SCALE_VARIATION_WEIGHT_NAMES.
+    weight_variation: Optional[str] = None
 
     def __post_init__(self):
         """Validate MC weighting configuration."""
@@ -274,6 +279,12 @@ class MCWeightingConfig:
                     raise ValueError(
                         f"luminosity for campaign '{campaign}' must be non-negative, got {lumi}"
                     )
+        if self.weight_variation is not None:
+            if self.weight_variation not in MC_SCALE_VARIATION_WEIGHT_NAMES:
+                raise ValueError(
+                    f"weight_variation must be null or one of "
+                    f"{list(MC_SCALE_VARIATION_WEIGHT_NAMES)}, got {self.weight_variation!r}"
+                )
 
     def get_luminosity(self, campaign: Optional[str] = None) -> float:
         """
@@ -470,6 +481,7 @@ class PipelineConfig:
                 enabled=mc_dict.get("enabled", False),
                 target_luminosity_fb=mc_dict.get("target_luminosity_fb"),
                 luminosity_by_campaign=mc_dict.get("luminosity_by_campaign"),
+                weight_variation=mc_dict.get("weight_variation"),
             )
             # MC weighting normalizes simulated samples only.
             if mc_weighting_config.enabled and not (config_dict.get("parsing_task_config") or {}).get("parse_mc", False):

@@ -152,6 +152,53 @@ MC_EVENT_WEIGHT_BRANCHES = {
     "2016e-8tev": "mcWeight",
 }
 
+# Names of the entries of the per-event generator weight vector, in vector
+# order (PHYSLITE only). One list per TruthMetaData object, in the MetaData tree.
+MC_WEIGHT_NAMES_TREE = "MetaData"
+MC_WEIGHT_NAMES_BRANCH = "TruthMetaDataAux./TruthMetaDataAux.weightNames"
+
+# Every known spelling of each generator scale variation in weightNames
+# (compared after stripping surrounding whitespace). Collected
+# from all mc20_13TeV PHYSLITE samples of the 2024r-pp release.
+MC_SCALE_VARIATION_WEIGHT_NAMES = {
+    "GEN_muR_20_muF_10": (
+        "MUR2.0_MUF1.0_PDF303000",                     # MadGraph
+        "muR = 2.0, muF = 1.0",                        # Powheg
+        "MUR2_MUF1_PDF303200_PSMUR2_PSMUF1",           # Sherpa 2.2.10+
+        "MUR2_MUF1_PDF261000",                         # Sherpa 2.2.1-2.2.4
+        "muR = 2.00, muF = 1.00",                      # Powheg
+        "MUR2.0_MUF1.0_PDF260000",                     # MadGraph, aMC@NLO
+        "muR=0.20000E+01 muF=0.10000E+01",             # MadGraph, aMC@NLO (older)
+        "MUR2_MUF1_PDF260000",                         # Powheg
+        "MUR2.0_MUF1.0_PDF247000",                     # MadGraph
+        "muR=2.0,muF=1.0",                             # Powheg+Herwig7
+        "dyn=  -1 muR=0.20000E+01 muF=0.10000E+01",    # MadGraph, aMC@NLO (dynamic scale)
+        "MUR2_MUF1_PDF93300",                          # Powheg
+        "dyn=   3 muR=0.20000E+01 muF=0.10000E+01",    # aMC@NLO (dynamic scale)
+        "mur=2 muf=1",                                 # MadGraph (older)
+        "MUR2_MUF1_PDF261000_PSMUR2_PSMUF1",           # Sherpa 2.2.x
+        "dyn=  10 muR=0.20000E+01 muF=0.10000E+01",    # aMC@NLO (dynamic scale)
+    ),
+    "GEN_muR_05_muF_10": (
+        "MUR0.5_MUF1.0_PDF303000",
+        "muR = 0.5, muF = 1.0",
+        "MUR0.5_MUF1_PDF303200_PSMUR0.5_PSMUF1",
+        "MUR0.5_MUF1_PDF261000",
+        "muR = 0.50, muF = 1.00",
+        "MUR0.5_MUF1.0_PDF260000",
+        "muR=0.50000E+00 muF=0.10000E+01",
+        "MUR0.5_MUF1_PDF260000",
+        "MUR0.5_MUF1.0_PDF247000",
+        "muR=0.5,muF=1.0",
+        "dyn=  -1 muR=0.50000E+00 muF=0.10000E+01",
+        "MUR0.5_MUF1_PDF93300",
+        "dyn=   3 muR=0.50000E+00 muF=0.10000E+01",
+        "mur=0.5 muf=1",
+        "MUR0.5_MUF1_PDF261000_PSMUR0.5_PSMUF1",
+        "dyn=  10 muR=0.50000E+00 muF=0.10000E+01",
+    ),
+}
+
 # Per-event MC dataset number (DSID) branches, keyed by normalized release
 # year.  This is the authoritative dataset identity: ATLAS Open Data URLs
 # carry rucio container IDs rather than DSIDs, so the number must be read

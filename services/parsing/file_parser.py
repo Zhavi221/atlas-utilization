@@ -56,6 +56,7 @@ class FileParser:
         jet_btagging_thresholds: Optional[dict[str, float]] = None,
         enable_trigger_matching: bool = False,
         enable_mc_weights: bool = False,
+        mc_weight_variation: Optional[str] = None,
     ) -> Optional[ak.Array]:
         """
         Parse a single ROOT file and return events.
@@ -67,7 +68,9 @@ class FileParser:
             batch_size: Number of entries to process per batch
             enable_mc_weights: Keep the per-event MC info (generator weight,
                 dataset and run number); dropped when MC weighting is off
-            
+            mc_weight_variation: Generator scale variation to store as the
+                event weight (None for the nominal weight)
+
         Returns:
             Awkward array of events with particle objects, or None if parsing failed
         """
@@ -83,6 +86,7 @@ class FileParser:
                     jet_btagging_thresholds,
                     enable_trigger_matching,
                     enable_mc_weights,
+                    mc_weight_variation,
                 )
         except (PartialFileReadError, SkipFileError):
             raise
@@ -101,6 +105,7 @@ class FileParser:
         jet_btagging_thresholds: Optional[dict[str, float]],
         enable_trigger_matching: bool,
         enable_mc_weights: bool,
+        mc_weight_variation: Optional[str] = None,
     ) -> Optional[ak.Array]:
         """Parse an already-opened ROOT file."""
         tree_name = FileParser._get_data_tree_name(root_file.keys(), tree_names)
@@ -125,6 +130,10 @@ class FileParser:
             logging.warning(f"No accessible particles found in file {file_path}")
             return None
         
+        weight_index = 0  # nominal generator weight
+        if enable_mc_weights and mc_weight_variation and MC_EVENT_INFO_FIELD in obj_branches:
+            weight_index = FileParser._weight_variation_index(root_file, mc_weight_variation, file_path)
+
         all_branches = set(itertools.chain.from_iterable(obj_branches.values()))
         obj_events, read_error = FileParser._read_file_in_batches(
             tree,
@@ -133,6 +142,7 @@ class FileParser:
             n_entries,
             batch_size,
             enable_mc_weights,
+            weight_index,
         )
         obj_events = FileParser._split_combined_leptons(obj_events, release_year)
         if enable_jet_tagging:
@@ -328,7 +338,33 @@ class FileParser:
         if not present:
             return {}
         return {MC_EVENT_INFO_FIELD: present}
-    
+
+    @staticmethod
+    def _weight_variation_index(root_file, variation: str, file_path: str) -> int:
+        """
+        Position of generator scale ``variation`` in this file's weight vector.
+
+        PHYSLITE lists the weight names in its MetaData tree; a variation's
+        position differs between samples, so it is matched by name against
+        ``schemas.MC_SCALE_VARIATION_WEIGHT_NAMES``. Files without such a
+        weight fall back to the nominal one (index 0).
+        """
+        try:
+            names_per_object = root_file[schemas.MC_WEIGHT_NAMES_TREE][
+                schemas.MC_WEIGHT_NAMES_BRANCH
+            ].array()[0]
+        except KeyError:
+            names_per_object = []
+        names = next((names for names in names_per_object if len(names) > 0), [])
+        position_of = {}
+        for index, name in enumerate(names):
+            position_of.setdefault(str(name).strip(), index)
+        for candidate in schemas.MC_SCALE_VARIATION_WEIGHT_NAMES[variation]:
+            if candidate in position_of:
+                return position_of[candidate]
+        logging.warning(f"No {variation} generator weight in {file_path}; using the nominal weight")
+        return 0
+
     @staticmethod
     def _prepare_obj_branch_name(
         obj_name: str,
@@ -561,6 +597,7 @@ class FileParser:
         n_entries: int,
         batch_size: int,
         enable_mc_weights: bool,
+        weight_index: int = 0,
     ) -> tuple[dict[str, ak.Array], Optional[Exception]]:
         obj_events_by_quantities = {
             obj_name: [] for obj_name in obj_branches.keys()
@@ -629,7 +666,7 @@ class FileParser:
                 elif obj_name == MC_EVENT_INFO_FIELD:
                     if enable_mc_weights:
                         result[obj_name] = FileParser._zip_mc_event_info(
-                            concatenated, obj_branches[obj_name]
+                            concatenated, obj_branches[obj_name], weight_index
                         )
                 else:
                     result[obj_name] = ak.zip({
@@ -642,13 +679,15 @@ class FileParser:
     @staticmethod
     def _zip_mc_event_info(
         arrays: ak.Array,
-        branch_mapping: dict[str, str]
+        branch_mapping: dict[str, str],
+        weight_index: int = 0,
     ) -> ak.Array:
         """
         Build the flat per-event MC info record (one scalar per event).
 
         PHYSLITE stores ``mcEventWeights`` as a vector per event, of which
-        index 0 is the nominal weight; legacy ntuples store a single float.
+        index 0 is the nominal weight and ``weight_index`` the one kept;
+        legacy ntuples store a single float.
         Values are widened so they round-trip unchanged through ROOT/uproot.
         """
         fields = {}
@@ -656,12 +695,13 @@ class FileParser:
             values = arrays[full_branch]
             if quantity == MC_EVENT_WEIGHT_FIELD:
                 if values.ndim > 1:
-                    n_empty = int(ak.sum(ak.num(values) == 0))
-                    if n_empty:
+                    n_short = int(ak.sum(ak.num(values) <= weight_index))
+                    if n_short:
                         raise SkipFileError(
-                            f"{n_empty} events have an empty generator-weight vector, skipping file"
+                            f"{n_short} events have no generator weight at index "
+                            f"{weight_index}, skipping file"
                         )
-                    values = values[:, 0]  # nominal weight
+                    values = values[:, weight_index]
                 values = ak.values_astype(values, np.float64)
             elif quantity in (MC_CHANNEL_NUMBER_FIELD, MC_RUN_NUMBER_FIELD):
                 values = ak.values_astype(values, np.int64)

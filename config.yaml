@@ -86,6 +86,11 @@ mc_weighting_config:
   #   mc20d: 44.3
   #   mc20e: 58.5
   luminosity_by_campaign: null
+  # Generator weight to use: null for the nominal one, or a scale variation
+  #   GEN_muR_20_muF_10 = muR x2, muF x1 (up)
+  #   GEN_muR_05_muF_10 = muR x0.5, muF x1 (down)
+  # Samples without that weight use the nominal one (with a warning).
+  weight_variation: null
 
 # ============================================================================
 # STAGE CONFIGURATIONS
