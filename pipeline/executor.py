@@ -199,15 +199,16 @@ class PipelineExecutor:
                 )
                 if result.returncode == 0:
                     self.logger.info(f"hadd succeeded: {merged_path}")
-                    from services.pipelines.histograms_pipeline import (
-                        trim_empty_tails_in_file,
-                    )
+                    if hc and hc.trim_empty_bins:
+                        from services.pipelines.histograms_pipeline import (
+                            slice_empty_bins_in_file,
+                        )
 
-                    trimmed = trim_empty_tails_in_file(merged_path)
-                    self.logger.info(
-                        f"Applied global tail display ranges to {trimmed} "
-                        "merged histogram(s)"
-                    )
+                        trimmed = slice_empty_bins_in_file(merged_path)
+                        self.logger.info(
+                            f"Sliced empty leading/trailing bins from {trimmed} "
+                            "merged histogram(s)"
+                        )
                     # Clean up batch files
                     archive_dir = Path(hist_dir) / "batch_files_archive"
                     archive_dir.mkdir(exist_ok=True)
@@ -245,6 +246,7 @@ class PipelineExecutor:
                     "output_filename": hc.pre_postproc_filename,
                     "exclude_outliers": False,
                     "use_bumpnet_naming": hc.use_bumpnet_naming,
+                    "trim_empty_bins": hc.trim_empty_bins,
                 }
                 create_histograms(nopp_config, file_list=im_sqlite_files)
                 self.logger.info(
