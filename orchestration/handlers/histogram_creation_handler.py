@@ -39,6 +39,7 @@ class HistogramCreationHandler(StateHandler):
             "exclude_outliers": hc.exclude_outliers,
             "use_bumpnet_naming": hc.use_bumpnet_naming,
             "apply_peak_removal_at_histogram_level": hc.apply_peak_removal_at_histogram_level,
+            "trim_empty_bins": hc.trim_empty_bins,
             "batch_job_index": context.config.batch_job_index,
             "total_batch_jobs": context.config.total_batch_jobs,
         }
