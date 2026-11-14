@@ -9,14 +9,14 @@
 
 set -e
 
-NUM_JOBS=3
-CONFIG="configWmaxTotal_up4j_minEvt10_subleading.yaml"
+NUM_JOBS=20
+CONFIG="config_fullData_up4j_minEvt10_subleading_btag_OverlapRemoval_w.yaml"
 CPUS_PER_JOB=4
 MEM_PER_JOB="180gb"
-WALLTIME="12:00:00"
-POSTPROC_WALLTIME="24:00:00"
+WALLTIME="72:00:00"
+POSTPROC_WALLTIME="72:00:00"
 HIST_WALLTIME="24:00:00"
-MERGE_WALLTIME="08:00:00"
+MERGE_WALLTIME="12:00:00"
 QUEUE="N"
 
 PIPELINE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -76,11 +76,13 @@ EOF
 done
 echo "All batch jobs: ${BATCH_JOB_IDS}"
 
-# Stage 2: post-processing — single job reading ALL im_batch_*.sqlite files
-POSTPROC_JOB_ID=$(qsub -W depend=afterok:"${BATCH_JOB_IDS}" <<EOF
+# Stage 2: post-processing — per batch (avoids blob-too-big on full data)
+POSTPROC_JOB_IDS=""
+for i in $(seq 1 $NUM_JOBS); do
+    JOB_ID=$(qsub -W depend=afterok:"${BATCH_JOB_IDS}" <<EOF
 #!/bin/bash
 #PBS -q ${QUEUE}
-#PBS -N atlas_data_postproc
+#PBS -N atlas_data_pp_${i}
 #PBS -o ${LOG_DIR}/
 #PBS -e ${LOG_DIR}/
 #PBS -l select=1:ncpus=4:mem=64gb
@@ -96,17 +98,22 @@ source ${PIPELINE_DIR}/atlasenv/bin/activate
 
 python -u main.py --config "${CONFIG}" \
     --tasks post_processing \
+    --batch-job-index ${i} \
+    --total-batch-jobs ${NUM_JOBS} \
     --run-dir "${RUN_DIR}" \
-    > "${LOG_DIR}/postproc.out" \
-    2> "${LOG_DIR}/postproc.err"
+    > "${LOG_DIR}/postproc_${i}.out" \
+    2> "${LOG_DIR}/postproc_${i}.err"
 EOF
-)
-echo "Submitted postproc: ${POSTPROC_JOB_ID} (depends on all batches)"
+    )
+    echo "Submitted postproc ${i}: ${JOB_ID}"
+    POSTPROC_JOB_IDS="${POSTPROC_JOB_IDS:+${POSTPROC_JOB_IDS}:}${JOB_ID}"
+done
+
 
 # Stage 3: histogram creation — per batch, depends on postproc
 HIST_JOB_IDS=""
 for i in $(seq 1 $NUM_JOBS); do
-    JOB_ID=$(qsub -W depend=afterok:"${POSTPROC_JOB_ID}" <<EOF
+    JOB_ID=$(qsub -W depend=afterok:"${POSTPROC_JOB_IDS}" <<EOF
 #!/bin/bash
 #PBS -q ${QUEUE}
 #PBS -N atlas_data_hist_${i}
