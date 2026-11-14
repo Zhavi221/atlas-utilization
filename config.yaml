@@ -202,3 +202,4 @@ histogram_creation_task_config:
   exclude_outliers: true # was designed to remove high-mass outliers from very broad distributions, but it doesn't work properly during merging
   use_bumpnet_naming: true               # mass_<combo>_cat_<final_state> format
   apply_peak_removal_at_histogram_level: false
+  trim_empty_bins: false                 # slice each histogram to its first..last non-empty bin (after hadd in batch runs)

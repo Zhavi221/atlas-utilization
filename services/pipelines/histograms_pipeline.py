@@ -24,31 +24,55 @@ FIXED_MASS_MIN_GEV = 0.0
 FIXED_MASS_MAX_GEV = 10000.0
 
 
-def trim_empty_tail(hist: ROOT.TH1F) -> None:
-    """Trim trailing empty bins by adjusting the display range.
+def _bin_is_empty(hist: ROOT.TH1, b: int) -> bool:
+    # A weighted bin whose weights cancel has zero content but a nonzero error.
+    return hist.GetBinContent(b) == 0 and hist.GetBinError(b) == 0
 
-    Finds the last bin with content > 0 and sets the x-axis range to
-    [0, last_bin_upper_edge].  The histogram object is modified in place.
+
+def slice_empty_bins(hist: ROOT.TH1) -> ROOT.TH1:
+    """Return a new histogram holding only the bins from the first to the last non-empty one.
+
+    This changes the stored axis, not just the display range. Bin edges
+    stay on the original grid, so bin width is unchanged. Interior empty
+    bins are kept. An all-empty histogram is returned as is.
     """
-    last_filled = 0
-    for b in range(hist.GetNbinsX(), 0, -1):
-        if hist.GetBinContent(b) > 0:
-            last_filled = b
-            break
-    if last_filled > 0:
-        hist.GetXaxis().SetRangeUser(
-            hist.GetXaxis().GetXmin(),
-            hist.GetBinLowEdge(last_filled + 1)
+    nbins = hist.GetNbinsX()
+    filled = [b for b in range(1, nbins + 1) if not _bin_is_empty(hist, b)]
+    if not filled:
+        return hist
+    first, last = filled[0], filled[-1]
+
+    add_directory = ROOT.TH1.AddDirectoryStatus()
+    ROOT.TH1.AddDirectory(False)
+    try:
+        sliced = type(hist)(
+            hist.GetName(), hist.GetTitle(), last - first + 1,
+            hist.GetBinLowEdge(first), hist.GetBinLowEdge(last + 1),
         )
+    finally:
+        ROOT.TH1.AddDirectory(add_directory)
+    # Errors are copied only for Sumw2 histograms: SetBinError would enable
+    # Sumw2 on an unweighted one, whose errors are sqrt(content) anyway.
+    weighted = hist.GetSumw2N() > 0
+    if weighted:
+        sliced.Sumw2()
+
+    # Bins dropped below/above the slice are empty, so under/overflow carry over unchanged.
+    for new_b, old_b in enumerate([0, *range(first, last + 1), nbins + 1]):
+        sliced.SetBinContent(new_b, hist.GetBinContent(old_b))
+        if weighted:
+            sliced.SetBinError(new_b, hist.GetBinError(old_b))
+    sliced.SetEntries(hist.GetEntries())
+    return sliced
 
 
-def trim_empty_tails_in_file(root_filepath: str) -> int:
-    """Apply tail display ranges after all histogram batches are merged."""
+def slice_empty_bins_in_file(root_filepath: str) -> int:
+    """Replace every histogram in a ROOT file with its ``slice_empty_bins`` version."""
     root_file = ROOT.TFile(root_filepath, "UPDATE")
     if not root_file or root_file.IsZombie():
-        raise OSError(f"Failed to open ROOT file for tail trimming: {root_filepath}")
+        raise OSError(f"Failed to open ROOT file for empty-bin trimming: {root_filepath}")
 
-    trimmed = 0
+    sliced = 0
     try:
         histograms = []
         for key in root_file.GetListOfKeys():
@@ -57,12 +81,12 @@ def trim_empty_tails_in_file(root_filepath: str) -> int:
                 histograms.append(obj)
 
         for hist in histograms:
-            trim_empty_tail(hist)
-            hist.Write("", ROOT.TObject.kOverwrite)
-            trimmed += 1
+            root_file.cd()
+            slice_empty_bins(hist).Write("", ROOT.TObject.kOverwrite)
+            sliced += 1
     finally:
         root_file.Close()
-    return trimmed
+    return sliced
 
 
 def _new_histogram(name: str, nbins: int, weighted: bool) -> ROOT.TH1:
@@ -120,6 +144,8 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
         histograms_config.get("batch_job_index") is not None
         and histograms_config.get("total_batch_jobs") is not None
     )
+    # Batch outputs keep the full grid for hadd; the merge step slices them afterwards.
+    trim_before_write = histograms_config.get("trim_empty_bins", False) and not is_distributed_batch
 
     if file_list is not None:
         sqlite_files = [f for f in file_list if f.endswith(".sqlite")]
@@ -204,7 +230,7 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
             single_output_file=single_output_file,
             output_filename=output_filename,
             apply_peak_removal=apply_peak_removal,
-            trim_before_write=not is_distributed_batch,
+            trim_before_write=trim_before_write,
         )
     else:
         logger.info("Using standard naming mode")
@@ -213,7 +239,7 @@ def create_histograms(histograms_config: Dict, file_list: Optional[List[str]] = 
             single_output_file=single_output_file,
             output_filename=output_filename,
             apply_peak_removal=apply_peak_removal,
-            trim_before_write=not is_distributed_batch,
+            trim_before_write=trim_before_write,
         )
 
 
@@ -240,7 +266,9 @@ def _create_histograms_from_sqlite(
     # Split SQLite files across histogram batch jobs
     batch_job_index = histograms_config.get("batch_job_index")
     total_batch_jobs = histograms_config.get("total_batch_jobs")
-    trim_before_write = batch_job_index is None or total_batch_jobs is None
+    trim_before_write = histograms_config.get("trim_empty_bins", False) and (
+        batch_job_index is None or total_batch_jobs is None
+    )
     if batch_job_index is not None and total_batch_jobs is not None:
         sqlite_files = _get_batch_files(
             sorted(sqlite_files), batch_job_index, total_batch_jobs
@@ -289,8 +317,7 @@ def _create_histograms_from_sqlite(
                 )
                 if hists:
                     if trim_before_write:
-                        for hist in hists:
-                            trim_empty_tail(hist)
+                        hists = [slice_empty_bins(hist) for hist in hists]
                     _write_hists_to_shared_file(hists, root_filepath, logger)
                     hist_count += len(hists)
             logger.info(f"Wrote {hist_count} histograms to shared file {root_filepath}")
@@ -302,8 +329,7 @@ def _create_histograms_from_sqlite(
                 )
                 if hists:
                     if trim_before_write:
-                        for hist in hists:
-                            trim_empty_tail(hist)
+                        hists = [slice_empty_bins(hist) for hist in hists]
                     root_filename = f"{bumpnet_name}_hists.root"
                     root_filepath = os.path.join(output_dir, root_filename)
                     root_file = ROOT.TFile(root_filepath, "RECREATE")
@@ -321,8 +347,7 @@ def _create_histograms_from_sqlite(
                 )
                 if hists:
                     if trim_before_write:
-                        for hist in hists:
-                            trim_empty_tail(hist)
+                        hists = [slice_empty_bins(hist) for hist in hists]
                     _write_hists_to_shared_file(hists, root_filepath, logger)
                     hist_count += len(hists)
             logger.info(f"Wrote {hist_count} histograms to shared file {root_filepath}")
@@ -334,8 +359,7 @@ def _create_histograms_from_sqlite(
                 )
                 if hists:
                     if trim_before_write:
-                        for hist in hists:
-                            trim_empty_tail(hist)
+                        hists = [slice_empty_bins(hist) for hist in hists]
                     root_filename = f"{signature}_hists.root"
                     root_filepath = os.path.join(output_dir, root_filename)
                     root_file = ROOT.TFile(root_filepath, "RECREATE")
@@ -513,7 +537,7 @@ def _process_im_arrays_bumpnet(
     single_output_file: bool = False,
     output_filename: str = "all_histograms.root",
     apply_peak_removal: bool = False,
-    trim_before_write: bool = True,
+    trim_before_write: bool = False,
 ):
     os.makedirs(output_dir, exist_ok=True)
     grouped_files = _group_im_files_by_signature(im_array_files)
@@ -535,8 +559,7 @@ def _process_im_arrays_bumpnet(
             )
             if hists:
                 if trim_before_write:
-                    for hist in hists:
-                        trim_empty_tail(hist)
+                    hists = [slice_empty_bins(hist) for hist in hists]
                 _write_hists_to_shared_file(hists, root_filepath, logger)
                 hist_count += len(hists)
 
@@ -554,8 +577,7 @@ def _process_im_arrays_bumpnet(
             )
             if hists:
                 if trim_before_write:
-                    for hist in hists:
-                        trim_empty_tail(hist)
+                    hists = [slice_empty_bins(hist) for hist in hists]
                 root_filename = f"{bumpnet_name}_hists.root"
                 root_filepath = os.path.join(output_dir, root_filename)
                 root_file = ROOT.TFile(root_filepath, "RECREATE")
@@ -621,7 +643,7 @@ def _process_im_arrays_standard(
     single_output_file: bool = False,
     output_filename: str = "all_histograms.root",
     apply_peak_removal: bool = False,
-    trim_before_write: bool = True,
+    trim_before_write: bool = False,
 ):
     if im_array_files is None:
         im_array_files = [f for f in os.listdir(im_arrays_dir) if f.endswith(".npy")]
@@ -642,8 +664,7 @@ def _process_im_arrays_standard(
             )
             if hists:
                 if trim_before_write:
-                    for hist in hists:
-                        trim_empty_tail(hist)
+                    hists = [slice_empty_bins(hist) for hist in hists]
                 _write_hists_to_shared_file(hists, root_filepath, logger)
                 hist_count += len(hists)
 
@@ -658,8 +679,7 @@ def _process_im_arrays_standard(
                 apply_peak_removal=apply_peak_removal,
             )
             if trim_before_write:
-                for hist in hists:
-                    trim_empty_tail(hist)
+                hists = [slice_empty_bins(hist) for hist in hists]
             _save_hists(hists, output_dir, im_array_filename, logger)
 
 

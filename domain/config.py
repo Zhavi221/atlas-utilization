@@ -216,6 +216,8 @@ class HistogramCreationConfig:
     exclude_outliers: bool = True  # Whether to exclude outlier histograms
     use_bumpnet_naming: bool = False  # When true, use mass_<combo>_cat_<final_state> naming
     apply_peak_removal_at_histogram_level: bool = False
+    # Slice each final histogram to its first..last non-empty bin (after hadd in batch runs)
+    trim_empty_bins: bool = False
     
     # Pre-postproc histograms
     also_save_pre_postproc: bool = False
@@ -458,6 +460,7 @@ class PipelineConfig:
                 apply_peak_removal_at_histogram_level=hist_dict.get(
                     "apply_peak_removal_at_histogram_level", False
                 ),
+                trim_empty_bins=hist_dict.get("trim_empty_bins", False),
                 also_save_pre_postproc=hist_dict.get("also_save_pre_postproc", False),
                 pre_postproc_filename=hist_dict.get("pre_postproc_filename"),
             )
