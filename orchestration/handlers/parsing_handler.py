@@ -225,6 +225,8 @@ class ParsingHandler(StateHandler):
                 enable_trigger_matching=enable_trigger_matching,
                 enable_mc_weights=bool(context.config.mc_weighting_config
                                        and context.config.mc_weighting_config.enabled),
+                mc_weight_variation=(context.config.mc_weighting_config.weight_variation
+                                     if context.config.mc_weighting_config else None),
                 on_success=on_success,
                 on_error=on_error
             ):

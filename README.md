@@ -201,6 +201,7 @@ python main.py --dry-run
 | `mc_weighting_config` | `enabled` | Weight simulated events to `target_luminosity_fb` (default `false`) |
 | `mc_weighting_config` | `target_luminosity_fb` | Target integrated luminosity in fb⁻¹. When `enabled`, set exactly one of this and `luminosity_by_campaign` |
 | `mc_weighting_config` | `luminosity_by_campaign` | Optional `{campaign: L}` map (e.g. `mc20a: 36.2`) used instead of `target_luminosity_fb`; setting both, or neither while `enabled`, is an error. Each dataset's campaign is read from its MC run number; an unknown or unlisted campaign is an error |
+| `mc_weighting_config` | `weight_variation` | Generator weight to use: `null` (nominal, default), `GEN_muR_20_muF_10` (muR x2) or `GEN_muR_05_muF_10` (muR x0.5). Each file's weight is found by name (`schemas.MC_SCALE_VARIATION_WEIGHT_NAMES`); samples without it use the nominal weight |
 
 All paths (`output_path`, `input_dir`, `output_dir`, etc.) are defined once in the `paths:` block at the top of `config.yaml` and reused via YAML anchors. At runtime, **relative** paths are overridden to point inside the timestamped run directory. To point a specific stage at an external directory, set its path to an **absolute** path in `config.yaml` — absolute paths are preserved as-is.
 
